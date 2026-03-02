@@ -7,9 +7,10 @@ export interface Booking {
     userId: string;
     startTime: Date;
     endTime: Date;
-    type: 'gym' | 'pt' | 'group';
+    type: 'gym' | 'pt' | 'group' | 'block';
     ptId?: string;
     groupId?: string;
+    reason?: string; // For blocks
     status: 'confirmed' | 'cancelled';
 }
 
@@ -116,7 +117,14 @@ export const checkSlotAvailability = (targetTime: Date, dayBookings: Booking[]):
         return b.startTime < targetEnd && b.endTime > targetTime;
     });
 
-    return overlappingBookings.length < 4;
+    // If there is ANY 'block' booking in this slot, it's instantly unavailable
+    const hasBlock = overlappingBookings.some(b => b.type === 'block');
+    if (hasBlock) return false;
+
+    // Filter to only normal gym bookings to check capacity
+    const gymBookings = overlappingBookings.filter(b => b.type === 'gym');
+
+    return gymBookings.length < 4;
 };
 
 // Create a new booking
@@ -208,4 +216,54 @@ export const getAllPTs = async (): Promise<UserProfile[]> => {
 export const assignClientToPt = async (clientId: string, ptId: string | null) => {
     const userRef = doc(db, USERS_COLLECTION, clientId);
     await updateDoc(userRef, { assignedPtId: ptId });
+};
+
+// --- ADMIN FEATURES ---
+
+// Fetch all bookings for a given date across the whole app
+export const getAllBookingsForDate = async (date: Date): Promise<(Booking & { user?: UserProfile })[]> => {
+    const start = startOfDay(date);
+    const end = endOfDay(date);
+
+    const q = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('status', '==', 'confirmed'),
+        where('startTime', '>=', start),
+        where('startTime', '<=', end)
+    );
+
+    const querySnapshot = await getDocs(q);
+    const bookings = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        startTime: doc.data().startTime.toDate(),
+        endTime: doc.data().endTime.toDate(),
+    })) as Booking[];
+
+    // Hydrate with user data
+    const hydratedBookings = await Promise.all(bookings.map(async (booking) => {
+        if (booking.type === 'block') {
+            return booking;
+        }
+        const userProfile = await getUserProfile(booking.userId);
+        return {
+            ...booking,
+            user: userProfile || undefined
+        };
+    }));
+
+    return hydratedBookings;
+};
+
+// Block out a specific slot
+export const blockOutSlot = async (adminId: string, startTime: Date, endTime: Date, reason: string) => {
+    const docRef = await addDoc(collection(db, BOOKINGS_COLLECTION), {
+        userId: adminId,
+        startTime: Timestamp.fromDate(startTime),
+        endTime: Timestamp.fromDate(endTime),
+        type: 'block',
+        reason: reason,
+        status: 'confirmed'
+    });
+    return docRef.id;
 };

@@ -1,13 +1,24 @@
 import { Tabs } from 'expo-router';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 
 import { HapticTab } from '@/components/haptic-tab';
-import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useAuth } from '@/context/auth';
+import { getUserProfile, UserProfile } from '@/services/bookingService';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const { user } = useAuth();
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      getUserProfile(user.uid).then(setUserProfile);
+    }
+  }, [user]);
+
+  const isAdminOrPt = userProfile?.role === 'admin' || userProfile?.role === 'pt';
 
   return (
     <Tabs
@@ -52,6 +63,14 @@ export default function TabLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ color }) => <Ionicons size={24} name="person" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="admin"
+        options={{
+          title: 'Admin',
+          tabBarIcon: ({ color }) => <Ionicons size={24} name="list" color={color} />,
+          href: isAdminOrPt ? '/(tabs)/admin' : null, // Hide tab if not admin/pt
         }}
       />
     </Tabs>
