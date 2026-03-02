@@ -6,7 +6,7 @@ import { signOut } from 'firebase/auth';
 import { useAuth } from '../../context/auth';
 import { getUserProfile, getAllClients, getAllPTs, assignClientToPt, UserProfile } from '../../services/bookingService';
 import { Ionicons } from '@expo/vector-icons';
-import { confirmAlert, successAlert, errorAlert, infoAlert } from '../../utils/alert';
+import CustomAlert from '../../components/CustomAlert';
 
 export default function ProfileScreen() {
     const { user } = useAuth();
@@ -15,6 +15,18 @@ export default function ProfileScreen() {
     const [pts, setPts] = useState<UserProfile[]>([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+    // Custom Alert State
+    const [alertConfig, setAlertConfig] = useState<{
+        visible: boolean;
+        title: string;
+        message: string;
+        isError?: boolean;
+        isSuccess?: boolean;
+        onConfirm?: () => void;
+    }>({ visible: false, title: '', message: '' });
+
+    const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
     const fetchProfileAndData = async () => {
         if (!user) return;
@@ -53,16 +65,22 @@ export default function ProfileScreen() {
         // Basic assignment flow for admin/pt
         if (profile?.role === 'pt') {
             // PTs assign themselves
-            confirmAlert(
-                'Assign Client',
-                `Take on ${clientName} as your client?`,
-                () => confirmAssignment(clientId, profile.id)
-            );
+            setAlertConfig({
+                visible: true,
+                title: 'Assign Client',
+                message: `Take on ${clientName} as your client?`,
+                onConfirm: () => confirmAssignment(clientId, profile.id)
+            });
         } else if (profile?.role === 'admin') {
             // Admins just see unassigned and we could build a picker, but for simplicity:
             // In this basic version, admins might just view or need a complex picker.
             // We'll just show them the list and say "PT assignment must be done by PT" for simplicity
-            infoAlert('Admin Info', `Client: ${clientName}`);
+            setAlertConfig({
+                visible: true,
+                title: 'Admin Info',
+                message: `Client: ${clientName}`,
+                onConfirm: undefined
+            });
         }
     };
 
@@ -70,10 +88,21 @@ export default function ProfileScreen() {
         setActionLoading(clientId);
         try {
             await assignClientToPt(clientId, ptId);
-            successAlert('Success', 'Client assigned.');
+            setAlertConfig({
+                visible: true,
+                title: 'Success',
+                message: 'Client assigned.',
+                isSuccess: true,
+                onConfirm: undefined
+            });
             fetchProfileAndData();
         } catch (error) {
-            errorAlert('Error', 'Failed to assign client.');
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to assign client.',
+                isError: true
+            });
         } finally {
             setActionLoading(null);
         }
@@ -149,6 +178,14 @@ export default function ProfileScreen() {
                     </>
                 )}
             </ScrollView>
+
+            <CustomAlert
+                visible={alertConfig.visible}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                onClose={() => closeAlert()}
+                onConfirm={alertConfig.onConfirm}
+            />
         </SafeAreaView>
     );
 }

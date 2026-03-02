@@ -5,7 +5,7 @@ import { useAuth } from '../../context/auth';
 import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
-import { confirmAlert, successAlert, errorAlert } from '../../utils/alert';
+import CustomAlert from '../../components/CustomAlert';
 
 // Assuming PT operating hours
 const PT_OPEN_HOUR = 6;
@@ -19,6 +19,18 @@ export default function PTBookingScreen() {
     const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean }[]>([]);
     const [loading, setLoading] = useState(true);
     const [bookingLoading, setBookingLoading] = useState(false);
+
+    // Custom Alert State
+    const [alertConfig, setAlertConfig] = useState<{
+        visible: boolean;
+        title: string;
+        message: string;
+        isError?: boolean;
+        isSuccess?: boolean;
+        onConfirm?: () => void;
+    }>({ visible: false, title: '', message: '' });
+
+    const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
     // Generate the next 14 days for the selector
     const dates = Array.from({ length: 14 }).map((_, i) => addDays(startOfDay(new Date()), i));
@@ -45,7 +57,12 @@ export default function PTBookingScreen() {
             }
         } catch (error) {
             console.error('Error fetching user profile:', error);
-            errorAlert('Error', 'Failed to load user profile.');
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to load user profile.',
+                isError: true
+            });
             setLoading(false);
         }
     };
@@ -88,7 +105,12 @@ export default function PTBookingScreen() {
             setAvailableSlots(slots);
         } catch (error) {
             console.error('Error fetching PT availability:', error);
-            errorAlert('Error', 'Failed to load available slots.');
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to load available slots.',
+                isError: true
+            });
         } finally {
             setLoading(false);
         }
@@ -97,11 +119,12 @@ export default function PTBookingScreen() {
     const handleBookSlot = async (slot: { time: Date; available: boolean }) => {
         if (!user || !userProfile?.assignedPtId) return;
 
-        confirmAlert(
-            'Confirm PT Booking',
-            `Book PT session with your assigned trainer at ${format(slot.time, 'HH:mm')} for 1 hour?`,
-            () => confirmBooking(slot.time, userProfile.assignedPtId as string)
-        );
+        setAlertConfig({
+            visible: true,
+            title: 'Confirm PT Booking',
+            message: `Book PT session with your assigned trainer at ${format(slot.time, 'HH:mm')} for 1 hour?`,
+            onConfirm: () => confirmBooking(slot.time, userProfile.assignedPtId as string)
+        });
     };
 
     const confirmBooking = async (startTime: Date, ptId: string) => {
@@ -120,13 +143,22 @@ export default function PTBookingScreen() {
                 status: 'confirmed'
             });
 
-            successAlert('Success!', 'Your PT session has been booked.', () => {
-                router.push('/(tabs)');
+            setAlertConfig({
+                visible: true,
+                title: 'Success!',
+                message: 'Your PT session has been booked.',
+                isSuccess: true,
+                onConfirm: undefined
             });
             fetchAvailability(ptId); // Refresh slots
         } catch (error) {
             console.error('Error booking PT slot:', error);
-            errorAlert('Error', 'Failed to complete booking. Please try again.');
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to complete booking. Please try again.',
+                isError: true
+            });
         } finally {
             setBookingLoading(false);
         }
@@ -209,6 +241,19 @@ export default function PTBookingScreen() {
                     </View>
                 )}
             </ScrollView>
+
+            <CustomAlert
+                visible={alertConfig.visible}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                onClose={() => {
+                    closeAlert();
+                    if (alertConfig.isSuccess) {
+                        router.push('/(tabs)');
+                    }
+                }}
+                onConfirm={alertConfig.onConfirm}
+            />
         </SafeAreaView>
     );
 }

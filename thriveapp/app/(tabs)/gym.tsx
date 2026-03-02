@@ -5,7 +5,7 @@ import { useAuth } from '../../context/auth';
 import { getGymBookingsForDate, checkSlotAvailability, createBooking, Booking } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
-import { confirmAlert, successAlert, errorAlert } from '../../utils/alert';
+import CustomAlert from '../../components/CustomAlert';
 
 const GYM_OPEN_HOUR = 6;
 const GYM_CLOSE_HOUR = 22;
@@ -17,6 +17,18 @@ export default function GymBookingScreen() {
     const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean }[]>([]);
     const [loading, setLoading] = useState(false);
     const [bookingLoading, setBookingLoading] = useState(false);
+
+    // Custom Alert State
+    const [alertConfig, setAlertConfig] = useState<{
+        visible: boolean;
+        title: string;
+        message: string;
+        isError?: boolean;
+        isSuccess?: boolean;
+        onConfirm?: () => void;
+    }>({ visible: false, title: '', message: '' });
+
+    const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
     // Generate the next 14 days for the selector
     const dates = Array.from({ length: 14 }).map((_, i) => addDays(startOfDay(new Date()), i));
@@ -60,7 +72,12 @@ export default function GymBookingScreen() {
             setAvailableSlots(slots);
         } catch (error) {
             console.error('Error fetching availability:', error);
-            errorAlert('Error', 'Failed to load available slots.');
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to load available slots.',
+                isError: true
+            });
         } finally {
             setLoading(false);
         }
@@ -72,19 +89,23 @@ export default function GymBookingScreen() {
         let duration = 60;
         if (!slot.isNextAvailable) {
             duration = 30;
-            confirmAlert(
-                'Limited Availability',
-                'Due to capacity limits, you can only book a 30-minute session at this time. Would you like to proceed?',
-                () => confirmBooking(slot.time, duration)
-            );
+            setAlertConfig({
+                visible: true,
+                title: 'Limited Availability',
+                message: 'Due to capacity limits, you can only book a 30-minute session at this time. Would you like to proceed?',
+                onConfirm: undefined,
+            });
+            // Hack to store the action since state updates are async
+            setAlertConfig(prev => ({ ...prev, onConfirm: () => confirmBooking(slot.time, duration) }));
             return;
         }
 
-        confirmAlert(
-            'Confirm Booking',
-            `Book gym session at ${format(slot.time, 'HH:mm')} for 1 hour?`,
-            () => confirmBooking(slot.time, duration)
-        );
+        setAlertConfig({
+            visible: true,
+            title: 'Confirm Booking',
+            message: `Book gym session at ${format(slot.time, 'HH:mm')} for 1 hour?`,
+            onConfirm: () => confirmBooking(slot.time, duration)
+        });
     };
 
     const confirmBooking = async (startTime: Date, durationMinutes: number) => {
@@ -100,13 +121,22 @@ export default function GymBookingScreen() {
                 status: 'confirmed'
             });
 
-            successAlert('Success!', 'Your gym session has been booked.', () => {
-                router.push('/(tabs)');
+            setAlertConfig({
+                visible: true,
+                title: 'Success!',
+                message: 'Your gym session has been booked.',
+                isSuccess: true,
+                onConfirm: undefined
             });
             fetchAvailability(); // Refresh slots
         } catch (error) {
             console.error('Error booking slot:', error);
-            errorAlert('Error', 'Failed to complete booking. Please try again.');
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to complete booking. Please try again.',
+                isError: true
+            });
         } finally {
             setBookingLoading(false);
         }
@@ -177,6 +207,19 @@ export default function GymBookingScreen() {
                     </View>
                 )}
             </ScrollView>
+
+            <CustomAlert
+                visible={alertConfig.visible}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                onClose={() => {
+                    closeAlert();
+                    if (alertConfig.isSuccess) {
+                        router.push('/(tabs)');
+                    }
+                }}
+                onConfirm={alertConfig.onConfirm}
+            />
         </SafeAreaView>
     );
 }

@@ -6,7 +6,7 @@ import { getUpcomingGroupSessions, createGroupBooking, getUserBookings, GroupSes
 import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { confirmAlert, successAlert, errorAlert } from '../../utils/alert';
+import CustomAlert from '../../components/CustomAlert';
 
 export default function GroupBookingScreen() {
     const { user } = useAuth();
@@ -16,6 +16,18 @@ export default function GroupBookingScreen() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [bookingLoading, setBookingLoading] = useState<string | null>(null);
+
+    // Custom Alert State
+    const [alertConfig, setAlertConfig] = useState<{
+        visible: boolean;
+        title: string;
+        message: string;
+        isError?: boolean;
+        isSuccess?: boolean;
+        onConfirm?: () => void;
+    }>({ visible: false, title: '', message: '' });
+
+    const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
     const fetchData = async () => {
         if (!user) return;
@@ -28,7 +40,12 @@ export default function GroupBookingScreen() {
             setUserBookings(bookings);
         } catch (error) {
             console.error('Error fetching group sessions:', error);
-            errorAlert('Error', 'Failed to load group sessions.');
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to load group sessions.',
+                isError: true
+            });
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -51,11 +68,12 @@ export default function GroupBookingScreen() {
     const handleBookSession = (session: GroupSession) => {
         if (!user) return;
 
-        confirmAlert(
-            'Confirm Booking',
-            `Book your spot for ${session.title}\n${format(session.startTime, 'EEE, MMM d • HH:mm')}?`,
-            () => confirmBooking(session)
-        );
+        setAlertConfig({
+            visible: true,
+            title: 'Confirm Booking',
+            message: `Book your spot for ${session.title}\n${format(session.startTime, 'EEE, MMM d • HH:mm')}?`,
+            onConfirm: () => confirmBooking(session)
+        });
     };
 
     const confirmBooking = async (session: GroupSession) => {
@@ -65,13 +83,22 @@ export default function GroupBookingScreen() {
         try {
             await createGroupBooking(user.uid, session.id, session.startTime, session.endTime);
 
-            successAlert('Success!', 'You have been booked onto ' + session.title, () => {
-                router.push('/(tabs)');
+            setAlertConfig({
+                visible: true,
+                title: 'Success!',
+                message: 'You have been booked onto ' + session.title,
+                isSuccess: true,
+                onConfirm: undefined
             });
             fetchData(); // Refresh slots
         } catch (error) {
             console.error('Error booking group session:', error);
-            errorAlert('Error', 'Failed to complete booking. Please try again.');
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to complete booking. Please try again.',
+                isError: true
+            });
         } finally {
             setBookingLoading(null);
         }
@@ -148,6 +175,19 @@ export default function GroupBookingScreen() {
                     </View>
                 )}
             </ScrollView>
+
+            <CustomAlert
+                visible={alertConfig.visible}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                onClose={() => {
+                    closeAlert();
+                    if (alertConfig.isSuccess) {
+                        router.push('/(tabs)');
+                    }
+                }}
+                onConfirm={alertConfig.onConfirm}
+            />
         </SafeAreaView>
     );
 }

@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getUserBookings, cancelBooking, Booking } from '../../services/bookingService';
 import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
-import { confirmAlert, errorAlert } from '../../utils/alert';
+import CustomAlert from '../../components/CustomAlert';
 
 export default function DashboardScreen() {
   const { user } = useAuth();
@@ -13,6 +13,19 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  // Custom Alert State
+  const [alertConfig, setAlertConfig] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    isDestructive?: boolean;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm?: () => void;
+  }>({ visible: false, title: '', message: '' });
+
+  const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
   const fetchBookings = async () => {
     if (!user) return;
@@ -43,11 +56,15 @@ export default function DashboardScreen() {
   };
 
   const handleCancel = (booking: Booking) => {
-    confirmAlert(
-      'Cancel Booking',
-      `Are you sure you want to cancel this ${booking.type} booking on ${format(booking.startTime, 'MMM d, HH:mm')}?`,
-      () => confirmCancellation(booking.id!)
-    );
+    setAlertConfig({
+      visible: true,
+      title: 'Cancel Booking',
+      message: `Are you sure you want to cancel this ${booking.type} booking on ${format(booking.startTime, 'MMM d, HH:mm')}?`,
+      isDestructive: true,
+      confirmText: 'Yes, Cancel',
+      cancelText: 'No, Keep it',
+      onConfirm: () => confirmCancellation(booking.id!)
+    });
   };
 
   const confirmCancellation = async (id: string) => {
@@ -56,7 +73,12 @@ export default function DashboardScreen() {
       await cancelBooking(id);
       fetchBookings();
     } catch (error) {
-      errorAlert('Error', 'Failed to cancel the booking.');
+      setAlertConfig({
+        visible: true,
+        title: 'Error',
+        message: 'Failed to cancel the booking.',
+        onConfirm: undefined
+      });
     } finally {
       setCancellingId(null);
     }
@@ -125,6 +147,17 @@ export default function DashboardScreen() {
         </View>
 
       </ScrollView>
+
+      <CustomAlert
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        isDestructive={alertConfig.isDestructive}
+        confirmText={alertConfig.confirmText || 'Confirm'}
+        cancelText={alertConfig.cancelText || 'Cancel'}
+        onClose={closeAlert}
+        onConfirm={alertConfig.onConfirm}
+      />
     </SafeAreaView>
   );
 }
