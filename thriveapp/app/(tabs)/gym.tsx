@@ -14,7 +14,7 @@ export default function GymBookingScreen() {
     const { user } = useAuth();
     const router = useRouter();
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
-    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean }[]>([]);
+    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean; attendees: number; }[]>([]);
     const [loading, setLoading] = useState(false);
     const [bookingLoading, setBookingLoading] = useState(false);
 
@@ -54,16 +54,17 @@ export default function GymBookingScreen() {
                     continue;
                 }
 
-                const isAvailable = checkSlotAvailability(currentTime, bookingsForDay);
+                const slotData = checkSlotAvailability(currentTime, bookingsForDay);
 
                 // Peek at next 30 min slot to see if 1 hour booking is possible
                 const nextSlotStart = addMinutes(currentTime, 30);
-                const isNextAvailable = checkSlotAvailability(nextSlotStart, bookingsForDay);
+                const nextSlotData = checkSlotAvailability(nextSlotStart, bookingsForDay);
 
                 slots.push({
                     time: currentTime,
-                    available: isAvailable,
-                    isNextAvailable: isNextAvailable,
+                    available: slotData.available,
+                    isNextAvailable: nextSlotData.available,
+                    attendees: slotData.count,
                 });
 
                 currentTime = addMinutes(currentTime, 30);
@@ -83,7 +84,7 @@ export default function GymBookingScreen() {
         }
     };
 
-    const handleBookSlot = async (slot: { time: Date; available: boolean; isNextAvailable: boolean }) => {
+    const handleBookSlot = async (slot: { time: Date; available: boolean; isNextAvailable: boolean; attendees: number; }) => {
         if (!user) return;
 
         let duration = 60;
@@ -195,12 +196,22 @@ export default function GymBookingScreen() {
                                     {format(slot.time, 'HH:mm')}
                                 </Text>
                                 {slot.available && (
-                                    <Text style={styles.slotDuration}>
-                                        {slot.isNextAvailable ? '1 Hour' : '30 Mins'}
-                                    </Text>
+                                    <View style={{ alignItems: 'center' }}>
+                                        <Text style={styles.slotDuration}>
+                                            {slot.isNextAvailable ? '1 Hour' : '30 Mins'}
+                                        </Text>
+                                        <Text style={styles.slotAttendees}>
+                                            {slot.attendees} / 4 Booked
+                                        </Text>
+                                    </View>
                                 )}
                                 {!slot.available && (
-                                    <Text style={styles.slotFullText}>Full</Text>
+                                    <View style={{ alignItems: 'center' }}>
+                                        <Text style={styles.slotFullText}>Full</Text>
+                                        <Text style={styles.slotAttendees}>
+                                            {slot.attendees} / 4 Booked
+                                        </Text>
+                                    </View>
                                 )}
                             </TouchableOpacity>
                         ))}
@@ -326,6 +337,12 @@ const styles = StyleSheet.create({
         color: '#ef4444', // Red for full
         marginTop: 4,
         fontWeight: '600',
+    },
+    slotAttendees: {
+        fontSize: 12,
+        color: '#737373', // text-muted
+        fontWeight: '500',
+        marginTop: 4,
     },
     noSlotsText: {
         textAlign: 'center',
