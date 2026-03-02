@@ -83,7 +83,7 @@ export default function PTBookingScreen() {
 
             while (currentTime < endTime) {
                 if (isBefore(currentTime, now)) {
-                    currentTime = addMinutes(currentTime, 30);
+                    currentTime = addMinutes(currentTime, 15);
                     continue;
                 }
 
@@ -101,9 +101,8 @@ export default function PTBookingScreen() {
                     available: isAvailable,
                 });
 
-                // Advance by 60 mins for PT slots to keep it clean, or 30 mins depending on requirement
-                // Requirement says day split into 30 min segments. We'll show slots every 30 mins.
-                currentTime = addMinutes(currentTime, 30);
+                // Advance by 15 mins for PT slots to allow 15 min increment start times
+                currentTime = addMinutes(currentTime, 15);
             }
 
             setAvailableSlots(slots);

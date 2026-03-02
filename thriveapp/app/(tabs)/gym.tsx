@@ -50,24 +50,31 @@ export default function GymBookingScreen() {
             while (currentTime < endTime) {
                 // Only show future slots for today
                 if (isBefore(currentTime, now)) {
-                    currentTime = addMinutes(currentTime, 30);
+                    currentTime = addMinutes(currentTime, 15);
                     continue;
                 }
 
                 const slotData = checkSlotAvailability(currentTime, bookingsForDay);
 
-                // Peek at next 30 min slot to see if 1 hour booking is possible
-                const nextSlotStart = addMinutes(currentTime, 30);
-                const nextSlotData = checkSlotAvailability(nextSlotStart, bookingsForDay);
+                // A 1-hour booking needs 4 consecutive 15-minute slots (1st, 2nd, 3rd, 4th)
+                const nextSlot1Start = addMinutes(currentTime, 15);
+                const nextSlot2Start = addMinutes(currentTime, 30);
+                const nextSlot3Start = addMinutes(currentTime, 45);
+
+                const nextSlotData1 = checkSlotAvailability(nextSlot1Start, bookingsForDay);
+                const nextSlotData2 = checkSlotAvailability(nextSlot2Start, bookingsForDay);
+                const nextSlotData3 = checkSlotAvailability(nextSlot3Start, bookingsForDay);
+
+                const isFullHourAvailable = slotData.available && nextSlotData1.available && nextSlotData2.available && nextSlotData3.available;
 
                 slots.push({
                     time: currentTime,
                     available: slotData.available,
-                    isNextAvailable: nextSlotData.available,
+                    isNextAvailable: isFullHourAvailable,
                     attendees: slotData.count,
                 });
 
-                currentTime = addMinutes(currentTime, 30);
+                currentTime = addMinutes(currentTime, 15);
             }
 
             setAvailableSlots(slots);
@@ -89,11 +96,11 @@ export default function GymBookingScreen() {
 
         let duration = 60;
         if (!slot.isNextAvailable) {
-            duration = 30;
+            duration = 15;
             setAlertConfig({
                 visible: true,
                 title: 'Limited Availability',
-                message: 'Due to capacity limits, you can only book a 30-minute session at this time. Would you like to proceed?',
+                message: 'Due to capacity limits, you can only book a 15-minute session at this time. Would you like to proceed?',
                 onConfirm: undefined,
             });
             // Hack to store the action since state updates are async
@@ -198,7 +205,7 @@ export default function GymBookingScreen() {
                                 {slot.available && (
                                     <View style={{ alignItems: 'center' }}>
                                         <Text style={styles.slotDuration}>
-                                            {slot.isNextAvailable ? '1 Hour' : '30 Mins'}
+                                            {slot.isNextAvailable ? '1 Hour' : '15 Mins'}
                                         </Text>
                                         <Text style={styles.slotAttendees}>
                                             {slot.attendees} / 4 Booked

@@ -120,11 +120,11 @@ export const getPTBookingsForDate = async (date: Date, ptId: string): Promise<Bo
     })) as Booking[];
 };
 
-// Validation: Check if a 30-min slot is available (max 4 people)
+// Validation: Check if a 15-min slot is available (max 4 people)
 export const checkSlotAvailability = (targetTime: Date, dayBookings: Booking[]): { available: boolean; count: number } => {
-    // A gym booking is usually 1 hour, so we count any booking that overlaps the target 30-min slot.
-    // Bookings are like 10:00 to 11:00. If target is 10:30, it overlaps.
-    const targetEnd = addMinutes(targetTime, 30);
+    // A gym booking is usually 1 hour, so we count any booking that overlaps the target 15-min slot.
+    // Bookings are like 10:00 to 11:00. If target is 10:15, it overlaps.
+    const targetEnd = addMinutes(targetTime, 15);
 
     const overlappingBookings = dayBookings.filter(b => {
         // Overlaps if booking starts before targetEnd AND booking ends after targetTime

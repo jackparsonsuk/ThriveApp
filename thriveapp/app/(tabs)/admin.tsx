@@ -77,14 +77,14 @@ export default function AdminScheduleScreen() {
         setAlertConfig({
             visible: true,
             title: 'Block Out Slot',
-            message: `Prevent clients from booking 30 minutes at ${format(time, 'HH:mm')}?`,
+            message: `Prevent clients from booking 15 minutes at ${format(time, 'HH:mm')}?`,
             isDestructive: true,
             confirmText: 'Block Slot',
             onConfirm: async () => {
                 if (!user) return;
                 setLoading(true);
                 try {
-                    await blockOutSlot(user.uid, time, addMinutes(time, 30), 'Admin block out');
+                    await blockOutSlot(user.uid, time, addMinutes(time, 15), 'Admin block out');
                     fetchSchedule();
                 } catch (error) {
                     setAlertConfig({ visible: true, title: 'Error', message: 'Failed to block slot.' });
@@ -101,9 +101,9 @@ export default function AdminScheduleScreen() {
         const endTime = setMinutes(setHours(selectedDate, CLOSE_HOUR), 0);
 
         while (currentTime < endTime) {
-            const blockEnd = addMinutes(currentTime, 30);
+            const blockEnd = addMinutes(currentTime, 15);
 
-            // Find all bookings overlapping this 30-min window
+            // Find all bookings overlapping this 15-min window
             const overlapping = dailyBookings.filter(b => b.startTime < blockEnd && b.endTime > currentTime);
 
             blocks.push({
@@ -111,7 +111,7 @@ export default function AdminScheduleScreen() {
                 bookings: overlapping
             });
 
-            currentTime = addMinutes(currentTime, 30);
+            currentTime = addMinutes(currentTime, 15);
         }
         return blocks;
     };
