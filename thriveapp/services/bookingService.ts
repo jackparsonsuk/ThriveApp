@@ -1,0 +1,211 @@
+import { collection, query, where, getDocs, addDoc, Timestamp, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { db } from '../config/firebaseConfig';
+import { addMinutes, startOfDay, endOfDay, isBefore, isAfter, isEqual } from 'date-fns';
+
+export interface Booking {
+    id?: string;
+    userId: string;
+    startTime: Date;
+    endTime: Date;
+    type: 'gym' | 'pt' | 'group';
+    ptId?: string;
+    groupId?: string;
+    status: 'confirmed' | 'cancelled';
+}
+
+export interface UserProfile {
+    id: string;
+    name: string;
+    email: string;
+    role: 'client' | 'pt' | 'admin';
+    assignedPtId: string | null;
+}
+
+export interface GroupSession {
+    id?: string;
+    title: string;
+    startTime: Date;
+    endTime: Date;
+    maxCapacity: number;
+    currentBookings: number;
+}
+
+const BOOKINGS_COLLECTION = 'bookings';
+const USERS_COLLECTION = 'users';
+const GROUP_SESSIONS_COLLECTION = 'group_sessions';
+
+// Fetch user profile to get assigned PT
+export const getUserProfile = async (userId: string): Promise<UserProfile | null> => {
+    const userDoc = await getDoc(doc(db, USERS_COLLECTION, userId));
+    if (userDoc.exists()) {
+        return userDoc.data() as UserProfile;
+    }
+    return null;
+};
+
+// Fetch all bookings for a user
+export const getUserBookings = async (userId: string): Promise<Booking[]> => {
+    const q = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('userId', '==', userId),
+        where('status', '==', 'confirmed')
+    );
+
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        startTime: doc.data().startTime.toDate(),
+        endTime: doc.data().endTime.toDate(),
+    })) as Booking[];
+};
+
+// Fetch gym bookings for a specific day to check capacity
+export const getGymBookingsForDate = async (date: Date): Promise<Booking[]> => {
+    const start = startOfDay(date);
+    const end = endOfDay(date);
+
+    const q = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('type', '==', 'gym'),
+        where('status', '==', 'confirmed'),
+        where('startTime', '>=', start),
+        where('startTime', '<=', end)
+    );
+
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        startTime: doc.data().startTime.toDate(),
+        endTime: doc.data().endTime.toDate(),
+    })) as Booking[];
+};
+
+// Fetch PT bookings for a specific day and specific PT to check availability
+export const getPTBookingsForDate = async (date: Date, ptId: string): Promise<Booking[]> => {
+    const start = startOfDay(date);
+    const end = endOfDay(date);
+
+    const q = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('type', '==', 'pt'),
+        where('ptId', '==', ptId),
+        where('status', '==', 'confirmed'),
+        where('startTime', '>=', start),
+        where('startTime', '<=', end)
+    );
+
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data(),
+        startTime: d.data().startTime.toDate(),
+        endTime: d.data().endTime.toDate(),
+    })) as Booking[];
+};
+
+// Validation: Check if a 30-min slot is available (max 4 people)
+export const checkSlotAvailability = (targetTime: Date, dayBookings: Booking[]): boolean => {
+    // A gym booking is usually 1 hour, so we count any booking that overlaps the target 30-min slot.
+    // Bookings are like 10:00 to 11:00. If target is 10:30, it overlaps.
+    const targetEnd = addMinutes(targetTime, 30);
+
+    const overlappingBookings = dayBookings.filter(b => {
+        // Overlaps if booking starts before targetEnd AND booking ends after targetTime
+        return b.startTime < targetEnd && b.endTime > targetTime;
+    });
+
+    return overlappingBookings.length < 4;
+};
+
+// Create a new booking
+export const createBooking = async (bookingData: Omit<Booking, 'id'>) => {
+    const docRef = await addDoc(collection(db, BOOKINGS_COLLECTION), {
+        ...bookingData,
+        startTime: Timestamp.fromDate(bookingData.startTime),
+        endTime: Timestamp.fromDate(bookingData.endTime),
+    });
+    return docRef.id;
+};
+
+// Fetch all available group sessions for the future
+export const getUpcomingGroupSessions = async (): Promise<GroupSession[]> => {
+    const q = query(
+        collection(db, GROUP_SESSIONS_COLLECTION),
+        where('startTime', '>=', new Date())
+    );
+
+    const querySnapshot = await getDocs(q);
+
+    // Also fetch how many bookings exist for each group session
+    const sessions = await Promise.all(querySnapshot.docs.map(async (docSnap) => {
+        const data = docSnap.data();
+        const sessionId = docSnap.id;
+
+        const bookingsQuery = query(
+            collection(db, BOOKINGS_COLLECTION),
+            where('type', '==', 'group'),
+            where('groupId', '==', sessionId),
+            where('status', '==', 'confirmed')
+        );
+        const bookingsSnapshot = await getDocs(bookingsQuery);
+
+        return {
+            id: sessionId,
+            title: data.title,
+            startTime: data.startTime.toDate(),
+            endTime: data.endTime.toDate(),
+            maxCapacity: data.maxCapacity || 10,
+            currentBookings: bookingsSnapshot.docs.length
+        } as GroupSession;
+    }));
+
+    // Sort by start time manually to ensure it works correctly
+    return sessions.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+};
+
+// Create a group booking
+export const createGroupBooking = async (userId: string, groupId: string, startTime: Date, endTime: Date) => {
+    const docRef = await addDoc(collection(db, BOOKINGS_COLLECTION), {
+        userId,
+        startTime: Timestamp.fromDate(startTime),
+        endTime: Timestamp.fromDate(endTime),
+        type: 'group',
+        groupId: groupId,
+        status: 'confirmed'
+    });
+    return docRef.id;
+};
+
+// Cancel a booking
+export const cancelBooking = async (bookingId: string) => {
+    const bookingRef = doc(db, BOOKINGS_COLLECTION, bookingId);
+    await updateDoc(bookingRef, { status: 'cancelled' });
+};
+
+// Fetch all clients (Admin/PT view)
+export const getAllClients = async (): Promise<UserProfile[]> => {
+    const q = query(
+        collection(db, USERS_COLLECTION),
+        where('role', '==', 'client')
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as UserProfile));
+};
+
+// Fetch all PTs (Admin view)
+export const getAllPTs = async (): Promise<UserProfile[]> => {
+    const q = query(
+        collection(db, USERS_COLLECTION),
+        where('role', '==', 'pt')
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as UserProfile));
+};
+
+// Assign a client to a PT
+export const assignClientToPt = async (clientId: string, ptId: string | null) => {
+    const userRef = doc(db, USERS_COLLECTION, clientId);
+    await updateDoc(userRef, { assignedPtId: ptId });
+};

@@ -1,98 +1,221 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl } from 'react-native';
+import { useAuth } from '../../context/auth';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { getUserBookings, cancelBooking, Booking } from '../../services/bookingService';
+import { format } from 'date-fns';
+import { Ionicons } from '@expo/vector-icons';
+import { confirmAlert, errorAlert } from '../../utils/alert';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+export default function DashboardScreen() {
+  const { user } = useAuth();
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
-export default function HomeScreen() {
+  const fetchBookings = async () => {
+    if (!user) return;
+    try {
+      const userBookings = await getUserBookings(user.uid);
+      // Sort upcoming first
+      const sorted = userBookings.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+
+      // Filter out past bookings to only show upcoming
+      const upcoming = sorted.filter(b => b.endTime > new Date() && b.status === 'confirmed');
+
+      setBookings(upcoming);
+    } catch (error) {
+      console.error('Error fetching bookings:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBookings();
+  }, [user]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchBookings();
+  };
+
+  const handleCancel = (booking: Booking) => {
+    confirmAlert(
+      'Cancel Booking',
+      `Are you sure you want to cancel this ${booking.type} booking on ${format(booking.startTime, 'MMM d, HH:mm')}?`,
+      () => confirmCancellation(booking.id!)
+    );
+  };
+
+  const confirmCancellation = async (id: string) => {
+    setCancellingId(id);
+    try {
+      await cancelBooking(id);
+      fetchBookings();
+    } catch (error) {
+      errorAlert('Error', 'Failed to cancel the booking.');
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case 'gym': return 'Gym Session';
+      case 'pt': return 'Personal Training';
+      case 'group': return 'Group Class';
+      default: return type;
+    }
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <SafeAreaView style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <View style={styles.header}>
+          <Text style={styles.greeting}>Hello, {user?.email}</Text>
+          <Text style={styles.subtitle}>Welcome to Thrive Collective</Text>
+        </View>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Upcoming Bookings</Text>
+
+          {loading ? (
+            <ActivityIndicator size="large" color="#F26122" style={{ marginTop: 20 }} />
+          ) : bookings.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="calendar-outline" size={48} color="#ccc" />
+              <Text style={styles.emptyText}>You have no upcoming bookings.</Text>
+            </View>
+          ) : (
+            <View style={styles.list}>
+              {bookings.map((booking) => (
+                <View key={booking.id} style={styles.card}>
+                  <View style={styles.cardHeader}>
+                    <Text style={styles.typeText}>{getTypeLabel(booking.type)}</Text>
+                    <TouchableOpacity
+                      style={styles.cancelButton}
+                      onPress={() => handleCancel(booking)}
+                      disabled={!!cancellingId}
+                    >
+                      {cancellingId === booking.id ? (
+                        <ActivityIndicator size="small" color="#f44336" />
+                      ) : (
+                        <Text style={styles.cancelButtonText}>Cancel</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.detailsRow}>
+                    <Ionicons name="time-outline" size={16} color="#666" style={{ marginRight: 5 }} />
+                    <Text style={styles.detailsText}>
+                      {format(booking.startTime, 'EEE, MMM d')} • {format(booking.startTime, 'HH:mm')} - {format(booking.endTime, 'HH:mm')}
+                    </Text>
+                  </View>
+
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  content: {
+    padding: 20,
+    flexGrow: 1,
+  },
+  header: {
+    marginBottom: 30,
+  },
+  greeting: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 5,
+  },
+  section: {
+    marginTop: 10,
+    flex: 1,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    color: '#333',
+  },
+  emptyState: {
+    padding: 30,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#eee',
+    borderStyle: 'dashed',
+  },
+  emptyText: {
+    color: '#888',
+    marginTop: 10,
+    fontSize: 16,
+  },
+  list: {
+    gap: 15,
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 15,
+    borderWidth: 1,
+    borderColor: '#eee',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  typeText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  cancelButton: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
+  cancelButtonText: {
+    color: '#f44336', // Red
+    fontWeight: 'bold',
+  },
+  detailsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
+  detailsText: {
+    fontSize: 15,
+    color: '#666',
+  }
 });
