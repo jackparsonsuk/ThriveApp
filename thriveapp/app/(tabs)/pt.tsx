@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile } from '../../services/bookingService';
+import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, getAllPTs, assignClientToPt } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
@@ -19,6 +19,10 @@ export default function PTBookingScreen() {
     const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean }[]>([]);
     const [loading, setLoading] = useState(true);
     const [bookingLoading, setBookingLoading] = useState(false);
+
+    // PT Assignment State
+    const [ptCodeInput, setPtCodeInput] = useState('');
+    const [assigningLoading, setAssigningLoading] = useState(false);
 
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState<{
@@ -164,16 +168,116 @@ export default function PTBookingScreen() {
         }
     };
 
-    if (userProfile?.role === 'client' && !userProfile.assignedPtId) {
+    const handleAssignPT = async () => {
+        if (!user || ptCodeInput.trim().length !== 6) {
+            setAlertConfig({
+                visible: true,
+                title: 'Invalid Code',
+                message: 'Please enter a valid 6-character PT code.',
+                isError: true
+            });
+            return;
+        }
+
+        setAssigningLoading(true);
+        try {
+            const trimmedInput = ptCodeInput.trim().toUpperCase();
+            const pts = await getAllPTs();
+            const matchedPt = pts.find(pt => pt.id.substring(0, 6).toUpperCase() === trimmedInput);
+
+            if (matchedPt) {
+                await assignClientToPt(user.uid, matchedPt.id);
+                // The context will automatically pull the new assignedPtId, causing the UI to refresh
+                setAlertConfig({
+                    visible: true,
+                    title: 'PT Assigned!',
+                    message: `You are now assigned to ${matchedPt.name || 'your trainer'}.`,
+                    isSuccess: true
+                });
+            } else {
+                setAlertConfig({
+                    visible: true,
+                    title: 'Invalid Code',
+                    message: 'We could not find a Personal Trainer with that code.',
+                    isError: true
+                });
+            }
+        } catch (error) {
+            console.error('Error assigning PT:', error);
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Something went wrong. Please try again.',
+                isError: true
+            });
+        } finally {
+            setAssigningLoading(false);
+        }
+    };
+
+    if (userProfile?.role === 'pt') {
+        const ptCode = user?.uid ? user.uid.substring(0, 6).toUpperCase() : '------';
         return (
             <SafeAreaView style={styles.container}>
                 <View style={styles.header}>
-                    <Text style={styles.title}>Book PT Session</Text>
+                    <Text style={styles.title}>Your PT Code</Text>
+                    <Text style={styles.subtitle}>Share this with your clients</Text>
                 </View>
-                <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center' }]}>
-                    <Text style={styles.noPtText}>You do not have an assigned Personal Trainer yet.</Text>
-                    <Text style={styles.noPtSubText}>Please speak to a member of staff to get assigned.</Text>
+                <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }]}>
+                    <View style={styles.ptCodeCard}>
+                        <Text style={styles.ptCodeText}>{ptCode}</Text>
+                    </View>
+                    <Text style={[styles.noPtSubText, { textAlign: 'center', marginTop: 20 }]}>
+                        Ask your client to enter this 6-character code in their app to automatically assign them to you.
+                    </Text>
                 </View>
+            </SafeAreaView>
+        );
+    }
+
+    if (userProfile?.role === 'client' && !userProfile.assignedPtId) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    style={{ flex: 1 }}
+                >
+                    <View style={styles.header}>
+                        <Text style={styles.title}>Connect with a PT</Text>
+                    </View>
+                    <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }]}>
+                        <Text style={[styles.noPtText, { textAlign: 'center' }]}>You do not have a Personal Trainer yet.</Text>
+                        <Text style={[styles.noPtSubText, { textAlign: 'center', marginBottom: 30 }]}>Enter the 6-character code provided by your Thrive Coach.</Text>
+
+                        <TextInput
+                            style={styles.codeInput}
+                            placeholder="e.g. A1B2C3"
+                            placeholderTextColor="#737373"
+                            value={ptCodeInput}
+                            onChangeText={(text) => setPtCodeInput(text.toUpperCase())}
+                            maxLength={6}
+                            autoCapitalize="characters"
+                        />
+
+                        <TouchableOpacity
+                            style={[styles.assignButton, (!ptCodeInput || ptCodeInput.length < 6) && { opacity: 0.5 }]}
+                            onPress={handleAssignPT}
+                            disabled={!ptCodeInput || ptCodeInput.length < 6 || assigningLoading}
+                        >
+                            {assigningLoading ? (
+                                <ActivityIndicator color="#ffffff" />
+                            ) : (
+                                <Text style={styles.assignButtonText}>Assign My PT</Text>
+                            )}
+                        </TouchableOpacity>
+                    </View>
+                </KeyboardAvoidingView>
+                <CustomAlert
+                    visible={alertConfig.visible}
+                    title={alertConfig.title}
+                    message={alertConfig.message}
+                    onClose={closeAlert}
+                />
             </SafeAreaView>
         );
     }
@@ -380,5 +484,52 @@ const styles = StyleSheet.create({
         marginTop: 10,
         textAlign: 'center',
         paddingHorizontal: 20,
+    },
+    ptCodeCard: {
+        paddingVertical: 30,
+        paddingHorizontal: 40,
+        backgroundColor: 'rgba(30, 20, 15, 0.4)',
+        borderColor: 'rgba(255, 90, 0, 0.3)',
+        borderWidth: 2,
+        borderRadius: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderStyle: 'dashed',
+    },
+    ptCodeText: {
+        fontSize: 48,
+        fontWeight: '900',
+        color: '#ffffff',
+        letterSpacing: 8,
+    },
+    codeInput: {
+        width: '100%',
+        maxWidth: 300,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: '#121212',
+        padding: 20,
+        borderRadius: 16,
+        fontSize: 24,
+        color: '#ffffff',
+        textAlign: 'center',
+        letterSpacing: 6,
+        fontWeight: 'bold',
+        marginBottom: 20,
+    },
+    assignButton: {
+        backgroundColor: '#FF5A00',
+        paddingVertical: 15,
+        paddingHorizontal: 30,
+        borderRadius: 9999,
+        width: '100%',
+        maxWidth: 300,
+        alignItems: 'center',
+    },
+    assignButtonText: {
+        color: '#ffffff',
+        fontSize: 16,
+        fontWeight: '700',
+        textTransform: 'uppercase',
     }
 });

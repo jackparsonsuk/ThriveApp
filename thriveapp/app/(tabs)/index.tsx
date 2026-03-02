@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl, Image } from 'react-native';
 import { useAuth } from '../../context/auth';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getUserBookings, cancelBooking, Booking } from '../../services/bookingService';
+import { getUserBookings, cancelBooking, Booking, getUserProfile, UserProfile } from '../../services/bookingService';
 import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
 
 export default function DashboardScreen() {
   const { user } = useAuth();
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -27,10 +28,16 @@ export default function DashboardScreen() {
 
   const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
-  const fetchBookings = async () => {
+  const fetchBookingsAndProfile = async () => {
     if (!user) return;
     try {
-      const userBookings = await getUserBookings(user.uid);
+      const [userBookings, profile] = await Promise.all([
+        getUserBookings(user.uid),
+        getUserProfile(user.uid)
+      ]);
+
+      setUserProfile(profile);
+
       // Sort upcoming first
       const sorted = userBookings.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 
@@ -47,12 +54,12 @@ export default function DashboardScreen() {
   };
 
   useEffect(() => {
-    fetchBookings();
+    fetchBookingsAndProfile();
   }, [user]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchBookings();
+    fetchBookingsAndProfile();
   };
 
   const handleCancel = (booking: Booking) => {
@@ -71,7 +78,7 @@ export default function DashboardScreen() {
     setCancellingId(id);
     try {
       await cancelBooking(id);
-      fetchBookings();
+      fetchBookingsAndProfile();
     } catch (error) {
       setAlertConfig({
         visible: true,
@@ -101,7 +108,7 @@ export default function DashboardScreen() {
       >
         <View style={styles.header}>
           <Image source={require('../../assets/images/TC_Monogram_White.png')} style={styles.logo} />
-          <Text style={styles.greeting}>Hello, {user?.email}</Text>
+          <Text style={styles.greeting}>Hello, {userProfile?.name || 'there'}</Text>
           <Text style={styles.subtitle}>Welcome to Thrive Collective</Text>
         </View>
 
