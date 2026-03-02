@@ -261,26 +261,28 @@ export default function PTBookingScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
+        backgroundColor: '#0a0a0a',
     },
     header: {
         padding: 20,
-        backgroundColor: '#333',
+        backgroundColor: '#121212',
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255, 90, 0, 0.1)',
     },
     title: {
         fontSize: 24,
-        fontWeight: 'bold',
-        color: '#fff',
+        fontWeight: '800', // Match website headers
+        color: '#ffffff',
     },
     subtitle: {
         fontSize: 16,
-        color: '#ccc',
+        color: '#a3a3a3', // text-secondary from website
         marginTop: 5,
     },
     dateSelectorContainer: {
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
-        backgroundColor: '#f9f9f9',
+        borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+        backgroundColor: '#0a0a0a',
     },
     dateSelector: {
         padding: 15,
@@ -289,30 +291,31 @@ const styles = StyleSheet.create({
     dateCard: {
         paddingVertical: 10,
         paddingHorizontal: 15,
-        borderRadius: 8,
-        backgroundColor: '#fff',
+        borderRadius: 16, // --radius-md
+        backgroundColor: 'rgba(30, 20, 15, 0.4)', // glass-panel background
         borderWidth: 1,
-        borderColor: '#ddd',
+        borderColor: 'rgba(255, 90, 0, 0.1)',
         alignItems: 'center',
         minWidth: 60,
     },
     dateCardSelected: {
-        backgroundColor: '#F26122',
-        borderColor: '#F26122',
+        backgroundColor: '#FF5A00', // True Thrive Orange
+        borderColor: '#FF5A00',
     },
     dayText: {
         fontSize: 12,
-        color: '#666',
+        color: '#a3a3a3',
         textTransform: 'uppercase',
+        fontWeight: '600',
     },
     dateText: {
         fontSize: 18,
-        fontWeight: 'bold',
-        color: '#333',
+        fontWeight: '800',
+        color: '#ffffff',
         marginTop: 2,
     },
     textSelected: {
-        color: '#fff',
+        color: '#ffffff',
     },
     slotsContainer: {
         padding: 20,
@@ -325,53 +328,55 @@ const styles = StyleSheet.create({
     },
     slotCard: {
         width: '31%',
-        backgroundColor: '#f0f0f0',
+        backgroundColor: '#121212',
         padding: 15,
-        borderRadius: 8,
+        borderRadius: 16,
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#e0e0e0',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
     },
     slotCardUnavailable: {
-        backgroundColor: '#f5f5f5',
+        backgroundColor: 'rgba(18, 18, 18, 0.5)',
+        borderColor: 'rgba(255, 255, 255, 0.02)',
         opacity: 0.5,
     },
     slotTime: {
         fontSize: 16,
-        fontWeight: 'bold',
-        color: '#333',
+        fontWeight: '700',
+        color: '#ffffff',
     },
     slotTextUnavailable: {
-        color: '#999',
+        color: '#737373', // text-muted
         textDecorationLine: 'line-through',
     },
     slotDuration: {
         fontSize: 12,
-        color: '#F26122',
+        color: '#FF5A00',
         marginTop: 4,
         fontWeight: 'bold',
     },
     slotFullText: {
         fontSize: 12,
-        color: '#d32f2f',
+        color: '#ef4444', // Red for full
         marginTop: 4,
+        fontWeight: '600',
     },
     noSlotsText: {
         textAlign: 'center',
-        color: '#666',
+        color: '#a3a3a3',
         fontSize: 16,
         marginTop: 50,
     },
     noPtText: {
         fontSize: 18,
-        fontWeight: 'bold',
-        color: '#333',
+        fontWeight: '800',
+        color: '#ffffff',
         textAlign: 'center',
         paddingHorizontal: 20,
     },
     noPtSubText: {
         fontSize: 14,
-        color: '#666',
+        color: '#a3a3a3',
         marginTop: 10,
         textAlign: 'center',
         paddingHorizontal: 20,

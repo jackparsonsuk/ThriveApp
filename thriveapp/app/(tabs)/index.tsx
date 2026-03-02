@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl, Image } from 'react-native';
 import { useAuth } from '../../context/auth';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getUserBookings, cancelBooking, Booking } from '../../services/bookingService';
@@ -100,6 +100,7 @@ export default function DashboardScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={styles.header}>
+          <Image source={require('../../assets/images/TC_Monogram_White.png')} style={styles.logo} />
           <Text style={styles.greeting}>Hello, {user?.email}</Text>
           <Text style={styles.subtitle}>Welcome to Thrive Collective</Text>
         </View>
@@ -108,10 +109,10 @@ export default function DashboardScreen() {
           <Text style={styles.sectionTitle}>Upcoming Bookings</Text>
 
           {loading ? (
-            <ActivityIndicator size="large" color="#F26122" style={{ marginTop: 20 }} />
+            <ActivityIndicator size="large" color="#FF5A00" style={{ marginTop: 20 }} />
           ) : bookings.length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons name="calendar-outline" size={48} color="#ccc" />
+              <Ionicons name="calendar-outline" size={48} color="#a3a3a3" />
               <Text style={styles.emptyText}>You have no upcoming bookings.</Text>
             </View>
           ) : (
@@ -165,7 +166,7 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#0a0a0a',
   },
   content: {
     padding: 20,
@@ -173,15 +174,22 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: 30,
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  logo: {
+    width: 60,
+    height: 60,
+    marginBottom: 15,
   },
   greeting: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: '800', // Matches website
+    color: '#ffffff',
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
+    color: '#a3a3a3',
     marginTop: 5,
   },
   section: {
@@ -190,58 +198,59 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '800',
     marginBottom: 15,
-    color: '#333',
+    color: '#ffffff',
   },
   emptyState: {
     padding: 30,
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#eee',
-    borderStyle: 'dashed',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   emptyText: {
-    color: '#888',
+    color: '#a3a3a3',
     marginTop: 10,
     fontSize: 16,
+    fontWeight: '600',
   },
   list: {
     gap: 15,
   },
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 15,
+    backgroundColor: '#121212',
+    borderRadius: 16, // --radius-md
+    padding: 20,
     borderWidth: 1,
-    borderColor: '#eee',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 15, // slightly more breathing room
   },
   typeText: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: '800',
+    color: '#ffffff',
   },
   cancelButton: {
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 9999,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.5)',
   },
   cancelButtonText: {
-    color: '#f44336', // Red
-    fontWeight: 'bold',
+    color: '#ef4444', // Red 500 equivalent
+    fontWeight: '700',
+    fontSize: 12,
+    textTransform: 'uppercase',
   },
   detailsRow: {
     flexDirection: 'row',
@@ -249,6 +258,7 @@ const styles = StyleSheet.create({
   },
   detailsText: {
     fontSize: 15,
-    color: '#666',
+    color: '#a3a3a3',
+    fontWeight: '500', // matches secondary text weight
   }
 });

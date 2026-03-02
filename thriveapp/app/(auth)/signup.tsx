@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { setDoc, doc } from 'firebase/firestore';
@@ -41,12 +41,14 @@ export default function SignUpScreen() {
 
     return (
         <ScrollView contentContainerStyle={styles.container}>
+            <Image source={require('../../assets/images/TC_Monogram_White.png')} style={styles.logo} />
             <Text style={styles.title}>Create Account</Text>
 
             <View style={styles.form}>
                 <TextInput
                     style={styles.input}
                     placeholder="Full Name"
+                    placeholderTextColor="#737373"
                     value={name}
                     onChangeText={setName}
                     autoCapitalize="words"
@@ -55,6 +57,7 @@ export default function SignUpScreen() {
                 <TextInput
                     style={styles.input}
                     placeholder="Email"
+                    placeholderTextColor="#737373"
                     value={email}
                     onChangeText={setEmail}
                     autoCapitalize="none"
@@ -64,6 +67,7 @@ export default function SignUpScreen() {
                 <TextInput
                     style={styles.input}
                     placeholder="Password"
+                    placeholderTextColor="#737373"
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
@@ -97,42 +101,53 @@ const styles = StyleSheet.create({
         flexGrow: 1,
         justifyContent: 'center',
         padding: 20,
-        backgroundColor: '#fff',
+        backgroundColor: '#0a0a0a',
+    },
+    logo: {
+        width: 80,
+        height: 80,
+        alignSelf: 'center',
+        marginBottom: 20,
     },
     title: {
         fontSize: 28,
-        fontWeight: 'bold',
+        fontWeight: '800', // matches website typography
         marginBottom: 40,
         textAlign: 'center',
+        color: '#ffffff',
     },
     form: {
         gap: 15,
     },
     input: {
         borderWidth: 1,
-        borderColor: '#ddd',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: '#121212',
         padding: 15,
-        borderRadius: 8,
+        borderRadius: 16,
         fontSize: 16,
+        color: '#ffffff',
     },
     button: {
-        backgroundColor: '#333', // Thrive Charcoal
+        backgroundColor: '#FF5A00', // Premium Thrive Orange
         padding: 15,
-        borderRadius: 8,
+        borderRadius: 9999,
         alignItems: 'center',
         marginTop: 10,
     },
     buttonText: {
-        color: '#fff',
+        color: '#ffffff',
         fontSize: 16,
-        fontWeight: 'bold',
+        fontWeight: '700',
+        textTransform: 'uppercase',
     },
     linkButton: {
         marginTop: 15,
         alignItems: 'center',
     },
     linkText: {
-        color: '#333',
+        color: '#a3a3a3',
         fontSize: 14,
+        fontWeight: '500',
     },
 });
