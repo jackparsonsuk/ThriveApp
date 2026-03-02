@@ -8,8 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
 
 // Operating hours
-const OPEN_HOUR = 6;
-const CLOSE_HOUR = 22;
+const OPEN_HOUR = 8;
+const CLOSE_HOUR = 20;
 
 export default function AdminScheduleScreen() {
     const { user } = useAuth();

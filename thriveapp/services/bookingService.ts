@@ -68,7 +68,7 @@ export const getGymBookingsForDate = async (date: Date): Promise<Booking[]> => {
 
     const q = query(
         collection(db, BOOKINGS_COLLECTION),
-        where('type', '==', 'gym'),
+        where('type', 'in', ['gym', 'block']),
         where('status', '==', 'confirmed'),
         where('startTime', '>=', start),
         where('startTime', '<=', end)
@@ -88,7 +88,7 @@ export const getPTBookingsForDate = async (date: Date, ptId: string): Promise<Bo
     const start = startOfDay(date);
     const end = endOfDay(date);
 
-    const q = query(
+    const q1 = query(
         collection(db, BOOKINGS_COLLECTION),
         where('type', '==', 'pt'),
         where('ptId', '==', ptId),
@@ -97,8 +97,22 @@ export const getPTBookingsForDate = async (date: Date, ptId: string): Promise<Bo
         where('startTime', '<=', end)
     );
 
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(d => ({
+    const q2 = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('type', '==', 'block'),
+        where('status', '==', 'confirmed'),
+        where('startTime', '>=', start),
+        where('startTime', '<=', end)
+    );
+
+    const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+
+    const docs = [...snap1.docs, ...snap2.docs];
+
+    // De-duplicate in case of any overlap (shouldn't be, but good practice)
+    const uniqueDocs = Array.from(new Map(docs.map(doc => [doc.id, doc])).values());
+
+    return uniqueDocs.map(d => ({
         id: d.id,
         ...d.data(),
         startTime: d.data().startTime.toDate(),
