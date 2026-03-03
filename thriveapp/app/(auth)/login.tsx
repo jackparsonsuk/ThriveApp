@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Image } from 'react-native';
 import { useRouter } from 'expo-router';
+import Head from 'expo-router/head';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../config/firebaseConfig';
 import { useAuth } from '../../context/auth';
@@ -30,6 +31,9 @@ export default function LoginScreen() {
 
     return (
         <View style={styles.container}>
+            <Head>
+                <title>Sign In | Thrive Collective</title>
+            </Head>
             <Image source={require('../../assets/images/TC_Monogram_White.png')} style={styles.logo} />
             <Text style={styles.title}>Welcome back</Text>
 

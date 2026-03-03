@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import Head from 'expo-router/head';
 import React, { useState, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -21,52 +22,58 @@ export default function TabLayout() {
   const isAdminOrPt = userProfile?.role === 'admin' || userProfile?.role === 'pt';
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: '#F26122', // Thrive Orange
-        headerShown: false,
-        tabBarButton: HapticTab,
-        tabBarStyle: {
-          backgroundColor: colorScheme === 'dark' ? '#333' : '#fff', // Charcoal or white
-        },
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Dashboard',
-          tabBarIcon: ({ color }) => <Ionicons size={24} name="home" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="gym"
-        options={{
-          title: 'Gym',
-          tabBarIcon: ({ color }) => <Ionicons size={24} name="barbell" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="pt"
-        options={{
-          title: 'PT',
-          tabBarIcon: ({ color }) => <Ionicons size={24} name="body" color={color} />,
-        }}
-      />
+    <>
+      <Head>
+        <title>Thrive Collective</title>
+      </Head>
+      <Tabs
+        screenOptions={{
+          tabBarActiveTintColor: '#F26122', // Thrive Orange
+          headerShown: false,
+          tabBarButton: HapticTab,
+          title: 'Thrive Collective',
+          tabBarStyle: {
+            backgroundColor: colorScheme === 'dark' ? '#333' : '#fff', // Charcoal or white
+          },
+        }}>
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: 'Dashboard',
+            tabBarIcon: ({ color }) => <Ionicons size={24} name="home" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="gym"
+          options={{
+            title: 'Gym',
+            tabBarIcon: ({ color }) => <Ionicons size={24} name="barbell" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="pt"
+          options={{
+            title: 'PT',
+            tabBarIcon: ({ color }) => <Ionicons size={24} name="body" color={color} />,
+          }}
+        />
 
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color }) => <Ionicons size={24} name="person" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="admin"
-        options={{
-          title: 'Admin',
-          tabBarIcon: ({ color }) => <Ionicons size={24} name="list" color={color} />,
-          href: isAdminOrPt ? '/(tabs)/admin' : null, // Hide tab if not admin/pt
-        }}
-      />
-    </Tabs>
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: 'Profile',
+            tabBarIcon: ({ color }) => <Ionicons size={24} name="person" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="admin"
+          options={{
+            title: 'Admin',
+            tabBarIcon: ({ color }) => <Ionicons size={24} name="list" color={color} />,
+            href: isAdminOrPt ? '/(tabs)/admin' : null, // Hide tab if not admin/pt
+          }}
+        />
+      </Tabs>
+    </>
   );
 }

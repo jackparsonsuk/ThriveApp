@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, Image } from 'react-native';
 import { useRouter } from 'expo-router';
+import Head from 'expo-router/head';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { setDoc, doc } from 'firebase/firestore';
 import { auth, db } from '../../config/firebaseConfig';
@@ -41,6 +42,9 @@ export default function SignUpScreen() {
 
     return (
         <ScrollView contentContainerStyle={styles.container}>
+            <Head>
+                <title>Create Account | Thrive Collective</title>
+            </Head>
             <Image source={require('../../assets/images/TC_Monogram_White.png')} style={styles.logo} />
             <Text style={styles.title}>Create Account</Text>
 
