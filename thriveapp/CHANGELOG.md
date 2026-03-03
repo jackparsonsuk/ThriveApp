@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Enhanced Dashboard (Home)**:
     - PTs can now see their upcoming instructional sessions on their dashboard.
     - Instructional sessions are clearly labeled (e.g., "PT Session with John Doe").
+- **App Version Display**: Added a visible version number ("Version 1.2.0") to the bottom of the **Profile** screen for easy identification.
 - **Double-Booking Prevention**:
     - Implemented a system-wide check to prevent users from booking overlapping sessions.
     - When a slot is blocked by an existing booking, the UI now displays the specific conflict (e.g., "PT Session", "Gym Session") instead of just "Full".
