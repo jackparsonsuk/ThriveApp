@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-03-03
+
+### Added
+- **Browser Page Titles**: Added descriptive titles across all pages for improved SEO and browser navigation.
+
+### Fixed
+- **Dashboard Refresh Issue**: New bookings now appear immediately on the dashboard without requiring a manual refresh.
+- **Profile Page Styling**: Corrected the background color of the profile page to match the app's charcoal theme.
+
+---
+
 ## [1.2.0] - 2026-03-03
 
 ### Added
