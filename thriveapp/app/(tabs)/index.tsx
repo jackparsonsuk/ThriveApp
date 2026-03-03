@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl, Image } from 'react-native';
 import { useAuth } from '../../context/auth';
+import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getUserBookings, getPTBookingsForInstructor, cancelBooking, Booking, getUserProfile, UserProfile } from '../../services/bookingService';
 import { format } from 'date-fns';
@@ -30,7 +31,7 @@ export default function DashboardScreen() {
 
   const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
-  const fetchBookingsAndProfile = async () => {
+  const fetchBookingsAndProfile = useCallback(async () => {
     if (!user) return;
     try {
       const profile = await getUserProfile(user.uid);
@@ -68,11 +69,13 @@ export default function DashboardScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
-
-  useEffect(() => {
-    fetchBookingsAndProfile();
   }, [user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchBookingsAndProfile();
+    }, [fetchBookingsAndProfile])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
