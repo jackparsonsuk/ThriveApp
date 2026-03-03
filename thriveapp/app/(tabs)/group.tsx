@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getUpcomingGroupSessions, createGroupBooking, getUserBookings, GroupSession, Booking } from '../../services/bookingService';
+import { getUpcomingGroupSessions, createGroupBooking, getUserBookings, getPTBookingsForInstructor, GroupSession, Booking } from '../../services/bookingService';
 import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -13,6 +13,7 @@ export default function GroupBookingScreen() {
     const router = useRouter();
     const [sessions, setSessions] = useState<GroupSession[]>([]);
     const [userBookings, setUserBookings] = useState<Booking[]>([]);
+    const [ptInstructorBookings, setPtInstructorBookings] = useState<Booking[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [bookingLoading, setBookingLoading] = useState<string | null>(null);
@@ -32,12 +33,14 @@ export default function GroupBookingScreen() {
     const fetchData = async () => {
         if (!user) return;
         try {
-            const [upcomingSessions, bookings] = await Promise.all([
+            const [upcomingSessions, bookings, myInstructorBookings] = await Promise.all([
                 getUpcomingGroupSessions(),
-                getUserBookings(user.uid)
+                getUserBookings(user.uid),
+                getPTBookingsForInstructor(user.uid)
             ]);
             setSessions(upcomingSessions);
             setUserBookings(bookings);
+            setPtInstructorBookings(myInstructorBookings);
         } catch (error) {
             console.error('Error fetching group sessions:', error);
             setAlertConfig({
@@ -129,7 +132,8 @@ export default function GroupBookingScreen() {
                             const availableSpots = session.maxCapacity - session.currentBookings;
                             const isFull = availableSpots <= 0;
                             const alreadyBooked = isUserBooked(session.id!);
-                            const disabled = isFull || alreadyBooked || bookingLoading === session.id;
+                            const hasConflict = ptInstructorBookings.some(b => b.startTime < session.endTime && b.endTime > session.startTime);
+                            const disabled = isFull || alreadyBooked || bookingLoading === session.id || hasConflict;
 
                             return (
                                 <View key={session.id} style={styles.sessionCard}>
@@ -163,9 +167,9 @@ export default function GroupBookingScreen() {
                                         ) : (
                                             <Text style={[
                                                 styles.bookButtonText,
-                                                disabled && !alreadyBooked && styles.bookButtonTextDisabled
+                                                disabled && !alreadyBooked && !hasConflict && styles.bookButtonTextDisabled
                                             ]}>
-                                                {alreadyBooked ? 'Booked' : isFull ? 'Full' : 'Book'}
+                                                {alreadyBooked ? 'Booked' : hasConflict ? 'Conflict' : isFull ? 'Full' : 'Book'}
                                             </Text>
                                         )}
                                     </TouchableOpacity>

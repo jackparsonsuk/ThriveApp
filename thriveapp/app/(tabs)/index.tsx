@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl, Image } from 'react-native';
 import { useAuth } from '../../context/auth';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getUserBookings, cancelBooking, Booking, getUserProfile, UserProfile } from '../../services/bookingService';
+import { getUserBookings, getPTBookingsForInstructor, cancelBooking, Booking, getUserProfile, UserProfile } from '../../services/bookingService';
 import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
@@ -10,7 +10,9 @@ import CustomAlert from '../../components/CustomAlert';
 export default function DashboardScreen() {
   const { user } = useAuth();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [bookings, setBookings] = useState<Booking[]>([]);
+
+  type ExtendedBooking = Booking & { clientName?: string };
+  const [bookings, setBookings] = useState<ExtendedBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -31,20 +33,35 @@ export default function DashboardScreen() {
   const fetchBookingsAndProfile = async () => {
     if (!user) return;
     try {
-      const [userBookings, profile] = await Promise.all([
-        getUserBookings(user.uid),
-        getUserProfile(user.uid)
-      ]);
-
+      const profile = await getUserProfile(user.uid);
       setUserProfile(profile);
 
-      // Sort upcoming first
-      const sorted = userBookings.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+      const userBookings = await getUserBookings(user.uid);
+      let allBookings: Booking[] = [...userBookings];
+
+      if (profile?.role === 'pt') {
+        const ptBookings = await getPTBookingsForInstructor(user.uid);
+        // Combine and deduplicate
+        const combined = [...userBookings, ...ptBookings];
+        allBookings = Array.from(new Map(combined.map(b => [b.id, b])).values());
+      }
 
       // Filter out past bookings to only show upcoming
-      const upcoming = sorted.filter(b => b.endTime > new Date() && b.status === 'confirmed');
+      const upcoming = allBookings.filter(b => b.endTime > new Date() && b.status === 'confirmed');
 
-      setBookings(upcoming);
+      // Fetch client names for PT bookings where the PT is the instructor
+      const bookingsWithNames: ExtendedBooking[] = await Promise.all(upcoming.map(async (b) => {
+        if (b.type === 'pt' && profile?.role === 'pt' && b.ptId === user.uid && b.userId !== user.uid) {
+          const clientProfile = await getUserProfile(b.userId);
+          return { ...b, clientName: clientProfile?.name || 'Unknown Client' };
+        }
+        return b;
+      }));
+
+      // Sort upcoming first
+      const sorted = bookingsWithNames.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+
+      setBookings(sorted);
     } catch (error) {
       console.error('Error fetching bookings:', error);
     } finally {
@@ -91,12 +108,15 @@ export default function DashboardScreen() {
     }
   };
 
-  const getTypeLabel = (type: string) => {
-    switch (type) {
+  const getTypeLabel = (booking: ExtendedBooking) => {
+    if (booking.type === 'pt' && booking.clientName) {
+      return `PT Session with ${booking.clientName}`;
+    }
+    switch (booking.type) {
       case 'gym': return 'Gym Session';
       case 'pt': return 'Personal Training';
       case 'group': return 'Group Class';
-      default: return type;
+      default: return booking.type;
     }
   };
 
@@ -127,7 +147,7 @@ export default function DashboardScreen() {
               {bookings.map((booking) => (
                 <View key={booking.id} style={styles.card}>
                   <View style={styles.cardHeader}>
-                    <Text style={styles.typeText}>{getTypeLabel(booking.type)}</Text>
+                    <Text style={styles.typeText}>{getTypeLabel(booking)}</Text>
                     <TouchableOpacity
                       style={styles.cancelButton}
                       onPress={() => handleCancel(booking)}

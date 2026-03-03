@@ -61,6 +61,45 @@ export const getUserBookings = async (userId: string): Promise<Booking[]> => {
     })) as Booking[];
 };
 
+// Fetch all bookings for a user on a specific date (to check for conflicts)
+export const getUserBookingsForDate = async (userId: string, date: Date): Promise<Booking[]> => {
+    const start = startOfDay(date);
+    const end = endOfDay(date);
+
+    const q = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('userId', '==', userId),
+        where('status', '==', 'confirmed'),
+        where('startTime', '>=', start),
+        where('startTime', '<=', end)
+    );
+
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        startTime: doc.data().startTime.toDate(),
+        endTime: doc.data().endTime.toDate(),
+    })) as Booking[];
+};
+
+// Fetch bookings where the PT is the instructor
+export const getPTBookingsForInstructor = async (ptId: string): Promise<Booking[]> => {
+    const q = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('ptId', '==', ptId),
+        where('status', '==', 'confirmed')
+    );
+
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        startTime: doc.data().startTime.toDate(),
+        endTime: doc.data().endTime.toDate(),
+    })) as Booking[];
+};
+
 // Fetch gym bookings for a specific day to check capacity
 export const getGymBookingsForDate = async (date: Date): Promise<Booking[]> => {
     const start = startOfDay(date);
@@ -121,7 +160,7 @@ export const getPTBookingsForDate = async (date: Date, ptId: string): Promise<Bo
 };
 
 // Validation: Check if a 15-min slot is available (max 4 people)
-export const checkSlotAvailability = (targetTime: Date, dayBookings: Booking[]): { available: boolean; count: number } => {
+export const checkSlotAvailability = (targetTime: Date, dayBookings: Booking[]): { available: boolean; count: number; blockReason?: string } => {
     // A gym booking is usually 1 hour, so we count any booking that overlaps the target 15-min slot.
     // Bookings are like 10:00 to 11:00. If target is 10:15, it overlaps.
     const targetEnd = addMinutes(targetTime, 15);
@@ -132,8 +171,8 @@ export const checkSlotAvailability = (targetTime: Date, dayBookings: Booking[]):
     });
 
     // If there is ANY 'block' booking in this slot, it's instantly unavailable
-    const hasBlock = overlappingBookings.some(b => b.type === 'block');
-    if (hasBlock) return { available: false, count: 0 };
+    const blockBooking = overlappingBookings.find(b => b.type === 'block');
+    if (blockBooking) return { available: false, count: 0, blockReason: blockBooking.reason || 'Blocked' };
 
     // Filter to only normal gym bookings to check capacity
     const gymBookings = overlappingBookings.filter(b => b.type === 'gym');

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getGymBookingsForDate, checkSlotAvailability, createBooking, Booking } from '../../services/bookingService';
+import { getGymBookingsForDate, getPTBookingsForDate, getUserBookingsForDate, checkSlotAvailability, createBooking, Booking } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
@@ -14,7 +14,7 @@ export default function GymBookingScreen() {
     const { user } = useAuth();
     const router = useRouter();
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
-    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean; attendees: number; }[]>([]);
+    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean; attendees: number; conflictType?: string }[]>([]);
     const [loading, setLoading] = useState(false);
     const [bookingLoading, setBookingLoading] = useState(false);
 
@@ -41,6 +41,24 @@ export default function GymBookingScreen() {
         setLoading(true);
         try {
             const bookingsForDay = await getGymBookingsForDate(selectedDate);
+
+            // If the user happens to have instructional PT bookings, block them out too
+            if (user?.uid) {
+                const instructorBookings = await getPTBookingsForDate(selectedDate, user.uid);
+                instructorBookings.forEach(b => {
+                    bookingsForDay.push({ ...b, type: 'block', reason: 'PT Session Admin' });
+                });
+
+                // Add the user's personal bookings (PT, group, gym) as blocks so they can't double book
+                const myBookings = await getUserBookingsForDate(user.uid, selectedDate);
+                myBookings.forEach(b => {
+                    let reasonLabel = 'Booked';
+                    if (b.type === 'pt') reasonLabel = 'PT Session';
+                    if (b.type === 'gym') reasonLabel = 'Gym Session';
+                    if (b.type === 'group') reasonLabel = 'Group Class';
+                    bookingsForDay.push({ ...b, type: 'block', reason: reasonLabel });
+                });
+            }
 
             const slots = [];
             let currentTime = setMinutes(setHours(selectedDate, GYM_OPEN_HOUR), 0);
@@ -72,6 +90,7 @@ export default function GymBookingScreen() {
                     available: slotData.available,
                     isNextAvailable: isFullHourAvailable,
                     attendees: slotData.count,
+                    conflictType: slotData.blockReason || (!slotData.available ? 'Full' : undefined)
                 });
 
                 currentTime = addMinutes(currentTime, 15);
@@ -214,10 +233,12 @@ export default function GymBookingScreen() {
                                 )}
                                 {!slot.available && (
                                     <View style={{ alignItems: 'center' }}>
-                                        <Text style={styles.slotFullText}>Full</Text>
-                                        <Text style={styles.slotAttendees}>
-                                            {slot.attendees} / 4 Booked
-                                        </Text>
+                                        <Text style={styles.slotFullText}>{slot.conflictType || 'Full'}</Text>
+                                        {!slot.conflictType || slot.conflictType === 'Full' ? (
+                                            <Text style={styles.slotAttendees}>
+                                                {slot.attendees} / 4 Booked
+                                            </Text>
+                                        ) : null}
                                     </View>
                                 )}
                             </TouchableOpacity>

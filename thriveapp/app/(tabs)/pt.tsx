@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, getAllPTs, assignClientToPt, getClientsForPt } from '../../services/bookingService';
+import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
@@ -128,6 +128,16 @@ export default function PTBookingScreen() {
         setLoading(true);
         try {
             const bookingsForDay = await getPTBookingsForDate(selectedDate, ptId);
+
+            // If the user wants to book a session with this PT, they shouldn't be able to if THEY are instructing
+            if (user?.uid && ptId !== user.uid) {
+                const myInstructorBookings = await getPTBookingsForDate(selectedDate, user.uid);
+                bookingsForDay.push(...myInstructorBookings);
+
+                // Add the user's personal bookings (PT, group, gym) as blocks
+                const myBookings = await getUserBookingsForDate(user.uid, selectedDate);
+                bookingsForDay.push(...myBookings);
+            }
 
             const slots = [];
             let currentTime = setMinutes(setHours(selectedDate, PT_OPEN_HOUR), 0);
