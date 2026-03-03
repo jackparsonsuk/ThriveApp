@@ -107,7 +107,7 @@ export const getGymBookingsForDate = async (date: Date): Promise<Booking[]> => {
 
     const q = query(
         collection(db, BOOKINGS_COLLECTION),
-        where('type', 'in', ['gym', 'block']),
+        where('type', 'in', ['gym', 'pt', 'block']),
         where('status', '==', 'confirmed'),
         where('startTime', '>=', start),
         where('startTime', '<=', end)
@@ -162,7 +162,6 @@ export const getPTBookingsForDate = async (date: Date, ptId: string): Promise<Bo
 // Validation: Check if a 15-min slot is available (max 4 people)
 export const checkSlotAvailability = (targetTime: Date, dayBookings: Booking[]): { available: boolean; count: number; blockReason?: string } => {
     // A gym booking is usually 1 hour, so we count any booking that overlaps the target 15-min slot.
-    // Bookings are like 10:00 to 11:00. If target is 10:15, it overlaps.
     const targetEnd = addMinutes(targetTime, 15);
 
     const overlappingBookings = dayBookings.filter(b => {
@@ -170,16 +169,18 @@ export const checkSlotAvailability = (targetTime: Date, dayBookings: Booking[]):
         return b.startTime < targetEnd && b.endTime > targetTime;
     });
 
-    // If there is ANY 'block' booking in this slot, it's instantly unavailable
-    const blockBooking = overlappingBookings.find(b => b.type === 'block');
-    if (blockBooking) return { available: false, count: 0, blockReason: blockBooking.reason || 'Blocked' };
+    // Count unique active people (Gym or PT type)
+    // We de-duplicate by ID because the same session might be passed as both 'pt' and 'block' (for the PT/Client themselves)
+    const uniqueBookings = Array.from(new Map(overlappingBookings.filter(b => b.id).map(b => [b.id, b])).values());
+    const activeCount = uniqueBookings.filter(b => b.type === 'gym' || b.type === 'pt').length;
 
-    // Filter to only normal gym bookings to check capacity
-    const gymBookings = overlappingBookings.filter(b => b.type === 'gym');
+    // If there is ANY 'block' booking in this slot, it's instantly unavailable for the user
+    const blockBooking = overlappingBookings.find(b => b.type === 'block');
+    if (blockBooking) return { available: false, count: activeCount, blockReason: blockBooking.reason || 'Blocked' };
 
     return {
-        available: gymBookings.length < 4,
-        count: gymBookings.length
+        available: activeCount < 4,
+        count: activeCount
     };
 };
 
