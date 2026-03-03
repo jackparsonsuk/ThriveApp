@@ -76,7 +76,7 @@ export default function ProfileScreen() {
                                 <Ionicons name="log-out-outline" size={20} color="#f44336" style={{ marginRight: 10 }} />
                                 <Text style={styles.logoutButtonText}>Log Out</Text>
                             </TouchableOpacity>
-                            <Text style={styles.versionText}>Version 1.2.1</Text>
+                            <Text style={styles.versionText}>Version 1.3.0</Text>
                         </View>
                     </>
                 )}
