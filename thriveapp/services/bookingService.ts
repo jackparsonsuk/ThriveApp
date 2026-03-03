@@ -235,6 +235,17 @@ export const assignClientToPt = async (clientId: string, ptId: string | null) =>
     await updateDoc(userRef, { assignedPtId: ptId });
 };
 
+// Fetch clients assigned to a specific PT
+export const getClientsForPt = async (ptId: string): Promise<UserProfile[]> => {
+    const q = query(
+        collection(db, USERS_COLLECTION),
+        where('role', '==', 'client'),
+        where('assignedPtId', '==', ptId)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as UserProfile));
+};
+
 // --- ADMIN FEATURES ---
 
 // Fetch all bookings for a given date across the whole app

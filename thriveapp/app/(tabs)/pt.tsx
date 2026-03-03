@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, getAllPTs, assignClientToPt } from '../../services/bookingService';
+import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, getAllPTs, assignClientToPt, getClientsForPt } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
@@ -23,6 +23,10 @@ export default function PTBookingScreen() {
     // PT Assignment State
     const [ptCodeInput, setPtCodeInput] = useState('');
     const [assigningLoading, setAssigningLoading] = useState(false);
+
+    // PT's Clients State
+    const [clients, setClients] = useState<UserProfile[]>([]);
+    const [clientsLoading, setClientsLoading] = useState(false);
 
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState<{
@@ -49,7 +53,10 @@ export default function PTBookingScreen() {
         if (userProfile && userProfile.assignedPtId) {
             fetchAvailability(userProfile.assignedPtId);
         }
-    }, [selectedDate, userProfile]);
+        if (userProfile?.role === 'pt' && user?.uid) {
+            fetchClients(user.uid);
+        }
+    }, [selectedDate, userProfile, user]);
 
     const loadUserProfile = async () => {
         if (!user) return;
@@ -68,6 +75,24 @@ export default function PTBookingScreen() {
                 isError: true
             });
             setLoading(false);
+        }
+    };
+
+    const fetchClients = async (ptId: string) => {
+        setClientsLoading(true);
+        try {
+            const ptsClients = await getClientsForPt(ptId);
+            setClients(ptsClients);
+        } catch (error) {
+            console.error('Error fetching clients:', error);
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to load your clients.',
+                isError: true
+            });
+        } finally {
+            setClientsLoading(false);
         }
     };
 
@@ -218,18 +243,38 @@ export default function PTBookingScreen() {
         const ptCode = user?.uid ? user.uid.substring(0, 6).toUpperCase() : '------';
         return (
             <SafeAreaView style={styles.container}>
-                <View style={styles.header}>
-                    <Text style={styles.title}>Your PT Code</Text>
-                    <Text style={styles.subtitle}>Share this with your clients</Text>
-                </View>
-                <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }]}>
-                    <View style={styles.ptCodeCard}>
-                        <Text style={styles.ptCodeText}>{ptCode}</Text>
+                <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+                    <View style={styles.header}>
+                        <Text style={styles.title}>Your PT Code</Text>
+                        <Text style={styles.subtitle}>Share this with your clients</Text>
                     </View>
-                    <Text style={[styles.noPtSubText, { textAlign: 'center', marginTop: 20 }]}>
-                        Ask your client to enter this 6-character code in their app to automatically assign them to you.
-                    </Text>
-                </View>
+                    <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }]}>
+                        <View style={styles.ptCodeCard}>
+                            <Text style={styles.ptCodeText}>{ptCode}</Text>
+                        </View>
+                        <Text style={[styles.noPtSubText, { textAlign: 'center', marginTop: 20 }]}>
+                            Ask your client to enter this 6-character code in their app to automatically assign them to you.
+                        </Text>
+                    </View>
+
+                    <View style={styles.clientsSection}>
+                        <Text style={styles.clientsTitle}>Your Clients</Text>
+                        {clientsLoading ? (
+                            <ActivityIndicator size="small" color="#FF5A00" style={{ marginTop: 20 }} />
+                        ) : clients.length > 0 ? (
+                            clients.map(client => (
+                                <View key={client.id} style={styles.clientCard}>
+                                    <View>
+                                        <Text style={styles.clientName}>{client.name}</Text>
+                                        <Text style={styles.clientEmail}>{client.email}</Text>
+                                    </View>
+                                </View>
+                            ))
+                        ) : (
+                            <Text style={styles.noClientsText}>You don't have any clients assigned yet.</Text>
+                        )}
+                    </View>
+                </ScrollView>
             </SafeAreaView>
         );
     }
@@ -530,5 +575,46 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '700',
         textTransform: 'uppercase',
+    },
+    clientsSection: {
+        paddingHorizontal: 20,
+        marginTop: 20,
+    },
+    clientsTitle: {
+        fontSize: 20,
+        fontWeight: '800',
+        color: '#ffffff',
+        marginBottom: 15,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+        paddingBottom: 10,
+    },
+    clientCard: {
+        backgroundColor: '#121212',
+        padding: 15,
+        borderRadius: 16,
+        marginBottom: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.05)',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    clientName: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#ffffff',
+    },
+    clientEmail: {
+        fontSize: 14,
+        color: '#a3a3a3',
+        marginTop: 4,
+    },
+    noClientsText: {
+        color: '#a3a3a3',
+        fontSize: 15,
+        textAlign: 'center',
+        marginTop: 20,
+        fontStyle: 'italic',
     }
 });
