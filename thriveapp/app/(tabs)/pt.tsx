@@ -29,6 +29,9 @@ export default function PTBookingScreen() {
     const [clientsLoading, setClientsLoading] = useState(false);
     const [selectedClientForBooking, setSelectedClientForBooking] = useState<UserProfile | null>(null);
 
+    // Client's Assigned PT State
+    const [assignedPtData, setAssignedPtData] = useState<UserProfile | null>(null);
+
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState<{
         visible: boolean;
@@ -52,7 +55,12 @@ export default function PTBookingScreen() {
 
     useEffect(() => {
         if (userProfile && userProfile.assignedPtId) {
-            fetchAvailability(userProfile.assignedPtId);
+            // Clients no longer fetch availability because they can't book
+            if (userProfile.role === 'client') {
+                fetchAssignedPt(userProfile.assignedPtId);
+            } else {
+                fetchAvailability(userProfile.assignedPtId);
+            }
         } else if (userProfile?.role === 'pt' && selectedClientForBooking && user?.uid) {
             // If PT is booking for a client, check the PT's own availability
             fetchAvailability(user.uid);
@@ -98,6 +106,21 @@ export default function PTBookingScreen() {
             });
         } finally {
             setClientsLoading(false);
+        }
+    };
+
+    const fetchAssignedPt = async (ptId: string) => {
+        setLoading(true);
+        try {
+            const pts = await getAllPTs();
+            const pt = pts.find(p => p.id === ptId);
+            if (pt) {
+                setAssignedPtData(pt);
+            }
+        } catch (error) {
+            console.error('Error fetching assigned PT profile:', error);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -341,6 +364,37 @@ export default function PTBookingScreen() {
                     message={alertConfig.message}
                     onClose={closeAlert}
                 />
+            </SafeAreaView>
+        );
+    }
+
+    if (userProfile?.role === 'client' && userProfile.assignedPtId) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <View style={styles.header}>
+                    <Text style={styles.title}>Your PT</Text>
+                    <Text style={styles.subtitle}>You are connected to a Thrive Coach</Text>
+                </View>
+
+                {loading ? (
+                    <ActivityIndicator size="large" color="#F26122" style={{ marginTop: 50 }} />
+                ) : assignedPtData ? (
+                    <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, marginTop: 40 }]}>
+                        <Text style={styles.noPtSubText}>You are currently training with</Text>
+                        <View style={[styles.ptCodeCard, { marginTop: 20, borderColor: 'rgba(255, 255, 255, 0.1)', borderStyle: 'solid' }]}>
+                            <Text style={[styles.ptCodeText, { letterSpacing: 2, fontSize: 32 }]}>
+                                {assignedPtData.name}
+                            </Text>
+                        </View>
+                        <Text style={[styles.noPtSubText, { textAlign: 'center', marginTop: 30 }]}>
+                            Your PT will book your 1-to-1 sessions directly. Reach out to them to arrange a time!
+                        </Text>
+                    </View>
+                ) : (
+                    <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }]}>
+                        <Text style={[styles.noPtText, { textAlign: 'center' }]}>Failed to load your PT's details.</Text>
+                    </View>
+                )}
             </SafeAreaView>
         );
     }

@@ -4,17 +4,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '../../config/firebaseConfig';
 import { signOut } from 'firebase/auth';
 import { useAuth } from '../../context/auth';
-import { getUserProfile, getAllClients, getAllPTs, assignClientToPt, UserProfile } from '../../services/bookingService';
+import { getUserProfile, UserProfile } from '../../services/bookingService';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
 
 export default function ProfileScreen() {
     const { user } = useAuth();
     const [profile, setProfile] = useState<UserProfile | null>(null);
-    const [clients, setClients] = useState<UserProfile[]>([]);
-    const [pts, setPts] = useState<UserProfile[]>([]);
     const [loading, setLoading] = useState(true);
-    const [actionLoading, setActionLoading] = useState<string | null>(null);
 
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState<{
@@ -33,15 +30,6 @@ export default function ProfileScreen() {
         try {
             const p = await getUserProfile(user.uid);
             setProfile(p);
-
-            if (p?.role === 'admin' || p?.role === 'pt') {
-                const [allClients, allPts] = await Promise.all([
-                    getAllClients(),
-                    getAllPTs()
-                ]);
-                setClients(allClients);
-                setPts(allPts);
-            }
         } catch (error) {
             console.error('Error fetching profile data:', error);
         } finally {
@@ -58,53 +46,6 @@ export default function ProfileScreen() {
             await signOut(auth);
         } catch (error) {
             console.error('Error signing out:', error);
-        }
-    };
-
-    const handleAssign = (clientId: string, clientName: string) => {
-        // Basic assignment flow for admin/pt
-        if (profile?.role === 'pt') {
-            // PTs assign themselves
-            setAlertConfig({
-                visible: true,
-                title: 'Assign Client',
-                message: `Take on ${clientName} as your client?`,
-                onConfirm: () => confirmAssignment(clientId, profile.id)
-            });
-        } else if (profile?.role === 'admin') {
-            // Admins just see unassigned and we could build a picker, but for simplicity:
-            // In this basic version, admins might just view or need a complex picker.
-            // We'll just show them the list and say "PT assignment must be done by PT" for simplicity
-            setAlertConfig({
-                visible: true,
-                title: 'Admin Info',
-                message: `Client: ${clientName}`,
-                onConfirm: undefined
-            });
-        }
-    };
-
-    const confirmAssignment = async (clientId: string, ptId: string) => {
-        setActionLoading(clientId);
-        try {
-            await assignClientToPt(clientId, ptId);
-            setAlertConfig({
-                visible: true,
-                title: 'Success',
-                message: 'Client assigned.',
-                isSuccess: true,
-                onConfirm: undefined
-            });
-            fetchProfileAndData();
-        } catch (error) {
-            setAlertConfig({
-                visible: true,
-                title: 'Error',
-                message: 'Failed to assign client.',
-                isError: true
-            });
-        } finally {
-            setActionLoading(null);
         }
     };
 
@@ -129,45 +70,6 @@ export default function ProfileScreen() {
                                 <Text style={styles.badgeText}>{profile?.role?.toUpperCase()}</Text>
                             </View>
                         </View>
-
-                        {(profile?.role === 'admin' || profile?.role === 'pt') && (
-                            <View style={styles.adminSection}>
-                                <Text style={styles.sectionTitle}>Client Management</Text>
-
-                                {clients.length === 0 ? (
-                                    <Text style={styles.noClientsText}>No clients found.</Text>
-                                ) : (
-                                    <View style={styles.clientList}>
-                                        {clients.map(client => (
-                                            <View key={client.id} style={styles.clientCard}>
-                                                <View style={styles.clientInfo}>
-                                                    <Text style={styles.clientName}>{client.name}</Text>
-                                                    <Text style={styles.clientDetail}>
-                                                        {client.assignedPtId
-                                                            ? `Assigned to: ${pts.find(p => p.id === client.assignedPtId)?.name || 'Unknown PT'}`
-                                                            : 'Unassigned'}
-                                                    </Text>
-                                                </View>
-
-                                                {profile.role === 'pt' && !client.assignedPtId && (
-                                                    <TouchableOpacity
-                                                        style={styles.assignButton}
-                                                        onPress={() => handleAssign(client.id, client.name)}
-                                                        disabled={!!actionLoading}
-                                                    >
-                                                        {actionLoading === client.id ? (
-                                                            <ActivityIndicator size="small" color="#fff" />
-                                                        ) : (
-                                                            <Text style={styles.assignButtonText}>Take Client</Text>
-                                                        )}
-                                                    </TouchableOpacity>
-                                                )}
-                                            </View>
-                                        ))}
-                                    </View>
-                                )}
-                            </View>
-                        )}
 
                         <View style={{ flex: 1, justifyContent: 'flex-end', marginTop: 40 }}>
                             <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
@@ -247,56 +149,6 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 12,
         fontWeight: 'bold',
-    },
-    adminSection: {
-        marginBottom: 30,
-    },
-    sectionTitle: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: '#333',
-        marginBottom: 15,
-    },
-    clientList: {
-        gap: 10,
-    },
-    clientCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#eaeaea',
-        borderRadius: 10,
-        padding: 15,
-    },
-    clientInfo: {
-        flex: 1,
-    },
-    clientName: {
-        fontSize: 16,
-        fontWeight: 'bold',
-        color: '#333',
-    },
-    clientDetail: {
-        fontSize: 14,
-        color: '#888',
-        marginTop: 4,
-    },
-    assignButton: {
-        backgroundColor: '#F26122',
-        paddingHorizontal: 15,
-        paddingVertical: 8,
-        borderRadius: 6,
-    },
-    assignButtonText: {
-        color: '#fff',
-        fontWeight: 'bold',
-        fontSize: 14,
-    },
-    noClientsText: {
-        color: '#888',
-        fontStyle: 'italic',
     },
     logoutButton: {
         flexDirection: 'row',
