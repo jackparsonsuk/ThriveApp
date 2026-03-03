@@ -96,16 +96,18 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
+        backgroundColor: '#0a0a0a', // Thrive Darkest Charcoal
     },
     header: {
         padding: 20,
-        backgroundColor: '#333',
+        backgroundColor: '#121212', // Thrive Dark Charcoal
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255, 90, 0, 0.1)',
     },
     title: {
         fontSize: 24,
-        fontWeight: 'bold',
-        color: '#fff',
+        fontWeight: '800',
+        color: '#ffffff',
     },
     content: {
         flexGrow: 1,
@@ -113,57 +115,58 @@ const styles = StyleSheet.create({
     },
     infoCard: {
         alignItems: 'center',
-        padding: 20,
-        backgroundColor: '#f9f9f9',
-        borderRadius: 12,
+        padding: 30,
+        backgroundColor: '#121212',
+        borderRadius: 16,
         borderWidth: 1,
-        borderColor: '#eee',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
         marginBottom: 30,
     },
     avatarCircle: {
         width: 80,
         height: 80,
         borderRadius: 40,
-        backgroundColor: '#F26122',
+        backgroundColor: '#FF5A00', // Thrive Orange
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 15,
     },
     nameText: {
         fontSize: 22,
-        fontWeight: 'bold',
-        color: '#333',
+        fontWeight: '800',
+        color: '#ffffff',
         marginBottom: 5,
     },
     emailText: {
         fontSize: 16,
-        color: '#666',
-        marginBottom: 10,
+        color: '#a3a3a3',
+        marginBottom: 15,
     },
     badge: {
-        backgroundColor: '#333',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
         paddingHorizontal: 15,
         paddingVertical: 5,
         borderRadius: 20,
     },
     badgeText: {
-        color: '#fff',
+        color: '#ffffff',
         fontSize: 12,
         fontWeight: 'bold',
+        textTransform: 'uppercase',
     },
     logoutButton: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 15,
-        borderRadius: 10,
+        borderRadius: 12,
         borderWidth: 1,
-        borderColor: '#f44336',
-        backgroundColor: '#ffebee',
+        borderColor: 'rgba(239, 68, 68, 0.5)',
+        backgroundColor: 'transparent',
     },
     logoutButtonText: {
-        color: '#f44336',
-        fontWeight: 'bold',
+        color: '#ef4444',
+        fontWeight: '700',
         fontSize: 16,
     },
     versionText: {
