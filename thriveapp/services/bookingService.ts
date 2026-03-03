@@ -278,7 +278,6 @@ export const assignClientToPt = async (clientId: string, ptId: string | null) =>
 export const getClientsForPt = async (ptId: string): Promise<UserProfile[]> => {
     const q = query(
         collection(db, USERS_COLLECTION),
-        where('role', '==', 'client'),
         where('assignedPtId', '==', ptId)
     );
     const snapshot = await getDocs(q);

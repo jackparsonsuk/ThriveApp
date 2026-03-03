@@ -11,6 +11,10 @@ import CustomAlert from '../../components/CustomAlert';
 const PT_OPEN_HOUR = 8;
 const PT_CLOSE_HOUR = 20;
 
+const SectionDivider = () => (
+    <View style={{ height: 1, backgroundColor: 'rgba(255, 255, 255, 0.1)', marginVertical: 30, marginHorizontal: 20 }} />
+);
+
 export default function PTBookingScreen() {
     const { user } = useAuth();
     const router = useRouter();
@@ -55,19 +59,15 @@ export default function PTBookingScreen() {
 
     useEffect(() => {
         if (userProfile && userProfile.assignedPtId) {
-            // Clients no longer fetch availability because they can't book
-            if (userProfile.role === 'client') {
-                fetchAssignedPt(userProfile.assignedPtId);
-            } else {
-                fetchAvailability(userProfile.assignedPtId);
-            }
-        } else if (userProfile?.role === 'pt' && selectedClientForBooking && user?.uid) {
-            // If PT is booking for a client, check the PT's own availability
-            fetchAvailability(user.uid);
+            fetchAssignedPt(userProfile.assignedPtId);
         }
 
         if (userProfile?.role === 'pt' && user?.uid) {
             fetchClients(user.uid);
+            if (selectedClientForBooking) {
+                // If PT is booking for a client, check the PT's own availability
+                fetchAvailability(user.uid);
+            }
         }
     }, [selectedDate, userProfile, user, selectedClientForBooking]);
 
@@ -256,6 +256,16 @@ export default function PTBookingScreen() {
             const matchedPt = pts.find(pt => pt.id.substring(0, 6).toUpperCase() === trimmedInput);
 
             if (matchedPt) {
+                if (matchedPt.id === user.uid) {
+                    setAlertConfig({
+                        visible: true,
+                        title: 'Invalid Assignment',
+                        message: 'You cannot assign yourself as your own Personal Trainer.',
+                        isError: true
+                    });
+                    setAssigningLoading(false);
+                    return;
+                }
                 await assignClientToPt(user.uid, matchedPt.id);
                 // The context will automatically pull the new assignedPtId, causing the UI to refresh
                 setAlertConfig({
@@ -326,7 +336,56 @@ export default function PTBookingScreen() {
                             <Text style={styles.noClientsText}>You don't have any clients assigned yet.</Text>
                         )}
                     </View>
+
+                    <SectionDivider />
+
+                    <View style={styles.clientsSection}>
+                        <Text style={styles.clientsTitle}>Your Own Training</Text>
+
+                        {userProfile?.assignedPtId ? (
+                            assignedPtData ? (
+                                <View style={styles.clientCard}>
+                                    <View>
+                                        <Text style={styles.clientName}>Trainer: {assignedPtData.name}</Text>
+                                        <Text style={styles.noPtSubText}>Your trainer will book your 1-to-1 sessions.</Text>
+                                    </View>
+                                </View>
+                            ) : (
+                                <ActivityIndicator size="small" color="#FF5A00" />
+                            )
+                        ) : (
+                            <View>
+                                <Text style={styles.noPtSubText}>You don't have a Personal Trainer yet.</Text>
+                                <TextInput
+                                    style={[styles.codeInput, { fontSize: 18, padding: 12, height: 50, marginTop: 15 }]}
+                                    placeholder="Enter 6-digit PT Code"
+                                    placeholderTextColor="#737373"
+                                    value={ptCodeInput}
+                                    onChangeText={(text) => setPtCodeInput(text.toUpperCase())}
+                                    maxLength={6}
+                                    autoCapitalize="characters"
+                                />
+                                <TouchableOpacity
+                                    style={[styles.assignButton, (!ptCodeInput || ptCodeInput.length < 6) && { opacity: 0.5 }, { marginTop: 10 }]}
+                                    onPress={handleAssignPT}
+                                    disabled={!ptCodeInput || ptCodeInput.length < 6 || assigningLoading}
+                                >
+                                    {assigningLoading ? (
+                                        <ActivityIndicator color="#ffffff" />
+                                    ) : (
+                                        <Text style={styles.assignButtonText}>Assign My PT</Text>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
+                        )}
+                    </View>
                 </ScrollView>
+                <CustomAlert
+                    visible={alertConfig.visible}
+                    title={alertConfig.title}
+                    message={alertConfig.message}
+                    onClose={closeAlert}
+                />
             </SafeAreaView>
         );
     }
