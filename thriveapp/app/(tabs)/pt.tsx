@@ -27,6 +27,7 @@ export default function PTBookingScreen() {
     // PT's Clients State
     const [clients, setClients] = useState<UserProfile[]>([]);
     const [clientsLoading, setClientsLoading] = useState(false);
+    const [selectedClientForBooking, setSelectedClientForBooking] = useState<UserProfile | null>(null);
 
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState<{
@@ -52,11 +53,15 @@ export default function PTBookingScreen() {
     useEffect(() => {
         if (userProfile && userProfile.assignedPtId) {
             fetchAvailability(userProfile.assignedPtId);
+        } else if (userProfile?.role === 'pt' && selectedClientForBooking && user?.uid) {
+            // If PT is booking for a client, check the PT's own availability
+            fetchAvailability(user.uid);
         }
+
         if (userProfile?.role === 'pt' && user?.uid) {
             fetchClients(user.uid);
         }
-    }, [selectedDate, userProfile, user]);
+    }, [selectedDate, userProfile, user, selectedClientForBooking]);
 
     const loadUserProfile = async () => {
         if (!user) return;
@@ -145,25 +150,33 @@ export default function PTBookingScreen() {
     };
 
     const handleBookSlot = async (slot: { time: Date; available: boolean }) => {
-        if (!user || !userProfile?.assignedPtId) return;
+        const isPtBookingForClient = userProfile?.role === 'pt' && selectedClientForBooking;
+        const targetPtId = isPtBookingForClient ? user?.uid : userProfile?.assignedPtId;
+        const targetClientName = isPtBookingForClient ? selectedClientForBooking.name : 'you';
+
+        if (!user || !targetPtId) return;
 
         setAlertConfig({
             visible: true,
             title: 'Confirm PT Booking',
-            message: `Book PT session with your assigned trainer at ${format(slot.time, 'HH:mm')} for 1 hour?`,
-            onConfirm: () => confirmBooking(slot.time, userProfile.assignedPtId as string)
+            message: `Book PT session for ${targetClientName} at ${format(slot.time, 'HH:mm')} for 1 hour?`,
+            onConfirm: () => confirmBooking(slot.time, targetPtId as string)
         });
     };
 
     const confirmBooking = async (startTime: Date, ptId: string) => {
         if (!user) return;
         setBookingLoading(true);
+
+        const isPtBookingForClient = userProfile?.role === 'pt' && selectedClientForBooking;
+        const targetUserId = isPtBookingForClient ? selectedClientForBooking.id : user.uid;
+
         try {
             // Assuming PT sessions are 1 hour default
             const endTime = addMinutes(startTime, 60);
 
             await createBooking({
-                userId: user.uid,
+                userId: targetUserId,
                 startTime,
                 endTime,
                 type: 'pt',
@@ -174,7 +187,7 @@ export default function PTBookingScreen() {
             setAlertConfig({
                 visible: true,
                 title: 'Success!',
-                message: 'Your PT session has been booked.',
+                message: isPtBookingForClient ? `Session booked for ${selectedClientForBooking.name}.` : 'Your PT session has been booked.',
                 isSuccess: true,
                 onConfirm: undefined
             });
@@ -239,7 +252,7 @@ export default function PTBookingScreen() {
         }
     };
 
-    if (userProfile?.role === 'pt') {
+    if (userProfile?.role === 'pt' && !selectedClientForBooking) {
         const ptCode = user?.uid ? user.uid.substring(0, 6).toUpperCase() : '------';
         return (
             <SafeAreaView style={styles.container}>
@@ -268,6 +281,12 @@ export default function PTBookingScreen() {
                                         <Text style={styles.clientName}>{client.name}</Text>
                                         <Text style={styles.clientEmail}>{client.email}</Text>
                                     </View>
+                                    <TouchableOpacity
+                                        style={styles.bookClientButton}
+                                        onPress={() => setSelectedClientForBooking(client)}
+                                    >
+                                        <Text style={styles.bookClientButtonText}>Book</Text>
+                                    </TouchableOpacity>
                                 </View>
                             ))
                         ) : (
@@ -329,8 +348,22 @@ export default function PTBookingScreen() {
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.title}>Book PT Session</Text>
-                <Text style={styles.subtitle}>Select a date and time</Text>
+                {userProfile?.role === 'pt' && selectedClientForBooking ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <View>
+                            <Text style={styles.title}>Book for {selectedClientForBooking.name.split(' ')[0]}</Text>
+                            <Text style={styles.subtitle}>Select a date and time</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => setSelectedClientForBooking(null)} style={styles.backButton}>
+                            <Text style={styles.backButtonText}>Back</Text>
+                        </TouchableOpacity>
+                    </View>
+                ) : (
+                    <View>
+                        <Text style={styles.title}>Book PT Session</Text>
+                        <Text style={styles.subtitle}>Select a date and time</Text>
+                    </View>
+                )}
             </View>
 
             <View style={styles.dateSelectorContainer}>
@@ -616,5 +649,27 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginTop: 20,
         fontStyle: 'italic',
+    },
+    bookClientButton: {
+        backgroundColor: '#FF5A00',
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderRadius: 8,
+    },
+    bookClientButtonText: {
+        color: '#ffffff',
+        fontSize: 14,
+        fontWeight: 'bold',
+    },
+    backButton: {
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        borderRadius: 8,
+    },
+    backButtonText: {
+        color: '#ffffff',
+        fontSize: 14,
+        fontWeight: 'bold',
     }
 });
