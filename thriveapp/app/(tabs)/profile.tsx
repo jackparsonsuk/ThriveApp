@@ -76,6 +76,7 @@ export default function ProfileScreen() {
                                 <Ionicons name="log-out-outline" size={20} color="#f44336" style={{ marginRight: 10 }} />
                                 <Text style={styles.logoutButtonText}>Log Out</Text>
                             </TouchableOpacity>
+                            <Text style={styles.versionText}>Version 1.2.0</Text>
                         </View>
                     </>
                 )}
@@ -164,5 +165,12 @@ const styles = StyleSheet.create({
         color: '#f44336',
         fontWeight: 'bold',
         fontSize: 16,
+    },
+    versionText: {
+        textAlign: 'center',
+        color: '#a3a3a3',
+        fontSize: 12,
+        marginTop: 20,
+        fontWeight: '500',
     },
 });
