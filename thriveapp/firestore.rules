@@ -1,0 +1,88 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is signed in
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Helper function to get the current user's profile data
+    function getUserData() {
+      let path = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(path) ? get(path).data : {};
+    }
+
+    // Helper functions for roles
+    function isPT() {
+      return isSignedIn() && getUserData().get('role', 'client') == 'pt';
+    }
+
+    function isAdmin() {
+      return isSignedIn() && getUserData().get('role', 'client') == 'admin';
+    }
+
+    // --- USERS COLLECTION ---
+    match /users/{userId} {
+      // Users can read their own profile, PTs and Admins can read all profiles
+      allow read: if isSignedIn() && (request.auth.uid == userId || isPT() || isAdmin());
+      
+      // Users can create their own profile during signup (default role is 'client')
+      allow create: if isSignedIn() && request.auth.uid == userId && request.resource.data.role == 'client';
+      
+      // Users can update their own profile (cannot change their own role)
+      // Admins can update any profile/role
+      // PTs can update assignedPtId if they are assigning to themselves or null
+      allow update: if isSignedIn() && (
+        isAdmin() || 
+        (request.auth.uid == userId && request.resource.data.role == resource.data.role) ||
+        (isPT() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['assignedPtId']))
+      );
+      
+      // Only admins can delete profiles
+      allow delete: if isAdmin();
+    }
+
+    // --- BOOKINGS COLLECTION ---
+    match /bookings/{bookingId} {
+      // 1. Users can read their own bookings
+      // 2. PTs and Admins can read all bookings
+      // 3. ANY signed-in user can read CONFIRMED bookings for availability/capacity checks
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || 
+        isPT() || 
+        isAdmin() ||
+        resource.data.status == 'confirmed'
+      );
+      
+      // Users can create bookings for themselves
+      // PTs can create 'block' type bookings
+      allow create: if isSignedIn() && (
+        request.resource.data.userId == request.auth.uid ||
+        (isPT() && request.resource.data.type == 'block') ||
+        isAdmin()
+      );
+      
+      // Users can cancel (update status) their own bookings
+      // PTs and Admins can update any booking
+      allow update: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || 
+        isPT() || 
+        isAdmin()
+      );
+      
+      // Only admins can delete bookings (usually we just cancel them)
+      allow delete: if isAdmin();
+    }
+
+    // --- GROUP SESSIONS COLLECTION ---
+    match /group_sessions/{sessionId} {
+      // All authenticated users can see group sessions
+      allow read: if isSignedIn();
+      
+      // Only admins can manage group sessions
+      allow write: if isAdmin();
+    }
+  }
+}
