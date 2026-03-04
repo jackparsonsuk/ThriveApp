@@ -57,10 +57,10 @@ service cloud.firestore {
       );
       
       // Users can create bookings for themselves
-      // PTs can create 'block' type bookings
+      // PTs can create 'block' type bookings or bookings for themselves as PT
       allow create: if isSignedIn() && (
         request.resource.data.userId == request.auth.uid ||
-        (isPT() && request.resource.data.type == 'block') ||
+        (isPT() && (request.resource.data.type == 'block' || request.resource.data.ptId == request.auth.uid)) ||
         isAdmin()
       );
       
