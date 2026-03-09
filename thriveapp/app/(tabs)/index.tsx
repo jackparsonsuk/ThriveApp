@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl, Image } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Image } from 'react-native';
 import { useAuth } from '../../context/auth';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -63,8 +63,8 @@ export default function DashboardScreen() {
       const sorted = bookingsWithNames.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 
       setBookings(sorted);
-    } catch (error) {
-      console.error('Error fetching bookings:', error);
+    } catch {
+      console.error('Error fetching bookings');
     } finally {
       setLoading(false);
       setRefreshing(false);

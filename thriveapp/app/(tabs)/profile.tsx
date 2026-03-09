@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '../../config/firebaseConfig';
 import { signOut } from 'firebase/auth';
@@ -39,6 +39,7 @@ export default function ProfileScreen() {
 
     useEffect(() => {
         fetchProfileAndData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user]);
 
     const handleLogout = async () => {

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getGymBookingsForDate, getPTBookingsForDate, getUserBookingsForDate, checkSlotAvailability, createBooking, Booking } from '../../services/bookingService';
+import { getGymBookingsForDate, getPTBookingsForDate, getUserBookingsForDate, checkSlotAvailability, createBooking } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
@@ -35,6 +35,7 @@ export default function GymBookingScreen() {
 
     useEffect(() => {
         fetchAvailability();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedDate]);
 
     const fetchAvailability = async () => {

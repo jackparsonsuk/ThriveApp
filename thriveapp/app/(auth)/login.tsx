@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router';
 import Head from 'expo-router/head';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../config/firebaseConfig';
-import { useAuth } from '../../context/auth';
 
 export default function LoginScreen() {
     const [email, setEmail] = useState('');

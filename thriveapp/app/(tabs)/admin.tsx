@@ -34,6 +34,7 @@ export default function AdminScheduleScreen() {
 
     useEffect(() => {
         fetchSchedule();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedDate]);
 
     const fetchSchedule = async () => {
@@ -65,7 +66,7 @@ export default function AdminScheduleScreen() {
                 try {
                     await cancelBooking(bookingId);
                     fetchSchedule();
-                } catch (error) {
+                } catch {
                     setAlertConfig({ visible: true, title: 'Error', message: 'Failed to cancel booking.' });
                     setLoading(false);
                 }
@@ -86,7 +87,7 @@ export default function AdminScheduleScreen() {
                 try {
                     await blockOutSlot(user.uid, time, addMinutes(time, 15), 'Admin block out');
                     fetchSchedule();
-                } catch (error) {
+                } catch {
                     setAlertConfig({ visible: true, title: 'Error', message: 'Failed to block slot.' });
                     setLoading(false);
                 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate } from '../../services/bookingService';
@@ -55,6 +55,7 @@ export default function PTBookingScreen() {
         if (user) {
             loadUserProfile();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user]);
 
     useEffect(() => {
@@ -69,6 +70,7 @@ export default function PTBookingScreen() {
                 fetchAvailability(user.uid);
             }
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedDate, userProfile, user, selectedClientForBooking]);
 
     const loadUserProfile = async () => {
@@ -335,7 +337,7 @@ export default function PTBookingScreen() {
                                 </View>
                             ))
                         ) : (
-                            <Text style={styles.noClientsText}>You don't have any clients assigned yet.</Text>
+                            <Text style={styles.noClientsText}>You don&apos;t have any clients assigned yet.</Text>
                         )}
                     </View>
 
@@ -357,7 +359,7 @@ export default function PTBookingScreen() {
                             )
                         ) : (
                             <View>
-                                <Text style={styles.noPtSubText}>You don't have a Personal Trainer yet.</Text>
+                                <Text style={styles.noPtSubText}>You don&apos;t have a Personal Trainer yet.</Text>
                                 <TextInput
                                     style={[styles.codeInput, { fontSize: 18, padding: 12, height: 50, marginTop: 15 }]}
                                     placeholder="Enter 6-digit PT Code"
@@ -463,7 +465,7 @@ export default function PTBookingScreen() {
                     </View>
                 ) : (
                     <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }]}>
-                        <Text style={[styles.noPtText, { textAlign: 'center' }]}>Failed to load your PT's details.</Text>
+                        <Text style={[styles.noPtText, { textAlign: 'center' }]}>Failed to load your PT&apos;s details.</Text>
                     </View>
                 )}
             </SafeAreaView>
