@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-03-09
+
+### Added
+- **Apple Design Language**: Comprehensive UI redesign using semantic colors, unified variables, and dynamic Light/Dark mode transitions.
+- **Copy PT Code**: Added a clipboard copy button next to the Trainer Code on the PT Booking screen for easier sharing.
+
+### Changed
+- **Navigation & Layouts**: Refactored application Navigation Bars to use native-feeling themes.
+- **Booking Screens**: Upgraded Gym and PT booking slots from basic grids to Apple-styled vertical grouped lists.
+- **Forms & Profiles**: Redesigned all authentication forms, admin screens, and the profile tab with modernized card inputs, pill-shaped buttons, and rounded radiuses.
+
+---
+
 ## [1.3.0] - 2026-03-03
 
 ### Added
