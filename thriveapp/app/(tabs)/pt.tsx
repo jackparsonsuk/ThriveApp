@@ -267,7 +267,9 @@ export default function PTBookingScreen() {
                     return;
                 }
                 await assignClientToPt(user.uid, matchedPt.id);
-                // The context will automatically pull the new assignedPtId, causing the UI to refresh
+                // Update the local state to trigger a UI refresh
+                setUserProfile(prev => prev ? { ...prev, assignedPtId: matchedPt.id } : null);
+
                 setAlertConfig({
                     visible: true,
                     title: 'PT Assigned!',
