@@ -4,12 +4,16 @@ import { useRouter } from 'expo-router';
 import Head from 'expo-router/head';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../config/firebaseConfig';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors, Radii } from '@/constants/theme';
 
 export default function LoginScreen() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const router = useRouter();
+    const colorScheme = useColorScheme() ?? 'light';
+    const theme = Colors[colorScheme];
 
     const handleLogin = async () => {
         if (!email || !password) {
@@ -29,18 +33,22 @@ export default function LoginScreen() {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: theme.background }]}>
             <Head>
                 <title>Sign In | Thrive Collective</title>
             </Head>
-            <Image source={require('../../assets/images/TC_Monogram_White.png')} style={styles.logo} />
-            <Text style={styles.title}>Welcome back</Text>
+            <Image
+                source={require('../../assets/images/TC_Monogram_White.png')}
+                style={[styles.logo, colorScheme === 'light' && { tintColor: '#000' }]}
+                resizeMode="contain"
+            />
+            <Text style={[styles.title, { color: theme.text }]}>Welcome back</Text>
 
             <View style={styles.form}>
                 <TextInput
-                    style={styles.input}
+                    style={[styles.input, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
                     placeholder="Email"
-                    placeholderTextColor="#737373"
+                    placeholderTextColor={theme.icon}
                     value={email}
                     onChangeText={setEmail}
                     autoCapitalize="none"
@@ -48,16 +56,16 @@ export default function LoginScreen() {
                 />
 
                 <TextInput
-                    style={styles.input}
+                    style={[styles.input, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
                     placeholder="Password"
-                    placeholderTextColor="#737373"
+                    placeholderTextColor={theme.icon}
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
                 />
 
                 <TouchableOpacity
-                    style={styles.button}
+                    style={[styles.button, { backgroundColor: theme.tint }]}
                     onPress={handleLogin}
                     disabled={loading}
                 >
@@ -72,14 +80,14 @@ export default function LoginScreen() {
                     style={styles.linkButton}
                     onPress={() => router.push('/signup')}
                 >
-                    <Text style={styles.linkText}>Don&apos;t have an account? Sign Up</Text>
+                    <Text style={[styles.linkText, { color: theme.icon }]}>Don't have an account? Sign Up</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                     style={[styles.linkButton, { marginTop: 5 }]}
                     onPress={() => router.push('/forgot-password')}
                 >
-                    <Text style={styles.linkText}>Forgot your password?</Text>
+                    <Text style={[styles.linkText, { color: theme.icon }]}>Forgot your password?</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -91,7 +99,6 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         padding: 20,
-        backgroundColor: '#0a0a0a',
     },
     logo: {
         width: 80,
@@ -100,43 +107,37 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     title: {
-        fontSize: 28,
-        fontWeight: '800', // matches website typography
+        fontSize: 34,
+        fontWeight: '700', // matches website typography
         marginBottom: 40,
         textAlign: 'center',
-        color: '#ffffff',
+        letterSpacing: -0.5,
     },
     form: {
         gap: 15,
     },
     input: {
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-        backgroundColor: '#121212',
-        padding: 15,
-        borderRadius: 16,
+        borderWidth: StyleSheet.hairlineWidth,
+        padding: 16,
+        borderRadius: Radii.md,
         fontSize: 16,
-        color: '#ffffff',
     },
     button: {
-        backgroundColor: '#FF5A00', // Premium Thrive Orange
-        padding: 15,
-        borderRadius: 9999,
+        padding: 16,
+        borderRadius: Radii.pill,
         alignItems: 'center',
         marginTop: 10,
     },
     buttonText: {
         color: '#ffffff',
         fontSize: 16,
-        fontWeight: '700',
-        textTransform: 'uppercase',
+        fontWeight: '600',
     },
     linkButton: {
         marginTop: 15,
         alignItems: 'center',
     },
     linkText: {
-        color: '#a3a3a3',
         fontSize: 14,
         fontWeight: '500',
     },

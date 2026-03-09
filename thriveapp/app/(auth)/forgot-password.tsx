@@ -4,11 +4,15 @@ import { useRouter } from 'expo-router';
 import Head from 'expo-router/head';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../../config/firebaseConfig';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors, Radii } from '@/constants/theme';
 
 export default function ForgotPasswordScreen() {
     const [email, setEmail] = useState('');
     const [loading, setLoading] = useState(false);
     const router = useRouter();
+    const colorScheme = useColorScheme() ?? 'light';
+    const theme = Colors[colorScheme];
 
     const handleResetPassword = async () => {
         if (!email) {
@@ -29,22 +33,26 @@ export default function ForgotPasswordScreen() {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: theme.background }]}>
             <Head>
                 <title>Reset Password | Thrive Collective</title>
             </Head>
-            <Image source={require('../../assets/images/TC_Monogram_White.png')} style={styles.logo} />
-            <Text style={styles.title}>Reset Password</Text>
+            <Image
+                source={require('../../assets/images/TC_Monogram_White.png')}
+                style={[styles.logo, colorScheme === 'light' && { tintColor: '#000' }]}
+                resizeMode="contain"
+            />
+            <Text style={[styles.title, { color: theme.text }]}>Reset Password</Text>
 
-            <Text style={styles.subtitle}>
-                Enter your email address and we&apos;ll send you a link to reset your password.
+            <Text style={[styles.subtitle, { color: theme.text }]}>
+                Enter your email address and we'll send you a link to reset your password.
             </Text>
 
             <View style={styles.form}>
                 <TextInput
-                    style={styles.input}
+                    style={[styles.input, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
                     placeholder="Email"
-                    placeholderTextColor="#737373"
+                    placeholderTextColor={theme.icon}
                     value={email}
                     onChangeText={setEmail}
                     autoCapitalize="none"
@@ -52,7 +60,7 @@ export default function ForgotPasswordScreen() {
                 />
 
                 <TouchableOpacity
-                    style={styles.button}
+                    style={[styles.button, { backgroundColor: theme.tint }]}
                     onPress={handleResetPassword}
                     disabled={loading}
                 >
@@ -67,7 +75,7 @@ export default function ForgotPasswordScreen() {
                     style={styles.linkButton}
                     onPress={() => router.back()}
                 >
-                    <Text style={styles.linkText}>Back to Log In</Text>
+                    <Text style={[styles.linkText, { color: theme.icon }]}>Back to Log In</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -79,7 +87,6 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         padding: 20,
-        backgroundColor: '#0a0a0a',
     },
     logo: {
         width: 80,
@@ -88,15 +95,14 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     title: {
-        fontSize: 28,
-        fontWeight: '800',
+        fontSize: 34,
+        fontWeight: '700',
         marginBottom: 10,
         textAlign: 'center',
-        color: '#ffffff',
+        letterSpacing: -0.5,
     },
     subtitle: {
         fontSize: 16,
-        color: '#a3a3a3',
         textAlign: 'center',
         marginBottom: 40,
         paddingHorizontal: 20,
@@ -105,33 +111,27 @@ const styles = StyleSheet.create({
         gap: 15,
     },
     input: {
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-        backgroundColor: '#121212',
-        padding: 15,
-        borderRadius: 16,
+        borderWidth: StyleSheet.hairlineWidth,
+        padding: 16,
+        borderRadius: Radii.md,
         fontSize: 16,
-        color: '#ffffff',
     },
     button: {
-        backgroundColor: '#FF5A00',
-        padding: 15,
-        borderRadius: 9999,
+        padding: 16,
+        borderRadius: Radii.pill,
         alignItems: 'center',
         marginTop: 10,
     },
     buttonText: {
         color: '#ffffff',
         fontSize: 16,
-        fontWeight: '700',
-        textTransform: 'uppercase',
+        fontWeight: '600',
     },
     linkButton: {
         marginTop: 15,
         alignItems: 'center',
     },
     linkText: {
-        color: '#a3a3a3',
         fontSize: 14,
         fontWeight: '500',
     },

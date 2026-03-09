@@ -6,18 +6,24 @@ import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, getAl
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
+import { Ionicons } from '@expo/vector-icons';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors, Radii } from '@/constants/theme';
+import * as Clipboard from 'expo-clipboard';
 
 // Assuming PT operating hours
 const PT_OPEN_HOUR = 7;
 const PT_CLOSE_HOUR = 20;
 
-const SectionDivider = () => (
-    <View style={{ height: 1, backgroundColor: 'rgba(255, 255, 255, 0.1)', marginVertical: 30, marginHorizontal: 20 }} />
+const SectionDivider = ({ theme }: { theme: any }) => (
+    <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.border, marginVertical: 30, marginHorizontal: 20 }} />
 );
 
 export default function PTBookingScreen() {
     const { user } = useAuth();
     const router = useRouter();
+    const colorScheme = useColorScheme() ?? 'light';
+    const theme = Colors[colorScheme];
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
     const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean }[]>([]);
@@ -302,75 +308,121 @@ export default function PTBookingScreen() {
     if (userProfile?.role === 'pt' && !selectedClientForBooking) {
         const ptCode = user?.uid ? user.uid.substring(0, 6).toUpperCase() : '------';
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
                 <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-                    <View style={styles.header}>
-                        <Text style={styles.title}>Your PT Code</Text>
-                        <Text style={styles.subtitle}>Share this with your clients</Text>
+                    <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
+                        <Text style={[styles.title, { color: theme.text }]}>Your PT Code</Text>
+                        <Text style={[styles.subtitle, { color: theme.icon }]}>Share this with your clients</Text>
                     </View>
                     <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }]}>
-                        <View style={styles.ptCodeCard}>
-                            <Text style={styles.ptCodeText}>{ptCode}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 10 }}>
+                            <View style={[styles.ptCodeCard, { backgroundColor: theme.card, borderColor: theme.tint, shadowColor: theme.tint }]}>
+                                <Text style={[styles.ptCodeText, { color: theme.text }]}>{ptCode}</Text>
+                            </View>
+                            <TouchableOpacity
+                                style={{
+                                    marginLeft: 15,
+                                    padding: 14,
+                                    backgroundColor: theme.tint,
+                                    borderRadius: Radii.pill,
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    shadowColor: theme.tint,
+                                    shadowOffset: { width: 0, height: 4 },
+                                    shadowOpacity: 0.3,
+                                    shadowRadius: 8,
+                                    elevation: 4,
+                                }}
+                                onPress={async () => {
+                                    await Clipboard.setStringAsync(ptCode);
+                                    setAlertConfig({
+                                        visible: true,
+                                        title: 'Copied!',
+                                        message: 'Your PT Code has been copied.',
+                                        isSuccess: true
+                                    });
+                                }}
+                            >
+                                <Ionicons name="copy-outline" size={24} color="#ffffff" />
+                            </TouchableOpacity>
                         </View>
-                        <Text style={[styles.noPtSubText, { textAlign: 'center', marginTop: 20 }]}>
+                        <Text style={[styles.noPtSubText, { color: theme.icon, textAlign: 'center', marginTop: 25 }]}>
                             Ask your client to enter this 6-character code in their app to automatically assign them to you.
                         </Text>
                     </View>
 
                     <View style={styles.clientsSection}>
-                        <Text style={styles.clientsTitle}>Your Clients</Text>
+                        <Text style={[styles.clientsTitle, { color: theme.text, borderBottomColor: theme.border }]}>Your Clients</Text>
                         {clientsLoading ? (
-                            <ActivityIndicator size="small" color="#FF5A00" style={{ marginTop: 20 }} />
+                            <ActivityIndicator size="small" color={theme.tint} style={{ marginTop: 20 }} />
                         ) : clients.length > 0 ? (
-                            clients.map(client => (
-                                <View key={client.id} style={styles.clientCard}>
-                                    <View>
-                                        <Text style={styles.clientName}>{client.name}</Text>
-                                        <Text style={styles.clientEmail}>{client.email}</Text>
-                                    </View>
-                                    <TouchableOpacity
-                                        style={styles.bookClientButton}
-                                        onPress={() => setSelectedClientForBooking(client)}
-                                    >
-                                        <Text style={styles.bookClientButtonText}>Book</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            ))
+                            <View style={[styles.groupedList, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                {clients.map((client, index) => {
+                                    const isLast = index === clients.length - 1;
+                                    return (
+                                        <View key={client.id}>
+                                            <View style={styles.clientRow}>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={[styles.clientName, { color: theme.text }]}>{client.name}</Text>
+                                                    <Text style={[styles.clientEmail, { color: theme.icon }]}>{client.email}</Text>
+                                                </View>
+                                                <TouchableOpacity
+                                                    style={[styles.bookClientButton, { backgroundColor: theme.tint }]}
+                                                    onPress={() => setSelectedClientForBooking(client)}
+                                                >
+                                                    <Text style={styles.bookClientButtonText}>Book</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                            {!isLast && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
+                                        </View>
+                                    );
+                                })}
+                            </View>
                         ) : (
-                            <Text style={styles.noClientsText}>You don&apos;t have any clients assigned yet.</Text>
+                            <Text style={[styles.noClientsText, { color: theme.icon }]}>You don't have any clients assigned yet.</Text>
                         )}
                     </View>
 
-                    <SectionDivider />
+                    <SectionDivider theme={theme} />
 
                     <View style={styles.clientsSection}>
-                        <Text style={styles.clientsTitle}>Your Own Training</Text>
+                        <Text style={[styles.clientsTitle, { color: theme.text, borderBottomColor: theme.border }]}>Your Own Training</Text>
 
                         {userProfile?.assignedPtId ? (
                             assignedPtData ? (
-                                <View style={styles.clientCard}>
-                                    <View>
-                                        <Text style={styles.clientName}>Trainer: {assignedPtData.name}</Text>
-                                        <Text style={styles.noPtSubText}>Your trainer will book your 1-to-1 sessions.</Text>
+                                <View style={[styles.groupedList, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                    <View style={styles.clientRow}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.clientName, { color: theme.text }]}>Trainer: {assignedPtData.name}</Text>
+                                            <Text style={[styles.clientEmail, { color: theme.icon }]}>Your trainer will book your 1-to-1 sessions.</Text>
+                                        </View>
                                     </View>
                                 </View>
                             ) : (
-                                <ActivityIndicator size="small" color="#FF5A00" />
+                                <ActivityIndicator size="small" color={theme.tint} />
                             )
                         ) : (
                             <View>
-                                <Text style={styles.noPtSubText}>You don&apos;t have a Personal Trainer yet.</Text>
+                                <Text style={[styles.noPtSubText, { color: theme.icon }]}>You don't have a Personal Trainer yet.</Text>
                                 <TextInput
-                                    style={[styles.codeInput, { fontSize: 18, padding: 12, height: 50, marginTop: 15 }]}
+                                    style={[styles.codeInput, {
+                                        backgroundColor: theme.card,
+                                        borderColor: theme.border,
+                                        color: theme.text,
+                                        fontSize: 18,
+                                        padding: 12,
+                                        height: 50,
+                                        marginTop: 15
+                                    }]}
                                     placeholder="Enter 6-digit PT Code"
-                                    placeholderTextColor="#737373"
+                                    placeholderTextColor={theme.icon}
                                     value={ptCodeInput}
                                     onChangeText={(text) => setPtCodeInput(text.toUpperCase())}
                                     maxLength={6}
                                     autoCapitalize="characters"
                                 />
                                 <TouchableOpacity
-                                    style={[styles.assignButton, (!ptCodeInput || ptCodeInput.length < 6) && { opacity: 0.5 }, { marginTop: 10 }]}
+                                    style={[styles.assignButton, { backgroundColor: theme.tint }, (!ptCodeInput || ptCodeInput.length < 6) && { opacity: 0.5 }, { marginTop: 10 }]}
                                     onPress={handleAssignPT}
                                     disabled={!ptCodeInput || ptCodeInput.length < 6 || assigningLoading}
                                 >
@@ -383,35 +435,40 @@ export default function PTBookingScreen() {
                             </View>
                         )}
                     </View>
+
+                    <CustomAlert
+                        visible={alertConfig.visible}
+                        title={alertConfig.title}
+                        message={alertConfig.message}
+                        onClose={closeAlert}
+                    />
                 </ScrollView>
-                <CustomAlert
-                    visible={alertConfig.visible}
-                    title={alertConfig.title}
-                    message={alertConfig.message}
-                    onClose={closeAlert}
-                />
             </SafeAreaView>
         );
     }
 
     if (userProfile?.role === 'client' && !userProfile.assignedPtId) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
                 <KeyboardAvoidingView
                     behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                     style={{ flex: 1 }}
                 >
-                    <View style={styles.header}>
-                        <Text style={styles.title}>Connect with a PT</Text>
+                    <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
+                        <Text style={[styles.title, { color: theme.text }]}>Connect with a PT</Text>
                     </View>
                     <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }]}>
-                        <Text style={[styles.noPtText, { textAlign: 'center' }]}>You do not have a Personal Trainer yet.</Text>
-                        <Text style={[styles.noPtSubText, { textAlign: 'center', marginBottom: 30 }]}>Enter the 6-character code provided by your Thrive Coach.</Text>
+                        <Text style={[styles.noPtText, { color: theme.text, textAlign: 'center' }]}>You do not have a Personal Trainer yet.</Text>
+                        <Text style={[styles.noPtSubText, { color: theme.icon, textAlign: 'center', marginBottom: 30 }]}>Enter the 6-character code provided by your Thrive Coach.</Text>
 
                         <TextInput
-                            style={styles.codeInput}
+                            style={[styles.codeInput, {
+                                backgroundColor: theme.card,
+                                borderColor: theme.border,
+                                color: theme.text
+                            }]}
                             placeholder="e.g. A1B2C3"
-                            placeholderTextColor="#737373"
+                            placeholderTextColor={theme.icon}
                             value={ptCodeInput}
                             onChangeText={(text) => setPtCodeInput(text.toUpperCase())}
                             maxLength={6}
@@ -419,7 +476,7 @@ export default function PTBookingScreen() {
                         />
 
                         <TouchableOpacity
-                            style={[styles.assignButton, (!ptCodeInput || ptCodeInput.length < 6) && { opacity: 0.5 }]}
+                            style={[styles.assignButton, { backgroundColor: theme.tint }, (!ptCodeInput || ptCodeInput.length < 6) && { opacity: 0.5 }]}
                             onPress={handleAssignPT}
                             disabled={!ptCodeInput || ptCodeInput.length < 6 || assigningLoading}
                         >
@@ -443,29 +500,29 @@ export default function PTBookingScreen() {
 
     if (userProfile?.role === 'client' && userProfile.assignedPtId) {
         return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.header}>
-                    <Text style={styles.title}>Your PT</Text>
-                    <Text style={styles.subtitle}>You are connected to a Thrive Coach</Text>
+            <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+                <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
+                    <Text style={[styles.title, { color: theme.text }]}>Your PT</Text>
+                    <Text style={[styles.subtitle, { color: theme.icon }]}>You are connected to a Thrive Coach</Text>
                 </View>
 
                 {loading ? (
-                    <ActivityIndicator size="large" color="#F26122" style={{ marginTop: 50 }} />
+                    <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
                 ) : assignedPtData ? (
                     <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, marginTop: 40 }]}>
-                        <Text style={styles.noPtSubText}>You are currently training with</Text>
-                        <View style={[styles.ptCodeCard, { marginTop: 20, borderColor: 'rgba(255, 255, 255, 0.1)', borderStyle: 'solid' }]}>
-                            <Text style={[styles.ptCodeText, { letterSpacing: 2, fontSize: 32 }]}>
+                        <Text style={[styles.noPtSubText, { color: theme.icon }]}>You are currently training with</Text>
+                        <View style={[styles.ptCodeCard, { backgroundColor: theme.card, borderColor: theme.tint, marginTop: 20, borderStyle: 'solid' }]}>
+                            <Text style={[styles.ptCodeText, { color: theme.text, letterSpacing: 2, fontSize: 32 }]}>
                                 {assignedPtData.name}
                             </Text>
                         </View>
-                        <Text style={[styles.noPtSubText, { textAlign: 'center', marginTop: 30 }]}>
+                        <Text style={[styles.noPtSubText, { color: theme.icon, textAlign: 'center', marginTop: 30 }]}>
                             Your PT will book your 1-to-1 sessions directly. Reach out to them to arrange a time!
                         </Text>
                     </View>
                 ) : (
                     <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }]}>
-                        <Text style={[styles.noPtText, { textAlign: 'center' }]}>Failed to load your PT&apos;s details.</Text>
+                        <Text style={[styles.noPtText, { color: theme.text, textAlign: 'center' }]}>Failed to load your PT's details.</Text>
                     </View>
                 )}
             </SafeAreaView>
@@ -473,40 +530,50 @@ export default function PTBookingScreen() {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+            <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
                 {userProfile?.role === 'pt' && selectedClientForBooking ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                         <View>
-                            <Text style={styles.title}>Book for {selectedClientForBooking.name.split(' ')[0]}</Text>
-                            <Text style={styles.subtitle}>Select a date and time</Text>
+                            <Text style={[styles.title, { color: theme.text }]}>Book for {selectedClientForBooking.name.split(' ')[0]}</Text>
+                            <Text style={[styles.subtitle, { color: theme.icon }]}>Select a date and time</Text>
                         </View>
-                        <TouchableOpacity onPress={() => setSelectedClientForBooking(null)} style={styles.backButton}>
-                            <Text style={styles.backButtonText}>Back</Text>
+                        <TouchableOpacity onPress={() => setSelectedClientForBooking(null)} style={[styles.backButton, { backgroundColor: theme.border }]}>
+                            <Text style={[styles.backButtonText, { color: theme.text }]}>Back</Text>
                         </TouchableOpacity>
                     </View>
                 ) : (
                     <View>
-                        <Text style={styles.title}>Book PT Session</Text>
-                        <Text style={styles.subtitle}>Select a date and time</Text>
+                        <Text style={[styles.title, { color: theme.text }]}>Book PT Session</Text>
+                        <Text style={[styles.subtitle, { color: theme.icon }]}>Select a date and time</Text>
                     </View>
                 )}
             </View>
 
-            <View style={styles.dateSelectorContainer}>
+            <View style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateSelector}>
                     {dates.map((date, index) => {
                         const isSelected = selectedDate.getTime() === date.getTime();
                         return (
                             <TouchableOpacity
                                 key={index}
-                                style={[styles.dateCard, isSelected && styles.dateCardSelected]}
+                                style={[
+                                    styles.dateCard,
+                                    { backgroundColor: isSelected ? theme.tint : 'transparent' },
+                                    isSelected && styles.dateCardSelected
+                                ]}
                                 onPress={() => setSelectedDate(date)}
                             >
-                                <Text style={[styles.dayText, isSelected && styles.textSelected]}>
+                                <Text style={[
+                                    styles.dayText,
+                                    { color: isSelected ? '#fff' : theme.icon }
+                                ]}>
                                     {format(date, 'EEE')}
                                 </Text>
-                                <Text style={[styles.dateText, isSelected && styles.textSelected]}>
+                                <Text style={[
+                                    styles.dateText,
+                                    { color: isSelected ? '#fff' : theme.text }
+                                ]}>
                                     {format(date, 'd')}
                                 </Text>
                             </TouchableOpacity>
@@ -517,35 +584,49 @@ export default function PTBookingScreen() {
 
             <ScrollView contentContainerStyle={styles.slotsContainer}>
                 {loading ? (
-                    <ActivityIndicator size="large" color="#F26122" style={{ marginTop: 50 }} />
+                    <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
                 ) : availableSlots.length === 0 ? (
-                    <Text style={styles.noSlotsText}>No more slots available for this day.</Text>
+                    <Text style={[styles.noSlotsText, { color: theme.icon }]}>No more slots available for this day.</Text>
                 ) : (
-                    <View style={styles.slotsGrid}>
-                        {availableSlots.map((slot, index) => (
-                            <TouchableOpacity
-                                key={index}
-                                style={[
-                                    styles.slotCard,
-                                    !slot.available && styles.slotCardUnavailable
-                                ]}
-                                disabled={!slot.available || bookingLoading}
-                                onPress={() => handleBookSlot(slot)}
-                            >
-                                <Text style={[
-                                    styles.slotTime,
-                                    !slot.available && styles.slotTextUnavailable
-                                ]}>
-                                    {format(slot.time, 'HH:mm')}
-                                </Text>
-                                {slot.available && (
-                                    <Text style={styles.slotDuration}>1 Hour</Text>
-                                )}
-                                {!slot.available && (
-                                    <Text style={styles.slotFullText}>Booked</Text>
-                                )}
-                            </TouchableOpacity>
-                        ))}
+                    <View style={[styles.slotsList, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                        {availableSlots.map((slot, index) => {
+                            const isLast = index === availableSlots.length - 1;
+                            return (
+                                <View key={index}>
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.slotRow,
+                                            !slot.available && styles.slotRowUnavailable
+                                        ]}
+                                        disabled={!slot.available || bookingLoading}
+                                        onPress={() => handleBookSlot(slot)}
+                                    >
+                                        <View style={styles.slotTimeContainer}>
+                                            <Text style={[
+                                                styles.slotTime,
+                                                { color: slot.available ? theme.text : theme.icon },
+                                                !slot.available && styles.slotTextUnavailable
+                                            ]}>
+                                                {format(slot.time, 'HH:mm')}
+                                            </Text>
+                                        </View>
+
+                                        <View style={styles.slotDetailsContainer}>
+                                            <Text style={[styles.slotDuration, { color: slot.available ? theme.tint : theme.icon }]}>
+                                                {slot.available ? '1 Hour' : 'Booked'}
+                                            </Text>
+                                        </View>
+
+                                        <View style={styles.slotChevron}>
+                                            {slot.available && (
+                                                <Ionicons name="chevron-forward" size={20} color={theme.icon} opacity={0.5} />
+                                            )}
+                                        </View>
+                                    </TouchableOpacity>
+                                    {!isLast && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
+                                </View>
+                            );
+                        })}
                     </View>
                 )}
             </ScrollView>
@@ -569,122 +650,116 @@ export default function PTBookingScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#0a0a0a',
     },
     header: {
-        padding: 20,
-        backgroundColor: '#121212',
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255, 90, 0, 0.1)',
+        paddingHorizontal: 20,
+        paddingTop: 10,
+        paddingBottom: 20,
+        borderBottomWidth: StyleSheet.hairlineWidth,
     },
     title: {
-        fontSize: 24,
-        fontWeight: '800', // Match website headers
-        color: '#ffffff',
+        fontSize: 34,
+        fontWeight: '700',
+        letterSpacing: -0.5,
     },
     subtitle: {
-        fontSize: 16,
-        color: '#a3a3a3', // text-secondary from website
-        marginTop: 5,
+        fontSize: 15,
+        marginTop: 4,
     },
     dateSelectorContainer: {
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255, 255, 255, 0.05)',
-        backgroundColor: '#0a0a0a',
+        borderBottomWidth: StyleSheet.hairlineWidth,
     },
     dateSelector: {
-        padding: 15,
-        gap: 10,
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        gap: 8,
     },
     dateCard: {
         paddingVertical: 10,
-        paddingHorizontal: 15,
-        borderRadius: 16, // --radius-md
-        backgroundColor: 'rgba(30, 20, 15, 0.4)', // glass-panel background
-        borderWidth: 1,
-        borderColor: 'rgba(255, 90, 0, 0.1)',
+        paddingHorizontal: 8,
+        borderRadius: Radii.pill,
         alignItems: 'center',
-        minWidth: 60,
+        minWidth: 54,
     },
     dateCardSelected: {
-        backgroundColor: '#FF5A00', // True Thrive Orange
-        borderColor: '#FF5A00',
+        shadowColor: '#F26122',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 4,
     },
     dayText: {
-        fontSize: 12,
-        color: '#a3a3a3',
+        fontSize: 11,
         textTransform: 'uppercase',
         fontWeight: '600',
+        marginBottom: 4,
     },
     dateText: {
-        fontSize: 18,
-        fontWeight: '800',
-        color: '#ffffff',
-        marginTop: 2,
-    },
-    textSelected: {
-        color: '#ffffff',
+        fontSize: 20,
+        fontWeight: '500',
     },
     slotsContainer: {
-        padding: 20,
+        padding: 16,
+        paddingBottom: 40,
     },
-    slotsGrid: {
+    slotsList: {
+        borderRadius: Radii.lg,
+        borderWidth: StyleSheet.hairlineWidth,
+        overflow: 'hidden',
+    },
+    slotRow: {
         flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 10,
-        justifyContent: 'space-between',
-    },
-    slotCard: {
-        width: '31%',
-        backgroundColor: '#121212',
-        padding: 15,
-        borderRadius: 16,
         alignItems: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        paddingVertical: 14,
+        paddingHorizontal: 16,
     },
-    slotCardUnavailable: {
-        backgroundColor: 'rgba(18, 18, 18, 0.5)',
-        borderColor: 'rgba(255, 255, 255, 0.02)',
-        opacity: 0.5,
+    slotRowUnavailable: {
+        opacity: 0.6,
+        backgroundColor: 'rgba(0,0,0,0.02)',
+    },
+    slotTimeContainer: {
+        width: 70,
     },
     slotTime: {
-        fontSize: 16,
-        fontWeight: '700',
-        color: '#ffffff',
+        fontSize: 17,
+        fontWeight: '600',
+        letterSpacing: -0.4,
     },
     slotTextUnavailable: {
-        color: '#737373', // text-muted
         textDecorationLine: 'line-through',
     },
-    slotDuration: {
-        fontSize: 12,
-        color: '#FF5A00',
-        marginTop: 4,
-        fontWeight: 'bold',
+    slotDetailsContainer: {
+        flex: 1,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingRight: 10,
     },
-    slotFullText: {
-        fontSize: 12,
-        color: '#ef4444', // Red for full
-        marginTop: 4,
+    slotDuration: {
+        fontSize: 15,
         fontWeight: '600',
+    },
+    slotChevron: {
+        width: 20,
+        alignItems: 'flex-end',
+    },
+    separator: {
+        height: StyleSheet.hairlineWidth,
+        marginLeft: 16,
     },
     noSlotsText: {
         textAlign: 'center',
-        color: '#a3a3a3',
         fontSize: 16,
         marginTop: 50,
     },
     noPtText: {
         fontSize: 18,
-        fontWeight: '800',
-        color: '#ffffff',
+        fontWeight: '600',
         textAlign: 'center',
         paddingHorizontal: 20,
     },
     noPtSubText: {
         fontSize: 14,
-        color: '#a3a3a3',
         marginTop: 10,
         textAlign: 'center',
         paddingHorizontal: 20,
@@ -692,40 +767,35 @@ const styles = StyleSheet.create({
     ptCodeCard: {
         paddingVertical: 30,
         paddingHorizontal: 40,
-        backgroundColor: 'rgba(30, 20, 15, 0.4)',
-        borderColor: 'rgba(255, 90, 0, 0.3)',
-        borderWidth: 2,
-        borderRadius: 24,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderRadius: Radii.xl,
         alignItems: 'center',
         justifyContent: 'center',
-        borderStyle: 'dashed',
+        // Make it look like a pass
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 16,
+        elevation: 10,
     },
     ptCodeText: {
         fontSize: 48,
-        fontWeight: '900',
-        color: '#ffffff',
+        fontWeight: '700',
         letterSpacing: 8,
     },
     codeInput: {
         width: '100%',
         maxWidth: 300,
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-        backgroundColor: '#121212',
-        padding: 20,
-        borderRadius: 16,
-        fontSize: 24,
-        color: '#ffffff',
+        borderWidth: StyleSheet.hairlineWidth,
+        borderRadius: Radii.md,
         textAlign: 'center',
         letterSpacing: 6,
         fontWeight: 'bold',
         marginBottom: 20,
     },
     assignButton: {
-        backgroundColor: '#FF5A00',
         paddingVertical: 15,
         paddingHorizontal: 30,
-        borderRadius: 9999,
+        borderRadius: Radii.pill,
         width: '100%',
         maxWidth: 300,
         alignItems: 'center',
@@ -733,70 +803,60 @@ const styles = StyleSheet.create({
     assignButtonText: {
         color: '#ffffff',
         fontSize: 16,
-        fontWeight: '700',
-        textTransform: 'uppercase',
+        fontWeight: '600',
     },
     clientsSection: {
         paddingHorizontal: 20,
-        marginTop: 20,
+        marginTop: 10,
     },
     clientsTitle: {
         fontSize: 20,
-        fontWeight: '800',
-        color: '#ffffff',
+        fontWeight: '700',
         marginBottom: 15,
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+        borderBottomWidth: StyleSheet.hairlineWidth,
         paddingBottom: 10,
     },
-    clientCard: {
-        backgroundColor: '#121212',
-        padding: 15,
-        borderRadius: 16,
-        marginBottom: 10,
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.05)',
+    groupedList: {
+        borderRadius: Radii.lg,
+        borderWidth: StyleSheet.hairlineWidth,
+        overflow: 'hidden',
+    },
+    clientRow: {
+        padding: 16,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
     },
     clientName: {
-        fontSize: 16,
-        fontWeight: 'bold',
-        color: '#ffffff',
+        fontSize: 17,
+        fontWeight: '600',
     },
     clientEmail: {
-        fontSize: 14,
-        color: '#a3a3a3',
+        fontSize: 15,
         marginTop: 4,
     },
     noClientsText: {
-        color: '#a3a3a3',
         fontSize: 15,
         textAlign: 'center',
         marginTop: 20,
-        fontStyle: 'italic',
     },
     bookClientButton: {
-        backgroundColor: '#FF5A00',
         paddingVertical: 8,
         paddingHorizontal: 16,
-        borderRadius: 8,
+        borderRadius: Radii.pill,
     },
     bookClientButtonText: {
         color: '#ffffff',
         fontSize: 14,
-        fontWeight: 'bold',
+        fontWeight: '600',
     },
     backButton: {
         paddingVertical: 6,
         paddingHorizontal: 12,
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-        borderRadius: 8,
+        borderRadius: Radii.sm,
     },
     backButtonText: {
-        color: '#ffffff',
         fontSize: 14,
-        fontWeight: 'bold',
+        fontWeight: '600',
     }
 });

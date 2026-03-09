@@ -5,26 +5,38 @@
 
 import { Platform } from 'react-native';
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+const tintColorLight = '#F26122'; // Thrive Orange
+const tintColorDark = '#F26122';
 
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
+    text: '#000000',
+    background: '#F2F2F7', // iOS Grouped Background Light
+    card: '#FFFFFF',       // Card Background Light
     tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
+    icon: '#8E8E93',       // iOS Secondary Text/Icon Light
+    tabIconDefault: '#8E8E93',
     tabIconSelected: tintColorLight,
+    border: '#E5E5EA',     // iOS Separator Light
   },
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
+    text: '#FFFFFF',
+    background: '#000000', // iOS Pure Black Background Dark
+    card: '#1C1C1E',       // Card Background/Grouped Background Dark
     tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
+    icon: '#8E8E93',       // iOS Secondary Text/Icon Dark
+    tabIconDefault: '#8E8E93',
     tabIconSelected: tintColorDark,
+    border: '#38383A',     // iOS Separator Dark
   },
+};
+
+export const Radii = {
+  sm: 8,
+  md: 12, // Standard Apple Card Radius
+  lg: 16,
+  xl: 24,
+  pill: 9999,
 };
 
 export const Fonts = Platform.select({

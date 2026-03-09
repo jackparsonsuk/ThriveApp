@@ -5,6 +5,8 @@ import Head from 'expo-router/head';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { setDoc, doc } from 'firebase/firestore';
 import { auth, db } from '../../config/firebaseConfig';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors, Radii } from '@/constants/theme';
 
 export default function SignUpScreen() {
     const [name, setName] = useState('');
@@ -12,6 +14,8 @@ export default function SignUpScreen() {
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const router = useRouter();
+    const colorScheme = useColorScheme() ?? 'light';
+    const theme = Colors[colorScheme];
 
     const handleSignUp = async () => {
         if (!name || !email || !password) {
@@ -41,27 +45,31 @@ export default function SignUpScreen() {
     };
 
     return (
-        <ScrollView contentContainerStyle={styles.container}>
+        <ScrollView contentContainerStyle={[styles.container, { backgroundColor: theme.background }]}>
             <Head>
                 <title>Create Account | Thrive Collective</title>
             </Head>
-            <Image source={require('../../assets/images/TC_Monogram_White.png')} style={styles.logo} />
-            <Text style={styles.title}>Create Account</Text>
+            <Image
+                source={require('../../assets/images/TC_Monogram_White.png')}
+                style={[styles.logo, colorScheme === 'light' && { tintColor: '#000' }]}
+                resizeMode="contain"
+            />
+            <Text style={[styles.title, { color: theme.text }]}>Create Account</Text>
 
             <View style={styles.form}>
                 <TextInput
-                    style={styles.input}
+                    style={[styles.input, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
                     placeholder="Full Name"
-                    placeholderTextColor="#737373"
+                    placeholderTextColor={theme.icon}
                     value={name}
                     onChangeText={setName}
                     autoCapitalize="words"
                 />
 
                 <TextInput
-                    style={styles.input}
+                    style={[styles.input, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
                     placeholder="Email"
-                    placeholderTextColor="#737373"
+                    placeholderTextColor={theme.icon}
                     value={email}
                     onChangeText={setEmail}
                     autoCapitalize="none"
@@ -69,16 +77,16 @@ export default function SignUpScreen() {
                 />
 
                 <TextInput
-                    style={styles.input}
+                    style={[styles.input, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
                     placeholder="Password"
-                    placeholderTextColor="#737373"
+                    placeholderTextColor={theme.icon}
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
                 />
 
                 <TouchableOpacity
-                    style={styles.button}
+                    style={[styles.button, { backgroundColor: theme.tint }]}
                     onPress={handleSignUp}
                     disabled={loading}
                 >
@@ -93,7 +101,7 @@ export default function SignUpScreen() {
                     style={styles.linkButton}
                     onPress={() => router.back()}
                 >
-                    <Text style={styles.linkText}>Already have an account? Log In</Text>
+                    <Text style={[styles.linkText, { color: theme.icon }]}>Already have an account? Log In</Text>
                 </TouchableOpacity>
             </View>
         </ScrollView>
@@ -105,7 +113,6 @@ const styles = StyleSheet.create({
         flexGrow: 1,
         justifyContent: 'center',
         padding: 20,
-        backgroundColor: '#0a0a0a',
     },
     logo: {
         width: 80,
@@ -114,43 +121,37 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     title: {
-        fontSize: 28,
-        fontWeight: '800', // matches website typography
+        fontSize: 34,
+        fontWeight: '700', // matches website typography
         marginBottom: 40,
         textAlign: 'center',
-        color: '#ffffff',
+        letterSpacing: -0.5,
     },
     form: {
         gap: 15,
     },
     input: {
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-        backgroundColor: '#121212',
-        padding: 15,
-        borderRadius: 16,
+        borderWidth: StyleSheet.hairlineWidth,
+        padding: 16,
+        borderRadius: Radii.md,
         fontSize: 16,
-        color: '#ffffff',
     },
     button: {
-        backgroundColor: '#FF5A00', // Premium Thrive Orange
-        padding: 15,
-        borderRadius: 9999,
+        padding: 16,
+        borderRadius: Radii.pill,
         alignItems: 'center',
         marginTop: 10,
     },
     buttonText: {
         color: '#ffffff',
         fontSize: 16,
-        fontWeight: '700',
-        textTransform: 'uppercase',
+        fontWeight: '600',
     },
     linkButton: {
         marginTop: 15,
         alignItems: 'center',
     },
     linkText: {
-        color: '#a3a3a3',
         fontSize: 14,
         fontWeight: '500',
     },

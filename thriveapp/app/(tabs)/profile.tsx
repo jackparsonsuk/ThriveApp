@@ -7,11 +7,15 @@ import { useAuth } from '../../context/auth';
 import { getUserProfile, UserProfile } from '../../services/bookingService';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors, Radii } from '@/constants/theme';
 
 export default function ProfileScreen() {
     const { user } = useAuth();
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
+    const colorScheme = useColorScheme() ?? 'light';
+    const theme = Colors[colorScheme];
 
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState<{
@@ -51,33 +55,36 @@ export default function ProfileScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
-                <Text style={styles.title}>Profile</Text>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+            <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
+                <Text style={[styles.title, { color: theme.text }]}>Profile</Text>
             </View>
 
             <ScrollView contentContainerStyle={styles.content}>
                 {loading ? (
-                    <ActivityIndicator size="large" color="#F26122" />
+                    <ActivityIndicator size="large" color={theme.tint} />
                 ) : (
                     <>
-                        <View style={styles.infoCard}>
+                        <View style={[styles.infoCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                             <View style={styles.avatarCircle}>
                                 <Ionicons name="person" size={40} color="#fff" />
                             </View>
-                            <Text style={styles.nameText}>{profile?.name}</Text>
-                            <Text style={styles.emailText}>{profile?.email}</Text>
-                            <View style={styles.badge}>
-                                <Text style={styles.badgeText}>{profile?.role?.toUpperCase()}</Text>
+                            <Text style={[styles.nameText, { color: theme.text }]}>{profile?.name}</Text>
+                            <Text style={[styles.emailText, { color: theme.icon }]}>{profile?.email}</Text>
+                            <View style={[styles.badge, { backgroundColor: theme.border }]}>
+                                <Text style={[styles.badgeText, { color: theme.text }]}>{profile?.role?.toUpperCase()}</Text>
                             </View>
                         </View>
 
-                        <View style={{ flex: 1, justifyContent: 'flex-end', marginTop: 40 }}>
-                            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-                                <Ionicons name="log-out-outline" size={20} color="#f44336" style={{ marginRight: 10 }} />
+                        <View style={styles.actionSection}>
+                            <TouchableOpacity style={[styles.logoutButton, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]} onPress={handleLogout}>
+                                <Ionicons name="log-out-outline" size={20} color="#ef4444" style={{ marginRight: 8 }} />
                                 <Text style={styles.logoutButtonText}>Log Out</Text>
                             </TouchableOpacity>
-                            <Text style={styles.versionText}>Version 1.3.0</Text>
+                        </View>
+
+                        <View style={{ flex: 1, justifyContent: 'flex-end', marginTop: 40 }}>
+                            <Text style={[styles.versionText, { color: theme.icon }]}>Version 1.3.0</Text>
                         </View>
                     </>
                 )}
@@ -97,18 +104,17 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#0a0a0a', // Thrive Darkest Charcoal
     },
     header: {
-        padding: 20,
-        backgroundColor: '#121212', // Thrive Dark Charcoal
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255, 90, 0, 0.1)',
+        paddingHorizontal: 20,
+        paddingTop: 10,
+        paddingBottom: 20,
+        borderBottomWidth: StyleSheet.hairlineWidth,
     },
     title: {
-        fontSize: 24,
-        fontWeight: '800',
-        color: '#ffffff',
+        fontSize: 34,
+        fontWeight: '700',
+        letterSpacing: -0.5,
     },
     content: {
         flexGrow: 1,
@@ -117,64 +123,65 @@ const styles = StyleSheet.create({
     infoCard: {
         alignItems: 'center',
         padding: 30,
-        backgroundColor: '#121212',
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderRadius: Radii.xl,
+        borderWidth: StyleSheet.hairlineWidth,
         marginBottom: 30,
+        // Optional subtle shadow
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+        elevation: 2,
     },
     avatarCircle: {
         width: 80,
         height: 80,
-        borderRadius: 40,
-        backgroundColor: '#FF5A00', // Thrive Orange
+        borderRadius: Radii.pill,
+        backgroundColor: '#F26122', // True Thrive Orange
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 15,
     },
     nameText: {
-        fontSize: 22,
-        fontWeight: '800',
-        color: '#ffffff',
-        marginBottom: 5,
+        fontSize: 24,
+        fontWeight: '700',
+        marginBottom: 6,
+        letterSpacing: -0.5,
     },
     emailText: {
         fontSize: 16,
-        color: '#a3a3a3',
-        marginBottom: 15,
+        marginBottom: 16,
     },
     badge: {
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-        paddingHorizontal: 15,
-        paddingVertical: 5,
-        borderRadius: 20,
+        paddingHorizontal: 16,
+        paddingVertical: 6,
+        borderRadius: Radii.pill,
     },
     badgeText: {
-        color: '#ffffff',
-        fontSize: 12,
-        fontWeight: 'bold',
+        fontSize: 13,
+        fontWeight: '600',
         textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    actionSection: {
+        marginTop: 10,
     },
     logoutButton: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 15,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: 'rgba(239, 68, 68, 0.5)',
-        backgroundColor: 'transparent',
+        padding: 16,
+        borderRadius: Radii.pill,
     },
     logoutButtonText: {
         color: '#ef4444',
-        fontWeight: '700',
+        fontWeight: '600',
         fontSize: 16,
     },
     versionText: {
         textAlign: 'center',
-        color: '#a3a3a3',
-        fontSize: 12,
+        fontSize: 13,
         marginTop: 20,
+        marginBottom: 10,
         fontWeight: '500',
     },
 });

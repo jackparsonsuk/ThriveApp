@@ -2,14 +2,16 @@ import { Tabs } from 'expo-router';
 import Head from 'expo-router/head';
 import React, { useState, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import { Platform } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/context/auth';
 import { getUserProfile, UserProfile } from '@/services/bookingService';
+import { Colors } from '@/constants/theme';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const colorScheme = useColorScheme() ?? 'light';
   const { user } = useAuth();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
@@ -28,13 +30,22 @@ export default function TabLayout() {
       </Head>
       <Tabs
         screenOptions={{
-          tabBarActiveTintColor: '#F26122', // Thrive Orange
+          tabBarActiveTintColor: Colors[colorScheme].tint,
+          tabBarInactiveTintColor: Colors[colorScheme].tabIconDefault,
           headerShown: false,
           tabBarButton: HapticTab,
           title: 'Thrive Collective',
-          tabBarStyle: {
-            backgroundColor: colorScheme === 'dark' ? '#333' : '#fff', // Charcoal or white
-          },
+          tabBarStyle: Platform.select({
+            ios: {
+              // Use absolute position and transparent background on iOS for native blur effect
+              position: 'absolute',
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+            },
+            default: {
+              backgroundColor: Colors[colorScheme].card,
+              borderTopColor: Colors[colorScheme].border,
+            },
+          }),
         }}>
         <Tabs.Screen
           name="index"

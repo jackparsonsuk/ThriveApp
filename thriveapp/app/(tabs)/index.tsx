@@ -7,10 +7,14 @@ import { getUserBookings, getPTBookingsForInstructor, cancelBooking, Booking, ge
 import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors, Radii } from '@/constants/theme';
 
 export default function DashboardScreen() {
   const { user } = useAuth();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
 
   type ExtendedBooking = Booking & { clientName?: string };
   const [bookings, setBookings] = useState<ExtendedBooking[]>([]);
@@ -124,55 +128,65 @@ export default function DashboardScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.tint} />}
       >
         <View style={styles.header}>
-          <Image source={require('../../assets/images/TC_Monogram_White.png')} style={styles.logo} />
-          <Text style={styles.greeting}>Hello, {userProfile?.name || 'there'}</Text>
-          <Text style={styles.subtitle}>Welcome to Thrive Collective</Text>
+          <Image
+            source={require('../../assets/images/TC_Monogram_White.png')}
+            style={[styles.logo, colorScheme === 'light' && { tintColor: '#000' }]}
+            resizeMode="contain"
+          />
+          <Text style={[styles.greeting, { color: theme.text }]}>Hello, {userProfile?.name?.split(' ')[0] || 'there'}</Text>
+          <Text style={[styles.subtitle, { color: theme.icon }]}>Welcome to Thrive Collective</Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Upcoming Bookings</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Upcoming Bookings</Text>
 
           {loading ? (
-            <ActivityIndicator size="large" color="#FF5A00" style={{ marginTop: 20 }} />
+            <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 20 }} />
           ) : bookings.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="calendar-outline" size={48} color="#a3a3a3" />
-              <Text style={styles.emptyText}>You have no upcoming bookings.</Text>
+            <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Ionicons name="calendar-outline" size={48} color={theme.icon} />
+              <Text style={[styles.emptyText, { color: theme.icon }]}>You have no upcoming bookings.</Text>
             </View>
           ) : (
-            <View style={styles.list}>
-              {bookings.map((booking) => (
-                <View key={booking.id} style={styles.card}>
-                  <View style={styles.cardHeader}>
-                    <Text style={styles.typeText}>{getTypeLabel(booking)}</Text>
-                    <TouchableOpacity
-                      style={styles.cancelButton}
-                      onPress={() => handleCancel(booking)}
-                      disabled={!!cancellingId}
-                    >
-                      {cancellingId === booking.id ? (
-                        <ActivityIndicator size="small" color="#f44336" />
-                      ) : (
-                        <Text style={styles.cancelButtonText}>Cancel</Text>
-                      )}
-                    </TouchableOpacity>
+            <View style={[styles.list, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              {bookings.map((booking, index) => {
+                const isLast = index === bookings.length - 1;
+                return (
+                  <View key={booking.id}>
+                    <View style={styles.card}>
+                      <View style={styles.cardHeader}>
+                        <View style={{ flex: 1, paddingRight: 10 }}>
+                          <Text style={[styles.typeText, { color: theme.text }]} numberOfLines={1}>{getTypeLabel(booking)}</Text>
+                          <View style={styles.detailsRow}>
+                            <Ionicons name="time-outline" size={15} color={theme.icon} style={{ marginRight: 6 }} />
+                            <Text style={[styles.detailsText, { color: theme.icon }]}>
+                              {format(booking.startTime, 'EEE, MMM d')} • {format(booking.startTime, 'HH:mm')} - {format(booking.endTime, 'HH:mm')}
+                            </Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.cancelButton, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}
+                          onPress={() => handleCancel(booking)}
+                          disabled={!!cancellingId}
+                        >
+                          {cancellingId === booking.id ? (
+                            <ActivityIndicator size="small" color="#ef4444" />
+                          ) : (
+                            <Text style={styles.cancelButtonText}>Cancel</Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    {!isLast && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
                   </View>
-
-                  <View style={styles.detailsRow}>
-                    <Ionicons name="time-outline" size={16} color="#666" style={{ marginRight: 5 }} />
-                    <Text style={styles.detailsText}>
-                      {format(booking.startTime, 'EEE, MMM d')} • {format(booking.startTime, 'HH:mm')} - {format(booking.endTime, 'HH:mm')}
-                    </Text>
-                  </View>
-
-                </View>
-              ))}
+                );
+              })}
             </View>
           )}
         </View>
@@ -196,7 +210,6 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
   },
   content: {
     padding: 20,
@@ -204,91 +217,87 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: 30,
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: 10,
   },
   logo: {
-    width: 60,
-    height: 60,
-    marginBottom: 15,
+    width: 48,
+    height: 48,
+    marginBottom: 16,
   },
   greeting: {
-    fontSize: 28,
-    fontWeight: '800', // Matches website
-    color: '#ffffff',
+    fontSize: 34,
+    fontWeight: '700',
+    letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 16,
-    color: '#a3a3a3',
-    marginTop: 5,
+    marginTop: 4,
   },
   section: {
     marginTop: 10,
     flex: 1,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: 22,
+    fontWeight: '700',
     marginBottom: 15,
-    color: '#ffffff',
+    letterSpacing: -0.5,
   },
   emptyState: {
-    padding: 30,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 16,
+    padding: 40,
+    borderRadius: Radii.xl,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderStyle: 'dashed',
   },
   emptyText: {
-    color: '#a3a3a3',
-    marginTop: 10,
+    marginTop: 12,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '500',
+    textAlign: 'center',
   },
   list: {
-    gap: 15,
+    borderRadius: Radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
   },
   card: {
-    backgroundColor: '#121212',
-    borderRadius: 16, // --radius-md
-    padding: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    padding: 16,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15, // slightly more breathing room
   },
   typeText: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#ffffff',
+    fontSize: 17,
+    fontWeight: '600',
+    marginBottom: 4,
+    letterSpacing: -0.4,
   },
   cancelButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 9999,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.5)',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: Radii.pill,
   },
   cancelButtonText: {
-    color: '#ef4444', // Red 500 equivalent
-    fontWeight: '700',
-    fontSize: 12,
-    textTransform: 'uppercase',
+    color: '#ef4444',
+    fontWeight: '600',
+    fontSize: 13,
   },
   detailsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 2,
   },
   detailsText: {
-    fontSize: 15,
-    color: '#a3a3a3',
-    fontWeight: '500', // matches secondary text weight
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 16,
   }
 });

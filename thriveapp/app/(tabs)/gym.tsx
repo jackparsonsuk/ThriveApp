@@ -6,6 +6,9 @@ import { getGymBookingsForDate, getPTBookingsForDate, getUserBookingsForDate, ch
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
+import { Ionicons } from '@expo/vector-icons';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors, Radii } from '@/constants/theme';
 
 const GYM_OPEN_HOUR = 7;
 const GYM_CLOSE_HOUR = 20;
@@ -13,6 +16,9 @@ const GYM_CLOSE_HOUR = 20;
 export default function GymBookingScreen() {
     const { user } = useAuth();
     const router = useRouter();
+    const colorScheme = useColorScheme() ?? 'light';
+    const theme = Colors[colorScheme];
+
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
     const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean; attendees: number; conflictType?: string }[]>([]);
     const [loading, setLoading] = useState(false);
@@ -171,26 +177,36 @@ export default function GymBookingScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
-                <Text style={styles.title}>Book Gym Session</Text>
-                <Text style={styles.subtitle}>Select a date and time</Text>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+            <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
+                <Text style={[styles.title, { color: theme.text }]}>Gym Session</Text>
+                <Text style={styles.subtitle}>Select a date and time to train</Text>
             </View>
 
-            <View style={styles.dateSelectorContainer}>
+            <View style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateSelector}>
                     {dates.map((date, index) => {
                         const isSelected = selectedDate.getTime() === date.getTime();
                         return (
                             <TouchableOpacity
                                 key={index}
-                                style={[styles.dateCard, isSelected && styles.dateCardSelected]}
+                                style={[
+                                    styles.dateCard,
+                                    { backgroundColor: isSelected ? theme.tint : 'transparent' },
+                                    isSelected && styles.dateCardSelected,
+                                ]}
                                 onPress={() => setSelectedDate(date)}
                             >
-                                <Text style={[styles.dayText, isSelected && styles.textSelected]}>
+                                <Text style={[
+                                    styles.dayText,
+                                    { color: isSelected ? '#fff' : theme.icon }
+                                ]}>
                                     {format(date, 'EEE')}
                                 </Text>
-                                <Text style={[styles.dateText, isSelected && styles.textSelected]}>
+                                <Text style={[
+                                    styles.dateText,
+                                    { color: isSelected ? '#fff' : theme.text }
+                                ]}>
                                     {format(date, 'd')}
                                 </Text>
                             </TouchableOpacity>
@@ -201,49 +217,62 @@ export default function GymBookingScreen() {
 
             <ScrollView contentContainerStyle={styles.slotsContainer}>
                 {loading ? (
-                    <ActivityIndicator size="large" color="#F26122" style={{ marginTop: 50 }} />
+                    <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
                 ) : availableSlots.length === 0 ? (
-                    <Text style={styles.noSlotsText}>No more slots available for this day.</Text>
+                    <Text style={[styles.noSlotsText, { color: theme.icon }]}>No more slots available for this day.</Text>
                 ) : (
-                    <View style={styles.slotsGrid}>
-                        {availableSlots.map((slot, index) => (
-                            <TouchableOpacity
-                                key={index}
-                                style={[
-                                    styles.slotCard,
-                                    !slot.available && styles.slotCardUnavailable
-                                ]}
-                                disabled={!slot.available || bookingLoading}
-                                onPress={() => handleBookSlot(slot)}
-                            >
-                                <Text style={[
-                                    styles.slotTime,
-                                    !slot.available && styles.slotTextUnavailable
-                                ]}>
-                                    {format(slot.time, 'HH:mm')}
-                                </Text>
-                                {slot.available && (
-                                    <View style={{ alignItems: 'center' }}>
-                                        <Text style={styles.slotDuration}>
-                                            {slot.isNextAvailable ? '1 Hour' : '15 Mins'}
-                                        </Text>
-                                        <Text style={styles.slotAttendees}>
-                                            {slot.attendees} / 4 Booked
-                                        </Text>
-                                    </View>
-                                )}
-                                {!slot.available && (
-                                    <View style={{ alignItems: 'center' }}>
-                                        <Text style={styles.slotFullText}>{slot.conflictType || 'Full'}</Text>
-                                        {!slot.conflictType || slot.conflictType === 'Full' ? (
-                                            <Text style={styles.slotAttendees}>
-                                                {slot.attendees} / 4 Booked
+                    <View style={[styles.slotsList, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                        {availableSlots.map((slot, index) => {
+                            const isLast = index === availableSlots.length - 1;
+                            return (
+                                <View key={index}>
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.slotRow,
+                                            !slot.available && styles.slotRowUnavailable
+                                        ]}
+                                        disabled={!slot.available || bookingLoading}
+                                        onPress={() => handleBookSlot(slot)}
+                                    >
+                                        <View style={styles.slotTimeContainer}>
+                                            <Text style={[
+                                                styles.slotTime,
+                                                { color: slot.available ? theme.text : theme.icon },
+                                                !slot.available && styles.slotTextUnavailable
+                                            ]}>
+                                                {format(slot.time, 'HH:mm')}
                                             </Text>
-                                        ) : null}
-                                    </View>
-                                )}
-                            </TouchableOpacity>
-                        ))}
+                                        </View>
+
+                                        <View style={styles.slotDetailsContainer}>
+                                            {slot.available ? (
+                                                <>
+                                                    <Text style={[styles.slotDuration, { color: theme.tint }]}>
+                                                        {slot.isNextAvailable ? '1 Hour' : '15 Mins'}
+                                                    </Text>
+                                                    <Text style={[styles.slotAttendees, { color: theme.icon }]}>
+                                                        {slot.attendees} / 4 Booked
+                                                    </Text>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Text style={[styles.slotFullText, { color: slot.conflictType === 'Full' ? '#FF3B30' : theme.icon }]}>
+                                                        {slot.conflictType || 'Full'}
+                                                    </Text>
+                                                </>
+                                            )}
+                                        </View>
+
+                                        <View style={styles.slotChevron}>
+                                            {slot.available && (
+                                                <Ionicons name="chevron-forward" size={20} color={theme.icon} opacity={0.5} />
+                                            )}
+                                        </View>
+                                    </TouchableOpacity>
+                                    {!isLast && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
+                                </View>
+                            );
+                        })}
                     </View>
                 )}
             </ScrollView>
@@ -267,115 +296,115 @@ export default function GymBookingScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#0a0a0a', // Thrive Darkest Charcoal
     },
     header: {
-        padding: 20,
-        backgroundColor: '#121212', // Thrive Dark Charcoal
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255, 90, 0, 0.1)', // Subtle orange border
+        paddingHorizontal: 20,
+        paddingTop: 10,
+        paddingBottom: 20,
+        borderBottomWidth: StyleSheet.hairlineWidth,
     },
     title: {
-        fontSize: 24,
-        fontWeight: '800', // Match website headers
-        color: '#ffffff',
+        fontSize: 34,
+        fontWeight: '700', // iOS large title weight
+        letterSpacing: -0.5,
     },
     subtitle: {
-        fontSize: 16,
-        color: '#a3a3a3', // text-secondary from website
-        marginTop: 5,
+        fontSize: 15,
+        color: '#8E8E93',
+        marginTop: 4,
     },
     dateSelectorContainer: {
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255, 255, 255, 0.05)',
-        backgroundColor: '#0a0a0a',
+        borderBottomWidth: StyleSheet.hairlineWidth,
     },
     dateSelector: {
-        padding: 15,
-        gap: 10,
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        gap: 8,
     },
     dateCard: {
         paddingVertical: 10,
-        paddingHorizontal: 15,
-        borderRadius: 16, // --radius-md
-        backgroundColor: 'rgba(30, 20, 15, 0.4)', // glass-panel background
-        borderWidth: 1,
-        borderColor: 'rgba(255, 90, 0, 0.1)',
+        paddingHorizontal: 8,
+        borderRadius: Radii.pill,
         alignItems: 'center',
-        minWidth: 60,
+        minWidth: 54,
     },
     dateCardSelected: {
-        backgroundColor: '#FF5A00', // True Thrive Orange
-        borderColor: '#FF5A00',
+        // Shadow for the selected pill
+        shadowColor: '#F26122',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 4,
     },
     dayText: {
-        fontSize: 12,
-        color: '#a3a3a3',
+        fontSize: 11,
         textTransform: 'uppercase',
         fontWeight: '600',
+        marginBottom: 4,
     },
     dateText: {
-        fontSize: 18,
-        fontWeight: '800',
-        color: '#ffffff',
-        marginTop: 2,
-    },
-    textSelected: {
-        color: '#ffffff',
+        fontSize: 20,
+        fontWeight: '500',
     },
     slotsContainer: {
-        padding: 20,
+        padding: 16,
+        paddingBottom: 40,
     },
-    slotsGrid: {
+    slotsList: {
+        borderRadius: Radii.lg,
+        borderWidth: StyleSheet.hairlineWidth,
+        overflow: 'hidden',
+    },
+    slotRow: {
         flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 10,
-        justifyContent: 'space-between',
-    },
-    slotCard: {
-        width: '31%', // 3 columns
-        backgroundColor: '#121212',
-        padding: 15,
-        borderRadius: 16,
         alignItems: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        paddingVertical: 14,
+        paddingHorizontal: 16,
     },
-    slotCardUnavailable: {
-        backgroundColor: 'rgba(18, 18, 18, 0.5)',
-        borderColor: 'rgba(255, 255, 255, 0.02)',
-        opacity: 0.5,
+    slotRowUnavailable: {
+        opacity: 0.6,
+        backgroundColor: 'rgba(0,0,0,0.02)', // Subtle highlight for disabled inside light card
+    },
+    slotTimeContainer: {
+        width: 70,
     },
     slotTime: {
-        fontSize: 16,
-        fontWeight: '700',
-        color: '#ffffff',
+        fontSize: 17,
+        fontWeight: '600',
+        letterSpacing: -0.4,
     },
     slotTextUnavailable: {
-        color: '#737373', // text-muted
         textDecorationLine: 'line-through',
     },
-    slotDuration: {
-        fontSize: 12,
-        color: '#FF5A00',
-        marginTop: 4,
-        fontWeight: 'bold',
+    slotDetailsContainer: {
+        flex: 1,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingRight: 10,
     },
-    slotFullText: {
-        fontSize: 12,
-        color: '#ef4444', // Red for full
-        marginTop: 4,
+    slotDuration: {
+        fontSize: 15,
         fontWeight: '600',
     },
     slotAttendees: {
-        fontSize: 12,
-        color: '#737373', // text-muted
+        fontSize: 14,
+        fontWeight: '400',
+    },
+    slotFullText: {
+        fontSize: 15,
         fontWeight: '500',
-        marginTop: 4,
+    },
+    slotChevron: {
+        width: 20,
+        alignItems: 'flex-end',
+    },
+    separator: {
+        height: StyleSheet.hairlineWidth,
+        marginLeft: 16, // iOS style inset separator
     },
     noSlotsText: {
         textAlign: 'center',
-        color: '#a3a3a3',
         fontSize: 16,
         marginTop: 50,
     }
