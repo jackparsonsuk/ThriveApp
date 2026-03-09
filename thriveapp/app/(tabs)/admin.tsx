@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
 
 // Operating hours
-const OPEN_HOUR = 8;
+const OPEN_HOUR = 7;
 const CLOSE_HOUR = 20;
 
 export default function AdminScheduleScreen() {
@@ -161,10 +161,18 @@ export default function AdminScheduleScreen() {
                                             <Text style={styles.blockBtnText}>Block Slot</Text>
                                         </TouchableOpacity>
                                     ) : (
-                                        <View style={styles.blockedBadge}>
-                                            <Ionicons name="warning" size={14} color="#fff" />
-                                            <Text style={styles.blockedText}>BLOCKED</Text>
-                                        </View>
+                                        <TouchableOpacity
+                                            style={styles.blockedBadge}
+                                            onPress={() => {
+                                                const blockBooking = block.bookings.find(b => b.type === 'block');
+                                                if (blockBooking && blockBooking.id) {
+                                                    handleCancelBooking(blockBooking.id, 'this blocked slot');
+                                                }
+                                            }}
+                                        >
+                                            <Ionicons name="lock-open" size={14} color="#fff" />
+                                            <Text style={styles.blockedText}>UNBLOCK</Text>
+                                        </TouchableOpacity>
                                     )}
                                 </View>
 

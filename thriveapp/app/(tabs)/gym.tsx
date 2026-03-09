@@ -7,7 +7,7 @@ import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
 
-const GYM_OPEN_HOUR = 8;
+const GYM_OPEN_HOUR = 7;
 const GYM_CLOSE_HOUR = 20;
 
 export default function GymBookingScreen() {

@@ -8,7 +8,7 @@ import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
 
 // Assuming PT operating hours
-const PT_OPEN_HOUR = 8;
+const PT_OPEN_HOUR = 7;
 const PT_CLOSE_HOUR = 20;
 
 const SectionDivider = () => (
