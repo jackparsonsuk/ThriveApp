@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import Head from 'expo-router/head';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
+import { Analytics } from '@vercel/analytics/react';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider } from '../context/auth';
@@ -52,6 +53,7 @@ export default function RootLayout() {
           <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Settings' }} />
         </Stack>
         <StatusBar style="auto" />
+        <Analytics />
       </AuthProvider>
     </ThemeProvider>
   );
