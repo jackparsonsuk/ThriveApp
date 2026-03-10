@@ -199,25 +199,44 @@ export default function AdminScreen() {
                                     {block.bookings.length === 0 && !hasBlock && (
                                         <Text style={[styles.emptyText, { color: theme.icon }]}>No one booked.</Text>
                                     )}
-                                    {block.bookings.map(b => {
-                                        if (b.type === 'block') return null;
-                                        const userName = b.user?.name || b.user?.email || 'Unknown Client';
-                                        return (
-                                            <View key={b.id} style={[styles.attendeeCard, { borderBottomColor: theme.border }]}>
-                                                <View style={styles.attendeeInfo}>
-                                                    <Text style={[styles.attendeeName, { color: theme.text }]}>{userName}</Text>
-                                                    <View style={styles.badgeContainer}>
-                                                        <Text style={styles.typeBadge}>{b.type.toUpperCase()}</Text>
-                                                        {b.type === 'pt' && <Text style={[styles.ptBadge, { backgroundColor: theme.tint }]}>PT Session</Text>}
-                                                        {b.type === 'group' && <Text style={styles.groupBadge}>Group</Text>}
+                                    {(() => {
+                                        const groupBlock = block.bookings.find(b => b.type === 'block' && b.reason?.includes('Group Session'));
+                                        if (groupBlock) {
+                                            const groupName = groupBlock.reason?.replace('Group Session: ', '') || 'Group Session';
+                                            return (
+                                                <View style={[styles.attendeeCard, { borderBottomColor: theme.border }]}>
+                                                    <View style={styles.attendeeInfo}>
+                                                        <Text style={[styles.attendeeName, { color: theme.text, fontStyle: 'italic' }]}>
+                                                            (Blocked, {groupName})
+                                                        </Text>
                                                     </View>
+                                                    <TouchableOpacity onPress={() => handleCancelBooking(groupBlock.id!, groupName)}>
+                                                        <Ionicons name="close-circle" size={24} color={theme.icon} />
+                                                    </TouchableOpacity>
                                                 </View>
-                                                <TouchableOpacity onPress={() => handleCancelBooking(b.id!, userName)}>
-                                                    <Ionicons name="close-circle" size={24} color={theme.icon} />
-                                                </TouchableOpacity>
-                                            </View>
-                                        );
-                                    })}
+                                            );
+                                        }
+
+                                        return block.bookings.map(b => {
+                                            if (b.type === 'block') return null;
+                                            const userName = b.user?.name || b.user?.email || 'Unknown Client';
+                                            return (
+                                                <View key={b.id} style={[styles.attendeeCard, { borderBottomColor: theme.border }]}>
+                                                    <View style={styles.attendeeInfo}>
+                                                        <Text style={[styles.attendeeName, { color: theme.text }]}>{userName}</Text>
+                                                        <View style={styles.badgeContainer}>
+                                                            <Text style={styles.typeBadge}>{b.type.toUpperCase()}</Text>
+                                                            {b.type === 'pt' && <Text style={[styles.ptBadge, { backgroundColor: theme.tint }]}>PT Session</Text>}
+                                                            {b.type === 'group' && <Text style={styles.groupBadge}>Group</Text>}
+                                                        </View>
+                                                    </View>
+                                                    <TouchableOpacity onPress={() => handleCancelBooking(b.id!, userName)}>
+                                                        <Ionicons name="close-circle" size={24} color={theme.icon} />
+                                                    </TouchableOpacity>
+                                                </View>
+                                            );
+                                        });
+                                    })()}
                                 </View>
                             </View>
                         );
