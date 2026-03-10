@@ -40,15 +40,22 @@ export default function CustomAlert({
                     <Text style={styles.title}>{title}</Text>
                     <Text style={styles.message}>{message}</Text>
 
-                    <View style={styles.buttonContainer}>
+                    <View style={styles.actionsWrapper}>
                         {onConfirm ? (
-                            <>
-                                <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={onClose}>
-                                    <Text style={styles.cancelText}>{cancelText}</Text>
-                                </TouchableOpacity>
-                                {onSecondaryConfirm && secondaryConfirmText && (
+                            onSecondaryConfirm && secondaryConfirmText ? (
+                                // 3 Options - Stacked Vertically
+                                <View style={styles.buttonContainerVertical}>
                                     <TouchableOpacity
-                                        style={[styles.button, isDestructive ? styles.destructiveButton : styles.confirmButton]}
+                                        style={[styles.button, styles.buttonVertical, isDestructive ? styles.destructiveButton : styles.confirmButton]}
+                                        onPress={() => {
+                                            onClose();
+                                            onConfirm();
+                                        }}
+                                    >
+                                        <Text style={styles.confirmText}>{confirmText}</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={[styles.button, styles.buttonVertical, isDestructive ? styles.destructiveButton : styles.confirmButton]}
                                         onPress={() => {
                                             onClose();
                                             onSecondaryConfirm();
@@ -56,21 +63,34 @@ export default function CustomAlert({
                                     >
                                         <Text style={styles.confirmText}>{secondaryConfirmText}</Text>
                                     </TouchableOpacity>
-                                )}
-                                <TouchableOpacity
-                                    style={[styles.button, isDestructive ? styles.destructiveButton : styles.confirmButton]}
-                                    onPress={() => {
-                                        onClose();
-                                        onConfirm();
-                                    }}
-                                >
-                                    <Text style={styles.confirmText}>{confirmText}</Text>
-                                </TouchableOpacity>
-                            </>
+                                    <TouchableOpacity style={[styles.button, styles.buttonVertical, styles.cancelButton]} onPress={onClose}>
+                                        <Text style={styles.cancelText}>{cancelText}</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            ) : (
+                                // 2 Options - Side by Side
+                                <View style={styles.buttonContainerHorizontal}>
+                                    <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={onClose}>
+                                        <Text style={styles.cancelText}>{cancelText}</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={[styles.button, isDestructive ? styles.destructiveButton : styles.confirmButton]}
+                                        onPress={() => {
+                                            onClose();
+                                            onConfirm();
+                                        }}
+                                    >
+                                        <Text style={styles.confirmText}>{confirmText}</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )
                         ) : (
-                            <TouchableOpacity style={[styles.button, styles.confirmButton]} onPress={onClose}>
-                                <Text style={styles.confirmText}>OK</Text>
-                            </TouchableOpacity>
+                            // 1 Option
+                            <View style={styles.buttonContainerHorizontal}>
+                                <TouchableOpacity style={[styles.button, styles.confirmButton]} onPress={onClose}>
+                                    <Text style={styles.confirmText}>OK</Text>
+                                </TouchableOpacity>
+                            </View>
                         )}
                     </View>
                 </View>
@@ -117,18 +137,30 @@ const styles = StyleSheet.create({
         marginBottom: 25,
         lineHeight: 22,
     },
-    buttonContainer: {
+    actionsWrapper: {
+        width: '100%',
+    },
+    buttonContainerHorizontal: {
         flexDirection: 'row',
         justifyContent: 'center',
-        gap: 15, // Supported in newer RN, fallback via margins if needed
+        gap: 12,
+    },
+    buttonContainerVertical: {
+        flexDirection: 'column',
+        justifyContent: 'center',
+        gap: 12,
     },
     button: {
         flex: 1,
-        paddingVertical: 12,
+        paddingVertical: 14,
         paddingHorizontal: 15,
-        borderRadius: 8,
+        borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    buttonVertical: {
+        flex: 0,
+        width: '100%',
     },
     cancelButton: {
         backgroundColor: '#f5f5f5',
