@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-03-10
+
+### Added
+- **Analytics Page**: New dashboard for admins to track daily/weekly bookings, PT sessions, and cancellations.
+- **Robust Error Logging**: Implemented system-wide error logging to Firebase, including stack traces and user context for easier debugging.
+
+### Changed
+- **Dynamic Changelog**: Improved the changelog display to use markdown rendering for better readability and ensured it updates dynamically.
+
+---
+
 ## [1.6.0] - 2026-03-10
 
 ### Added
