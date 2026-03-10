@@ -6,12 +6,14 @@ import { signOut } from 'firebase/auth';
 import { useAuth } from '../../context/auth';
 import { getUserProfile, UserProfile } from '../../services/bookingService';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii } from '@/constants/theme';
 import Constants from 'expo-constants';
 
 export default function ProfileScreen() {
+    const router = useRouter();
     const { user } = useAuth();
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
@@ -85,7 +87,9 @@ export default function ProfileScreen() {
                         </View>
 
                         <View style={{ flex: 1, justifyContent: 'flex-end', marginTop: 40 }}>
-                            <Text style={[styles.versionText, { color: theme.icon }]}>Version {Constants.expoConfig?.version}</Text>
+                            <TouchableOpacity onPress={() => router.push('/changelog')}>
+                                <Text style={[styles.versionText, { color: theme.icon }]}>Version {Constants.expoConfig?.version}</Text>
+                            </TouchableOpacity>
                         </View>
                     </>
                 )}
