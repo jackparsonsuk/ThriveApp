@@ -270,6 +270,8 @@ export default function GroupsScreen() {
             const endTime = addMinutes(startTime, 60); // 1 hour session
             await bookGroupSession(selectedGroup.id!, user!.uid, startTime, endTime);
             
+            await loadGroupDetails(selectedGroup); // Refresh upcoming sessions list
+            
             setAlertConfig({ visible: true, title: 'Success', message: 'Group session scheduled successfully!', isSuccess: true });
             setIsBookingMode(false); // return to group details
         } catch (error) {
