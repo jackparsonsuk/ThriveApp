@@ -112,5 +112,14 @@ service cloud.firestore {
 
       allow delete: if isAdmin();
     }
+
+    // --- ERROR LOGS COLLECTION ---
+    match /error_logs/{errorId} {
+      // Anyone can create an error log (errors happen before login too)
+      allow create: if true;
+      
+      // Only admins can read logged errors
+      allow read: if isAdmin();
+    }
   }
 }

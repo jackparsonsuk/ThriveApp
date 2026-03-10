@@ -8,6 +8,11 @@ import { Analytics } from '@vercel/analytics/react';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider } from '../context/auth';
 import { Colors } from '@/constants/theme';
+import ErrorBoundary from '../components/ErrorBoundary';
+import { setupGlobalErrorHandling } from '../services/errorService';
+
+// Initialize global error tracking for non-rendering errors
+setupGlobalErrorHandling();
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -41,20 +46,22 @@ export default function RootLayout() {
   };
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? CustomDarkTheme : CustomDefaultTheme}>
-      <AuthProvider>
-        <Head>
-          <title>Thrive Collective</title>
-          <meta name="description" content="Thrive Collective Gym Booking App" />
-        </Head>
-        <Stack screenOptions={{ title: 'Thrive Collective' }}>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Settings' }} />
-        </Stack>
-        <StatusBar style="auto" />
-        <Analytics />
-      </AuthProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider value={colorScheme === 'dark' ? CustomDarkTheme : CustomDefaultTheme}>
+        <AuthProvider>
+          <Head>
+            <title>Thrive Collective</title>
+            <meta name="description" content="Thrive Collective Gym Booking App" />
+          </Head>
+          <Stack screenOptions={{ title: 'Thrive Collective' }}>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Settings' }} />
+          </Stack>
+          <StatusBar style="auto" />
+          <Analytics />
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
