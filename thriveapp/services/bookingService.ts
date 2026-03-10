@@ -1,6 +1,6 @@
 import { collection, query, where, getDocs, addDoc, Timestamp, doc, getDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../config/firebaseConfig';
-import { addMinutes, startOfDay, endOfDay, isBefore, isAfter, isEqual, addDays, addWeeks, addMonths } from 'date-fns';
+import { addMinutes, startOfDay, endOfDay, isBefore, isEqual, addDays, addWeeks, addMonths } from 'date-fns';
 
 export interface Booking {
     id?: string;
@@ -36,18 +36,9 @@ export interface UserProfile {
     assignedPtId: string | null;
 }
 
-export interface GroupSession {
-    id?: string;
-    title: string;
-    startTime: Date;
-    endTime: Date;
-    maxCapacity: number;
-    currentBookings: number;
-}
 
 const BOOKINGS_COLLECTION = 'bookings';
 const USERS_COLLECTION = 'users';
-const GROUP_SESSIONS_COLLECTION = 'group_sessions';
 const RECURRING_TEMPLATES_COLLECTION = 'recurring_templates';
 
 // Fetch user profile to get assigned PT
@@ -209,54 +200,6 @@ export const createBooking = async (bookingData: Omit<Booking, 'id'>) => {
     return docRef.id;
 };
 
-// Fetch all available group sessions for the future
-export const getUpcomingGroupSessions = async (): Promise<GroupSession[]> => {
-    const q = query(
-        collection(db, GROUP_SESSIONS_COLLECTION),
-        where('startTime', '>=', new Date())
-    );
-
-    const querySnapshot = await getDocs(q);
-
-    // Also fetch how many bookings exist for each group session
-    const sessions = await Promise.all(querySnapshot.docs.map(async (docSnap) => {
-        const data = docSnap.data();
-        const sessionId = docSnap.id;
-
-        const bookingsQuery = query(
-            collection(db, BOOKINGS_COLLECTION),
-            where('type', '==', 'group'),
-            where('groupId', '==', sessionId),
-            where('status', '==', 'confirmed')
-        );
-        const bookingsSnapshot = await getDocs(bookingsQuery);
-
-        return {
-            id: sessionId,
-            title: data.title,
-            startTime: data.startTime.toDate(),
-            endTime: data.endTime.toDate(),
-            maxCapacity: data.maxCapacity || 10,
-            currentBookings: bookingsSnapshot.docs.length
-        } as GroupSession;
-    }));
-
-    // Sort by start time manually to ensure it works correctly
-    return sessions.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
-};
-
-// Create a group booking
-export const createGroupBooking = async (userId: string, groupId: string, startTime: Date, endTime: Date) => {
-    const docRef = await addDoc(collection(db, BOOKINGS_COLLECTION), {
-        userId,
-        startTime: Timestamp.fromDate(startTime),
-        endTime: Timestamp.fromDate(endTime),
-        type: 'group',
-        groupId: groupId,
-        status: 'confirmed'
-    });
-    return docRef.id;
-};
 
 // Cancel a single booking
 export const cancelBooking = async (bookingId: string) => {
@@ -289,31 +232,11 @@ export const cancelRecurringSeries = async (templateId: string, fromDate: Date) 
     await batch.commit();
 };
 
-// Fetch all clients (Admin/PT view)
-export const getAllClients = async (): Promise<UserProfile[]> => {
-    const q = query(
-        collection(db, USERS_COLLECTION),
-        where('role', '==', 'client')
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as UserProfile));
-};
-
 // Fetch all PTs (Admin view)
 export const getAllPTs = async (): Promise<UserProfile[]> => {
     const q = query(
         collection(db, USERS_COLLECTION),
         where('role', '==', 'pt')
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as UserProfile));
-};
-
-// Fetch all admins (Admin view)
-export const getAllAdmins = async (): Promise<UserProfile[]> => {
-    const q = query(
-        collection(db, USERS_COLLECTION),
-        where('role', '==', 'admin')
     );
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as UserProfile));
@@ -457,25 +380,6 @@ export const createRecurringSession = async (
     return templateId;
 };
 
-// Generate future instances for an existing template (e.g. called from a cron job)
-// This is a stub for the logic that the background function will use, but can also
-// be run manually if needed to extend existing windows.
-export const generateFutureRecurringInstances = async (templateId: string, uptoDate: Date) => {
-    const templateDoc = await getDoc(doc(db, RECURRING_TEMPLATES_COLLECTION, templateId));
-    if (!templateDoc.exists()) return;
-
-    const data = templateDoc.data();
-    if (data.status !== 'active') return;
-    
-    // Look up the latest booking instance for this template to know where to resume
-    const q = query(
-        collection(db, BOOKINGS_COLLECTION),
-        where('recurringTemplateId', '==', templateId),
-        // Normally we'd order by startTime desc, limit 1. But Firestore requires index.
-        // For simplicity, we can fetch all and sort in memory if the dataset is small, or require an index.
-    );
-    // ... complete implementation would require an index on recurringTemplateId + startTime
-};
 
 // --- ANALYTICS ---
 
