@@ -106,6 +106,37 @@ export const getPTBookingsForInstructor = async (ptId: string): Promise<Booking[
     })) as Booking[];
 };
 
+// Fetch upcoming sessions for a specific group
+export const getGroupSessions = async (groupId: string): Promise<Booking[]> => {
+    const q = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('type', '==', 'group'),
+        where('groupId', '==', groupId),
+        where('status', '==', 'confirmed'),
+        where('startTime', '>=', new Date()) // Only fetch upcoming
+    );
+
+    const snapshot = await getDocs(q);
+    
+    const bookings = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        startTime: doc.data().startTime.toDate(),
+        endTime: doc.data().endTime.toDate(),
+    })) as Booking[];
+
+    // Since each member gets a booking, there will be duplicates for the same time slot.
+    // We only need one instance per unique start time for display purposes.
+    const uniqueSessions = new Map<number, Booking>();
+    bookings.forEach(b => {
+        if (!uniqueSessions.has(b.startTime.getTime())) {
+            uniqueSessions.set(b.startTime.getTime(), b);
+        }
+    });
+
+    return Array.from(uniqueSessions.values()).sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+};
+
 // Fetch gym bookings for a specific day to check capacity
 export const getGymBookingsForDate = async (date: Date): Promise<Booking[]> => {
     const start = startOfDay(date);
@@ -200,11 +231,131 @@ export const createBooking = async (bookingData: Omit<Booking, 'id'>) => {
     return docRef.id;
 };
 
+// Book a group session (blocks gym and creates bookings for members)
+export const bookGroupSession = async (groupId: string, ptId: string, startTime: Date, endTime: Date) => {
+    // 1. Fetch group to get member list and name
+    const groupRef = doc(db, 'groups', groupId);
+    const groupSnap = await getDoc(groupRef);
+    if (!groupSnap.exists()) throw new Error('Group not found');
+    const groupData = groupSnap.data();
+    const memberIds: string[] = groupData.memberIds || [];
 
-// Cancel a single booking
+    const batch = writeBatch(db);
+
+    // 2. Create the block for the gym (so no one else can book)
+    const blockRef = doc(collection(db, BOOKINGS_COLLECTION));
+    batch.set(blockRef, {
+        userId: ptId,
+        startTime: Timestamp.fromDate(startTime),
+        endTime: Timestamp.fromDate(endTime),
+        type: 'block',
+        reason: `Group Session: ${groupData.name}`,
+        status: 'confirmed'
+    });
+
+    // 3. Create individual bookings for the PT
+    const ptBookingRef = doc(collection(db, BOOKINGS_COLLECTION));
+    batch.set(ptBookingRef, {
+        userId: ptId,
+        ptId: ptId,
+        startTime: Timestamp.fromDate(startTime),
+        endTime: Timestamp.fromDate(endTime),
+        type: 'group',
+        groupId: groupId,
+        status: 'confirmed'
+    });
+
+    // 4. Create individual bookings for each member
+    for (const memberId of memberIds) {
+        const memberBookingRef = doc(collection(db, BOOKINGS_COLLECTION));
+        batch.set(memberBookingRef, {
+            userId: memberId,
+            ptId: ptId,
+            startTime: Timestamp.fromDate(startTime),
+            endTime: Timestamp.fromDate(endTime),
+            type: 'group',
+            groupId: groupId,
+            status: 'confirmed'
+        });
+    }
+
+    await batch.commit();
+};
+
+
+// Cancel a single booking (and related group/block bookings if applicable)
 export const cancelBooking = async (bookingId: string) => {
     const bookingRef = doc(db, BOOKINGS_COLLECTION, bookingId);
-    await updateDoc(bookingRef, { status: 'cancelled' });
+    const bookingSnap = await getDoc(bookingRef);
+    
+    if (!bookingSnap.exists()) return;
+    
+    const data = bookingSnap.data() as Booking;
+    
+    const batch = writeBatch(db);
+    batch.update(bookingRef, { status: 'cancelled' });
+
+    // If it's a group booking, we must cancel all related member bookings and the block booking
+    if (data.type === 'group' && data.groupId) {
+        const start = data.startTime; // Timestamp
+        
+        // Find other group bookings for this exact group and time
+        const groupBookingsQuery = query(
+            collection(db, BOOKINGS_COLLECTION),
+            where('type', '==', 'group'),
+            where('groupId', '==', data.groupId),
+            where('startTime', '==', start),
+            where('status', '==', 'confirmed')
+        );
+        
+        // Find the block booking for this group session
+        // (Since block bookings don't store groupId, we match by time and type and user id)
+        const blockBookingsQuery = query(
+            collection(db, BOOKINGS_COLLECTION),
+            where('type', '==', 'block'),
+            where('startTime', '==', start),
+            where('status', '==', 'confirmed')
+        );
+        
+        const [groupSnap, blockSnap] = await Promise.all([
+            getDocs(groupBookingsQuery),
+            getDocs(blockBookingsQuery)
+        ]);
+        
+        groupSnap.docs.forEach(docSnap => {
+            if (docSnap.id !== bookingId) {
+                batch.update(docSnap.ref, { status: 'cancelled' });
+            }
+        });
+        
+        blockSnap.docs.forEach(docSnap => {
+            // Check if the reason starts with "Group Session" to be safe
+            const blockData = docSnap.data();
+            if (blockData.reason && blockData.reason.includes('Group Session')) {
+                batch.update(docSnap.ref, { status: 'cancelled' });
+            }
+        });
+    } else if (data.type === 'block' && data.reason && data.reason.includes('Group Session')) {
+        // If they managed to click cancel on the block booking itself
+        const start = data.startTime;
+        const groupName = data.reason.replace('Group Session: ', '').trim();
+        
+        const groupBookingsQuery = query(
+            collection(db, BOOKINGS_COLLECTION),
+            where('type', '==', 'group'),
+            where('startTime', '==', start),
+            where('status', '==', 'confirmed')
+        );
+        
+        const groupSnap = await getDocs(groupBookingsQuery);
+        
+        // As a fallback, we cancel group bookings at this time 
+        groupSnap.docs.forEach(docSnap => {
+            batch.update(docSnap.ref, { status: 'cancelled' });
+        });
+    }
+
+    await batch.commit();
 };
 
 // Cancel a recurring template and all of its FUTURE materialized occurrences

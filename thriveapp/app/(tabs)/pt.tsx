@@ -463,84 +463,69 @@ export default function PTBookingScreen() {
         );
     }
 
-    if (userProfile?.role === 'client' && !userProfile.assignedPtId) {
+    if (userProfile?.role === 'client') {
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-                <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                    style={{ flex: 1 }}
-                >
-                    <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-                        <Text style={[styles.title, { color: theme.text }]}>Connect with a PT</Text>
-                    </View>
-                    <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }]}>
-                        <Text style={[styles.noPtText, { color: theme.text, textAlign: 'center' }]}>You do not have a Personal Trainer yet.</Text>
-                        <Text style={[styles.noPtSubText, { color: theme.icon, textAlign: 'center', marginBottom: 30 }]}>Enter the 6-character code provided by your Thrive Coach.</Text>
+                <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+                    
+                    {!userProfile.assignedPtId ? (
+                        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+                            <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
+                                <Text style={[styles.title, { color: theme.text }]}>Connect with a PT</Text>
+                            </View>
+                            <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }]}>
+                                <Text style={[styles.noPtText, { color: theme.text, textAlign: 'center' }]}>You do not have a Personal Trainer yet.</Text>
+                                <Text style={[styles.noPtSubText, { color: theme.icon, textAlign: 'center', marginBottom: 30 }]}>Enter the 6-character code provided by your Thrive Coach.</Text>
 
-                        <TextInput
-                            style={[styles.codeInput, {
-                                backgroundColor: theme.card,
-                                borderColor: theme.border,
-                                color: theme.text
-                            }]}
-                            placeholder="e.g. A1B2C3"
-                            placeholderTextColor={theme.icon}
-                            value={ptCodeInput}
-                            onChangeText={(text) => setPtCodeInput(text.toUpperCase())}
-                            maxLength={6}
-                            autoCapitalize="characters"
-                        />
+                                <TextInput
+                                    style={[styles.codeInput, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
+                                    placeholder="e.g. A1B2C3"
+                                    placeholderTextColor={theme.icon}
+                                    value={ptCodeInput}
+                                    onChangeText={(text) => setPtCodeInput(text.toUpperCase())}
+                                    maxLength={6}
+                                    autoCapitalize="characters"
+                                />
 
-                        <TouchableOpacity
-                            style={[styles.assignButton, { backgroundColor: theme.tint }, (!ptCodeInput || ptCodeInput.length < 6) && { opacity: 0.5 }]}
-                            onPress={handleAssignPT}
-                            disabled={!ptCodeInput || ptCodeInput.length < 6 || assigningLoading}
-                        >
-                            {assigningLoading ? (
-                                <ActivityIndicator color="#ffffff" />
+                                <TouchableOpacity
+                                    style={[styles.assignButton, { backgroundColor: theme.tint }, (!ptCodeInput || ptCodeInput.length < 6) && { opacity: 0.5 }]}
+                                    onPress={handleAssignPT}
+                                    disabled={!ptCodeInput || ptCodeInput.length < 6 || assigningLoading}
+                                >
+                                    {assigningLoading ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.assignButtonText}>Assign My PT</Text>}
+                                </TouchableOpacity>
+                            </View>
+                        </KeyboardAvoidingView>
+                    ) : (
+                        <View>
+                            <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
+                                <Text style={[styles.title, { color: theme.text }]}>Your PT</Text>
+                                <Text style={[styles.subtitle, { color: theme.icon }]}>You are connected to a Thrive Coach</Text>
+                            </View>
+
+                            {loading ? (
+                                <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
+                            ) : assignedPtData ? (
+                                <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, marginTop: 40 }]}>
+                                    <Text style={[styles.noPtSubText, { color: theme.icon }]}>You are currently training with</Text>
+                                    <View style={[styles.ptCodeCard, { backgroundColor: theme.card, borderColor: theme.tint, marginTop: 20, borderStyle: 'solid' }]}>
+                                        <Text style={[styles.ptCodeText, { color: theme.text, letterSpacing: 2, fontSize: 32 }]}>
+                                            {assignedPtData.name}
+                                        </Text>
+                                    </View>
+                                    <Text style={[styles.noPtSubText, { color: theme.icon, textAlign: 'center', marginTop: 30 }]}>
+                                        Your PT will book your 1-to-1 sessions directly. Reach out to them to arrange a time!
+                                    </Text>
+                                </View>
                             ) : (
-                                <Text style={styles.assignButtonText}>Assign My PT</Text>
+                                <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }]}>
+                                    <Text style={[styles.noPtText, { color: theme.text, textAlign: 'center' }]}>Failed to load your PT's details.</Text>
+                                </View>
                             )}
-                        </TouchableOpacity>
-                    </View>
-                </KeyboardAvoidingView>
-                <CustomAlert
-                    visible={alertConfig.visible}
-                    title={alertConfig.title}
-                    message={alertConfig.message}
-                    onClose={closeAlert}
-                />
-            </SafeAreaView>
-        );
-    }
-
-    if (userProfile?.role === 'client' && userProfile.assignedPtId) {
-        return (
-            <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-                <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-                    <Text style={[styles.title, { color: theme.text }]}>Your PT</Text>
-                    <Text style={[styles.subtitle, { color: theme.icon }]}>You are connected to a Thrive Coach</Text>
-                </View>
-
-                {loading ? (
-                    <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
-                ) : assignedPtData ? (
-                    <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, marginTop: 40 }]}>
-                        <Text style={[styles.noPtSubText, { color: theme.icon }]}>You are currently training with</Text>
-                        <View style={[styles.ptCodeCard, { backgroundColor: theme.card, borderColor: theme.tint, marginTop: 20, borderStyle: 'solid' }]}>
-                            <Text style={[styles.ptCodeText, { color: theme.text, letterSpacing: 2, fontSize: 32 }]}>
-                                {assignedPtData.name}
-                            </Text>
                         </View>
-                        <Text style={[styles.noPtSubText, { color: theme.icon, textAlign: 'center', marginTop: 30 }]}>
-                            Your PT will book your 1-to-1 sessions directly. Reach out to them to arrange a time!
-                        </Text>
-                    </View>
-                ) : (
-                    <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }]}>
-                        <Text style={[styles.noPtText, { color: theme.text, textAlign: 'center' }]}>Failed to load your PT's details.</Text>
-                    </View>
-                )}
+                    )}
+                </ScrollView>
+                <CustomAlert visible={alertConfig.visible} title={alertConfig.title} message={alertConfig.message} onClose={closeAlert} />
             </SafeAreaView>
         );
     }

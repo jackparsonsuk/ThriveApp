@@ -4,6 +4,7 @@ import { useAuth } from '../../context/auth';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getUserBookings, getPTBookingsForInstructor, cancelBooking, cancelRecurringSeries, Booking, getUserProfile, UserProfile } from '../../services/bookingService';
+import { getGroupById } from '../../services/groupService';
 import { format, isSameDay } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
@@ -55,13 +56,41 @@ export default function DashboardScreen() {
       }
 
       // Filter out past bookings to only show upcoming
-      const upcoming = allBookings.filter(b => b.endTime > new Date() && b.status === 'confirmed');
+      let upcoming = allBookings.filter(b => b.endTime > new Date() && b.status === 'confirmed');
+
+      if (profile?.role === 'pt') {
+        // Deduplicate group sessions (so the PT doesn't see N cards for 1 group session)
+        const groupSessions = new Set(upcoming.filter(b => b.type === 'group').map(b => `${b.groupId}-${b.startTime.getTime()}`));
+        
+        upcoming = upcoming.filter(b => {
+          if (b.type === 'group') {
+            const key = `${b.groupId}-${b.startTime.getTime()}`;
+            if (groupSessions.has(key)) {
+              groupSessions.delete(key); // keep the first one
+              return true;
+            }
+            return false; // drop duplicate member bookings
+          }
+          if (b.type === 'block') {
+            // If there's a group session at this time, don't show the redundant block card
+            const hasOverlappingGroup = upcoming.some(g => g.type === 'group' && g.startTime.getTime() === b.startTime.getTime());
+            if (hasOverlappingGroup) return false;
+          }
+          return true;
+        });
+      }
 
       // Fetch client names for PT bookings where the PT is the instructor
       const bookingsWithNames: ExtendedBooking[] = await Promise.all(upcoming.map(async (b) => {
         if (b.type === 'pt' && profile?.role === 'pt' && b.ptId === user.uid && b.userId !== user.uid) {
           const clientProfile = await getUserProfile(b.userId);
           return { ...b, clientName: clientProfile?.name || 'Unknown Client' };
+        }
+        if (b.type === 'group' && b.groupId) {
+          try {
+            const group = await getGroupById(b.groupId);
+            if (group) return { ...b, clientName: group.name };
+          } catch (e) { console.error('Error fetching group name', e) }
         }
         return b;
       }));
@@ -90,6 +119,20 @@ export default function DashboardScreen() {
   };
 
   const handleCancel = (booking: Booking) => {
+    if (booking.type === 'group') {
+      setAlertConfig({
+        visible: true,
+        title: 'Cannot Cancel Here',
+        message: userProfile?.role === 'pt' 
+          ? 'Please go to the Groups tab to cancel a group session.'
+          : 'Group sessions cannot be cancelled here. Please contact your trainer.',
+        onConfirm: undefined,
+        onSecondaryConfirm: undefined,
+        cancelText: 'OK'
+      });
+      return;
+    }
+
     if (booking.recurringTemplateId) {
       setAlertConfig({
         visible: true,
@@ -156,10 +199,14 @@ export default function DashboardScreen() {
     if (booking.type === 'pt' && booking.clientName) {
       return `PT Session with ${booking.clientName}`;
     }
+    if (booking.type === 'group' && booking.clientName) {
+      return `${booking.clientName} booking`; // e.g. "Mens 6am Class booking"
+    }
     switch (booking.type) {
       case 'gym': return 'Gym Session';
       case 'pt': return 'Personal Training';
       case 'group': return 'Group Class';
+      case 'block': return booking.reason || 'Blocked Time';
       default: return booking.type;
     }
   };
@@ -210,6 +257,7 @@ export default function DashboardScreen() {
                     )}
                     {getTypeLabel(nextBooking)}
                   </Text>
+                  {nextBooking.type !== 'group' && (
                   <TouchableOpacity
                     style={styles.highlightCancelButton}
                     onPress={() => handleCancel(nextBooking)}
@@ -231,6 +279,7 @@ export default function DashboardScreen() {
                       </>
                     )}
                   </TouchableOpacity>
+                  )}
                 </View>
                 <View style={styles.highlightDetailsRow}>
                   <Ionicons name="calendar" size={16} color="rgba(255,255,255,0.9)" style={{ marginRight: 6 }} />
@@ -293,6 +342,7 @@ export default function DashboardScreen() {
                                   </Text>
                                 </View>
                               </View>
+                              {booking.type !== 'group' && (
                               <TouchableOpacity
                                 style={styles.cancelButton}
                                 onPress={() => handleCancel(booking)}
@@ -314,6 +364,7 @@ export default function DashboardScreen() {
                                   </>
                                 )}
                               </TouchableOpacity>
+                              )}
                             </View>
                           </View>
                           {!isLast && <View style={[styles.separator, { backgroundColor: theme.border }]} />}

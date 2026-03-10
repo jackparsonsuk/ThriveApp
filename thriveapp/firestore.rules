@@ -113,6 +113,38 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // --- GROUPS COLLECTION ---
+    match /groups/{groupId} {
+      // Any signed-in user can read groups (needs it to hydrate class names)
+      allow read: if isSignedIn();
+      
+      // PTs can create groups they own
+      allow create: if isPT() && request.resource.data.ptId == request.auth.uid;
+      
+      // PTs can update/delete their own groups. Users can update to join (add to memberIds).
+      allow update: if isSignedIn() && (
+        (isPT() && resource.data.ptId == request.auth.uid) ||
+        isAdmin() ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds'])
+      );
+      
+      allow delete: if (isPT() && resource.data.ptId == request.auth.uid) || isAdmin();
+    }
+
+    // --- GROUP INVITES COLLECTION ---
+    match /group_invites/{inviteId} {
+      // Anyone signed in can read invites
+      allow read: if isSignedIn();
+      
+      // PTs can create invites
+      allow create: if isPT();
+      
+      // Anyone can update (to accept/decline)
+      allow update: if isSignedIn();
+      
+      allow delete: if isPT() || isAdmin();
+    }
+
     // --- ERROR LOGS COLLECTION ---
     match /error_logs/{errorId} {
       // Anyone can create an error log (errors happen before login too)
