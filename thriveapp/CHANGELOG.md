@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-03-10
+
+### Added
+- **Admin Members Tab**: New Members tab in the admin panel, displaying a list of all registered members with role-based filtering.
+
+### Changed
+- **Admin Schedule Filter**: The schedule view now filters out past time slots when viewing the current day, showing only current and upcoming slots.
+- **Login Error Messages**: Login flow now provides descriptive error feedback for specific failure scenarios (e.g., incorrect password, account not found).
+
+---
+
 ## [1.7.0] - 2026-03-10
 
 ### Added
