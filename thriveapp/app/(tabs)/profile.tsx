@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii } from '@/constants/theme';
+import Constants from 'expo-constants';
 
 export default function ProfileScreen() {
     const { user } = useAuth();
@@ -84,7 +85,7 @@ export default function ProfileScreen() {
                         </View>
 
                         <View style={{ flex: 1, justifyContent: 'flex-end', marginTop: 40 }}>
-                            <Text style={[styles.versionText, { color: theme.icon }]}>Version 1.4.0</Text>
+                            <Text style={[styles.versionText, { color: theme.icon }]}>Version {Constants.expoConfig?.version}</Text>
                         </View>
                     </>
                 )}

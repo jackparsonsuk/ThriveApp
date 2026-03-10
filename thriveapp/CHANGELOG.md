@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-03-10
+
+### Added
+- **Recurring Bookings**: PTs can now set up recurring weekly, bi-weekly, or monthly sessions for clients.
+- **Automated Session Generation**: Implemented a daily cron job (Cloud Function) that automatically generates future booking instances for active recurring templates.
+
+### Changed
+- **Backend Infrastructure**: Upgraded Cloud Functions runtime to Node.js 22 and migrated to the Firebase Blaze plan for reliable automated task execution.
+
+---
+
 ## [1.5.0] - 2026-03-10
 
 ### Security
