@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession } from '../../services/bookingService';
+import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession, getGymBookingsForDate, checkSlotAvailability } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
@@ -26,7 +26,7 @@ export default function PTBookingScreen() {
     const theme = Colors[colorScheme];
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
-    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean }[]>([]);
+    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; attendees: number }[]>([]);
     const [loading, setLoading] = useState(true);
     const [bookingLoading, setBookingLoading] = useState(false);
     const [recurringFrequency, setRecurringFrequency] = useState<'none' | 'weekly' | 'bi-weekly' | 'monthly'>('none');
@@ -148,6 +148,8 @@ export default function PTBookingScreen() {
                 bookingsForDay.push(...myBookings);
             }
 
+            const gymBookingsForDay = await getGymBookingsForDate(selectedDate);
+
             const slots = [];
             let currentTime = setMinutes(setHours(selectedDate, PT_OPEN_HOUR), 0);
             const endTime = setMinutes(setHours(selectedDate, PT_CLOSE_HOUR), 0);
@@ -171,6 +173,7 @@ export default function PTBookingScreen() {
                 slots.push({
                     time: currentTime,
                     available: isAvailable,
+                    attendees: checkSlotAvailability(currentTime, gymBookingsForDay).count
                 });
 
                 // Advance by 15 mins for PT slots to allow 15 min increment start times
@@ -653,6 +656,11 @@ export default function PTBookingScreen() {
                                             <Text style={[styles.slotDuration, { color: slot.available ? theme.tint : theme.icon }]}>
                                                 {slot.available ? '1 Hour' : 'Booked'}
                                             </Text>
+                                            {slot.available && (
+                                                <Text style={[styles.slotAttendees, { color: theme.icon, fontSize: 13, marginLeft: 10 }]}>
+                                                    {slot.attendees} / 4 Booked
+                                                </Text>
+                                            )}
                                         </View>
 
                                         <View style={styles.slotChevron}>
@@ -776,6 +784,10 @@ const styles = StyleSheet.create({
     slotDuration: {
         fontSize: 15,
         fontWeight: '600',
+    },
+    slotAttendees: {
+        fontSize: 14,
+        fontWeight: '400',
     },
     slotChevron: {
         width: 20,
