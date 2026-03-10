@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile } from '../../services/bookingService';
+import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile, getAllUsers } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
@@ -14,14 +14,25 @@ import { Colors, Radii } from '@/constants/theme';
 const OPEN_HOUR = 7;
 const CLOSE_HOUR = 20;
 
-export default function AdminScheduleScreen() {
+type AdminTab = 'schedule' | 'members';
+
+export default function AdminScreen() {
     const router = useRouter();
     const { user } = useAuth();
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
+    const [activeTab, setActiveTab] = useState<AdminTab>('schedule');
+    
+    // Schedule State
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
     const [dailyBookings, setDailyBookings] = useState<(Booking & { user?: UserProfile })[]>([]);
     const [loading, setLoading] = useState(false);
+
+    // Members State
+    const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+    const [membersLoading, setMembersLoading] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [roleFilter, setRoleFilter] = useState<'all' | 'client' | 'pt' | 'admin'>('all');
 
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState<{
@@ -39,9 +50,13 @@ export default function AdminScheduleScreen() {
     const dates = Array.from({ length: 14 }).map((_, i) => addDays(startOfDay(new Date()), i));
 
     useEffect(() => {
-        fetchSchedule();
+        if (activeTab === 'schedule') {
+            fetchSchedule();
+        } else if (activeTab === 'members') {
+            fetchMembers();
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedDate]);
+    }, [selectedDate, activeTab]);
 
     const fetchSchedule = async () => {
         setLoading(true);
@@ -57,6 +72,23 @@ export default function AdminScheduleScreen() {
             });
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchMembers = async () => {
+        setMembersLoading(true);
+        try {
+            const users = await getAllUsers();
+            setAllUsers(users);
+        } catch (error) {
+            console.error('Error fetching members:', error);
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to load members.',
+            });
+        } finally {
+            setMembersLoading(false);
         }
     };
 
@@ -101,86 +133,38 @@ export default function AdminScheduleScreen() {
         });
     };
 
-    // Generate time blocks UI
-    const generateTimeBlocks = () => {
+    const filteredUsers = useMemo(() => {
+        return allUsers.filter(u => {
+            const matchesSearch = u.name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                u.email?.toLowerCase().includes(searchQuery.toLowerCase());
+            const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+            return matchesSearch && matchesRole;
+        }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }, [allUsers, searchQuery, roleFilter]);
+
+    const renderSchedule = () => {
         const blocks = [];
         let currentTime = setMinutes(setHours(selectedDate, OPEN_HOUR), 0);
         const endTime = setMinutes(setHours(selectedDate, CLOSE_HOUR), 0);
 
         while (currentTime < endTime) {
             const blockEnd = addMinutes(currentTime, 15);
-
-            // Find all bookings overlapping this 15-min window
             const overlapping = dailyBookings.filter(b => b.startTime < blockEnd && b.endTime > currentTime);
-
-            blocks.push({
-                time: currentTime,
-                bookings: overlapping
-            });
-
+            blocks.push({ time: currentTime, bookings: overlapping });
             currentTime = addMinutes(currentTime, 15);
         }
-        return blocks;
-    };
 
-    const timeBlocks = generateTimeBlocks();
-
-    return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-            <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-                <View style={styles.headerTop}>
-                    <Text style={[styles.title, { color: theme.text }]}>Admin Schedule</Text>
-                    <TouchableOpacity 
-                        style={[styles.analyticsBtn, { backgroundColor: theme.tint }]}
-                        onPress={() => router.push('/analytics')}
-                    >
-                        <Ionicons name="stats-chart" size={18} color="#fff" />
-                        <Text style={styles.analyticsBtnText}>Analytics</Text>
-                    </TouchableOpacity>
-                </View>
-                <Text style={[styles.subtitle, { color: theme.icon }]}>Manage bookings and block out time slots</Text>
-            </View>
-
-            <View style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateSelector}>
-                    {dates.map((date, index) => {
-                        const isSelected = selectedDate.getTime() === date.getTime();
-                        return (
-                            <TouchableOpacity
-                                key={index}
-                                style={[
-                                    styles.dateCard,
-                                    { backgroundColor: isSelected ? theme.tint : 'transparent' },
-                                    isSelected && styles.dateCardSelected
-                                ]}
-                                onPress={() => setSelectedDate(date)}
-                            >
-                                <Text style={[
-                                    styles.dayText,
-                                    { color: isSelected ? '#fff' : theme.icon }
-                                ]}>{format(date, 'EEE')}</Text>
-                                <Text style={[
-                                    styles.dateText,
-                                    { color: isSelected ? '#fff' : theme.text }
-                                ]}>{format(date, 'd')}</Text>
-                            </TouchableOpacity>
-                        );
-                    })}
-                </ScrollView>
-            </View>
-
+        return (
             <ScrollView contentContainerStyle={styles.scheduleContainer}>
                 {loading ? (
                     <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
                 ) : (
-                    timeBlocks.map((block, index) => {
+                    blocks.map((block, index) => {
                         const hasBlock = block.bookings.some(b => b.type === 'block');
-
                         return (
                             <View key={index} style={[styles.timeBlock, { backgroundColor: theme.card, borderColor: theme.border }]}>
                                 <View style={[styles.timeHeader, { borderBottomColor: theme.border }]}>
                                     <Text style={[styles.timeText, { color: theme.text }]}>{format(block.time, 'HH:mm')}</Text>
-
                                     {!hasBlock ? (
                                         <TouchableOpacity style={[styles.blockBtn, { borderColor: theme.tint }]} onPress={() => handleBlockSlot(block.time)}>
                                             <Ionicons name="lock-closed" size={14} color={theme.tint} />
@@ -201,15 +185,12 @@ export default function AdminScheduleScreen() {
                                         </TouchableOpacity>
                                     )}
                                 </View>
-
                                 <View style={styles.attendeesList}>
                                     {block.bookings.length === 0 && !hasBlock && (
                                         <Text style={[styles.emptyText, { color: theme.icon }]}>No one booked.</Text>
                                     )}
-
                                     {block.bookings.map(b => {
                                         if (b.type === 'block') return null;
-
                                         const userName = b.user?.name || b.user?.email || 'Unknown Client';
                                         return (
                                             <View key={b.id} style={[styles.attendeeCard, { borderBottomColor: theme.border }]}>
@@ -221,11 +202,7 @@ export default function AdminScheduleScreen() {
                                                         {b.type === 'group' && <Text style={styles.groupBadge}>Group</Text>}
                                                     </View>
                                                 </View>
-
-                                                <TouchableOpacity
-                                                    style={styles.removeBtn}
-                                                    onPress={() => handleCancelBooking(b.id!, userName)}
-                                                >
+                                                <TouchableOpacity onPress={() => handleCancelBooking(b.id!, userName)}>
                                                     <Ionicons name="close-circle" size={24} color={theme.icon} />
                                                 </TouchableOpacity>
                                             </View>
@@ -237,6 +214,129 @@ export default function AdminScheduleScreen() {
                     })
                 )}
             </ScrollView>
+        );
+    };
+
+    const renderMembers = () => (
+        <View style={styles.membersContainer}>
+            <View style={styles.searchBarContainer}>
+                <Ionicons name="search" size={20} color={theme.icon} style={styles.searchIcon} />
+                <TextInput
+                    style={[styles.searchInput, { color: theme.text, backgroundColor: theme.card, borderColor: theme.border }]}
+                    placeholder="Search members..."
+                    placeholderTextColor={theme.icon}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                />
+            </View>
+
+            <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false} 
+                style={styles.roleFilters} 
+                contentContainerStyle={styles.roleFiltersContent}
+            >
+                {['all', 'client', 'pt', 'admin'].map((role) => (
+                    <TouchableOpacity
+                        key={role}
+                        onPress={() => setRoleFilter(role as any)}
+                        style={[
+                            styles.roleFilterBtn,
+                            { borderColor: theme.border },
+                            roleFilter === role && { backgroundColor: theme.tint, borderColor: theme.tint }
+                        ]}
+                    >
+                        <Text style={[styles.roleFilterText, { color: roleFilter === role ? '#fff' : theme.icon }]}>
+                            {role.charAt(0).toUpperCase() + role.slice(1)}s
+                        </Text>
+                    </TouchableOpacity>
+                ))}
+            </ScrollView>
+
+            {membersLoading ? (
+                <View style={{ flex: 1, justifyContent: 'center' }}>
+                    <ActivityIndicator size="large" color={theme.tint} />
+                </View>
+            ) : (
+                <FlatList
+                    data={filteredUsers}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => (
+                        <View style={[styles.memberCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                            <View style={[styles.avatar, { backgroundColor: theme.tint + '20' }]}>
+                                <Text style={[styles.avatarText, { color: theme.tint }]}>{(item.name || item.email).charAt(0).toUpperCase()}</Text>
+                            </View>
+                            <View style={styles.memberInfo}>
+                                <Text style={[styles.memberName, { color: theme.text }]}>{item.name || 'No Name'}</Text>
+                                <Text style={[styles.memberEmail, { color: theme.icon }]}>{item.email}</Text>
+                                <View style={styles.memberBadgeContainer}>
+                                    <View style={[styles.roleBadge, { backgroundColor: item.role === 'admin' ? '#ef4444' : item.role === 'pt' ? theme.tint : '#a3a3a3' }]}>
+                                        <Text style={styles.roleBadgeText}>{item.role.toUpperCase()}</Text>
+                                    </View>
+                                </View>
+                            </View>
+                            <Ionicons name="chevron-forward" size={20} color={theme.icon} />
+                        </View>
+                    )}
+                    ListEmptyComponent={<Text style={[styles.emptyText, { textAlign: 'center', marginTop: 20 }]}>No members found.</Text>}
+                    contentContainerStyle={{ paddingBottom: 20 }}
+                    style={{ flex: 1 }}
+                />
+            )}
+        </View>
+    );
+
+    return (
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+            <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
+                <View style={styles.headerTop}>
+                    <Text style={[styles.title, { color: theme.text }]}>Admin Panel</Text>
+                    <TouchableOpacity 
+                        style={[styles.analyticsBtn, { backgroundColor: theme.tint }]}
+                        onPress={() => router.push('/analytics')}
+                    >
+                        <Ionicons name="stats-chart" size={18} color="#fff" />
+                        <Text style={styles.analyticsBtnText}>Analytics</Text>
+                    </TouchableOpacity>
+                </View>
+                
+                <View style={styles.tabContainer}>
+                    <TouchableOpacity 
+                        onPress={() => setActiveTab('schedule')}
+                        style={[styles.tab, activeTab === 'schedule' && { borderBottomColor: theme.tint }]}
+                    >
+                        <Text style={[styles.tabText, { color: activeTab === 'schedule' ? theme.text : theme.icon }]}>Schedule</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                        onPress={() => setActiveTab('members')}
+                        style={[styles.tab, activeTab === 'members' && { borderBottomColor: theme.tint }]}
+                    >
+                        <Text style={[styles.tabText, { color: activeTab === 'members' ? theme.text : theme.icon }]}>Members</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+
+            {activeTab === 'schedule' && (
+                <View style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateSelector}>
+                        {dates.map((date, index) => {
+                            const isSelected = selectedDate.getTime() === date.getTime();
+                            return (
+                                <TouchableOpacity
+                                    key={index}
+                                    style={[styles.dateCard, { backgroundColor: isSelected ? theme.tint : 'transparent' }, isSelected && styles.dateCardSelected]}
+                                    onPress={() => setSelectedDate(date)}
+                                >
+                                    <Text style={[styles.dayText, { color: isSelected ? '#fff' : theme.icon }]}>{format(date, 'EEE')}</Text>
+                                    <Text style={[styles.dateText, { color: isSelected ? '#fff' : theme.text }]}>{format(date, 'd')}</Text>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </ScrollView>
+                </View>
+            )}
+
+            {activeTab === 'schedule' ? renderSchedule() : renderMembers()}
 
             <CustomAlert
                 visible={alertConfig.visible}
@@ -254,12 +354,14 @@ export default function AdminScheduleScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    header: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20, borderBottomWidth: StyleSheet.hairlineWidth },
+    header: { paddingHorizontal: 20, paddingTop: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+    headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
     title: { fontSize: 34, fontWeight: '700', letterSpacing: -0.5 },
-    subtitle: { fontSize: 16, marginTop: 4 },
-    headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
     analyticsBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: Radii.pill, gap: 6 },
     analyticsBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+    tabContainer: { flexDirection: 'row', gap: 20 },
+    tab: { paddingVertical: 10, borderBottomWidth: 3, borderBottomColor: 'transparent' },
+    tabText: { fontSize: 16, fontWeight: '700' },
     dateSelectorContainer: { borderBottomWidth: StyleSheet.hairlineWidth },
     dateSelector: { paddingHorizontal: 15, paddingVertical: 12, gap: 8 },
     dateCard: { paddingVertical: 10, paddingHorizontal: 8, borderRadius: Radii.pill, alignItems: 'center', minWidth: 54 },
@@ -268,9 +370,9 @@ const styles = StyleSheet.create({
     dateText: { fontSize: 20, fontWeight: '500' },
     scheduleContainer: { padding: 16, paddingBottom: 40 },
     timeBlock: { borderRadius: Radii.lg, marginBottom: 15, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
-    timeHeader: { backgroundColor: 'transparent', padding: 14, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    timeHeader: { padding: 14, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     timeText: { fontSize: 18, fontWeight: '700', letterSpacing: -0.4 },
-    blockBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'transparent', paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radii.pill, borderWidth: 1 },
+    blockBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radii.pill, borderWidth: 1 },
     blockBtnText: { fontSize: 13, fontWeight: '700', marginLeft: 6, textTransform: 'uppercase' },
     blockedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(239, 68, 68, 0.2)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999, borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.5)' },
     blockedText: { color: '#ef4444', fontSize: 12, fontWeight: '700', marginLeft: 4 },
@@ -283,5 +385,21 @@ const styles = StyleSheet.create({
     typeBadge: { fontSize: 10, fontWeight: '700', color: '#1a1a1a', backgroundColor: '#a3a3a3', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
     ptBadge: { fontSize: 10, fontWeight: '700', color: '#ffffff', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
     groupBadge: { fontSize: 10, fontWeight: '700', color: '#ffffff', backgroundColor: '#3b82f6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-    removeBtn: { padding: 5, opacity: 0.8 },
+    membersContainer: { flex: 1, padding: 16 },
+    searchBarContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
+    searchIcon: { position: 'absolute', left: 12, zIndex: 1 },
+    searchInput: { flex: 1, height: 44, borderRadius: Radii.md, borderWidth: StyleSheet.hairlineWidth, paddingLeft: 40, paddingRight: 15, fontSize: 16 },
+    roleFilters: { flexDirection: 'row', marginBottom: 15, maxHeight: 60 },
+    roleFiltersContent: { paddingVertical: 5 },
+    roleFilterBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radii.pill, borderWidth: 1, marginRight: 8, justifyContent: 'center' },
+    roleFilterText: { fontSize: 14, fontWeight: '600' },
+    memberCard: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, marginBottom: 10 },
+    avatar: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+    avatarText: { fontSize: 18, fontWeight: '700' },
+    memberInfo: { flex: 1 },
+    memberName: { fontSize: 16, fontWeight: '700' },
+    memberEmail: { fontSize: 14, marginBottom: 4 },
+    memberBadgeContainer: { flexDirection: 'row' },
+    roleBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
+    roleBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' }
 });

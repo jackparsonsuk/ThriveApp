@@ -309,6 +309,23 @@ export const getAllPTs = async (): Promise<UserProfile[]> => {
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as UserProfile));
 };
 
+// Fetch all admins (Admin view)
+export const getAllAdmins = async (): Promise<UserProfile[]> => {
+    const q = query(
+        collection(db, USERS_COLLECTION),
+        where('role', '==', 'admin')
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as UserProfile));
+};
+
+// Fetch all users (Admin view)
+export const getAllUsers = async (): Promise<UserProfile[]> => {
+    const q = query(collection(db, USERS_COLLECTION));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as UserProfile));
+};
+
 // Assign a client to a PT
 export const assignClientToPt = async (clientId: string, ptId: string | null) => {
     const userRef = doc(db, USERS_COLLECTION, clientId);
