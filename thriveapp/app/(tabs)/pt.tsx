@@ -424,12 +424,13 @@ export default function PTBookingScreen() {
                                         backgroundColor: theme.card,
                                         borderColor: theme.border,
                                         color: theme.text,
-                                        fontSize: 18,
+                                        fontSize: 22,
                                         padding: 12,
-                                        height: 50,
-                                        marginTop: 15
+                                        height: 56,
+                                        marginTop: 15,
+                                        letterSpacing: ptCodeInput.length > 0 ? 6 : 1,
                                     }]}
-                                    placeholder="Enter 6-digit PT Code"
+                                    placeholder="PT Code"
                                     placeholderTextColor={theme.icon}
                                     value={ptCodeInput}
                                     onChangeText={(text) => setPtCodeInput(text.toUpperCase())}
