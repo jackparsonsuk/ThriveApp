@@ -4,7 +4,7 @@ import { useAuth } from '../../context/auth';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getUserBookings, getPTBookingsForInstructor, cancelBooking, cancelRecurringSeries, Booking, getUserProfile, UserProfile } from '../../services/bookingService';
-import { format } from 'date-fns';
+import { format, isSameDay } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -21,6 +21,7 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'today' | 'upcoming'>('today');
 
   // Custom Alert State
   const [alertConfig, setAlertConfig] = useState<{
@@ -163,6 +164,17 @@ export default function DashboardScreen() {
     }
   };
 
+  const now = new Date();
+  const nextBooking = bookings.length > 0 ? bookings[0] : null;
+  const remainingBookings = bookings.slice(1);
+  
+  const displayedBookings = remainingBookings.filter(b => {
+    if (filter === 'today') {
+      return isSameDay(b.startTime, now);
+    }
+    return true;
+  });
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <ScrollView
@@ -179,58 +191,141 @@ export default function DashboardScreen() {
           <Text style={[styles.subtitle, { color: theme.icon }]}>Welcome to Thrive Collective</Text>
         </View>
 
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Upcoming Bookings</Text>
+        {loading ? (
+          <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 40 }} />
+        ) : !nextBooking ? (
+          <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 20 }]}>
+            <Ionicons name="calendar-outline" size={48} color={theme.icon} />
+            <Text style={[styles.emptyText, { color: theme.icon }]}>You have no upcoming bookings.</Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Next Session</Text>
+              <View style={[styles.highlightCard, { backgroundColor: theme.tint }]}>
+                <View style={styles.highlightHeader}>
+                  <Text style={styles.highlightTypeText} numberOfLines={1}>
+                    {nextBooking.recurringTemplateId && (
+                      <Ionicons name="repeat-outline" size={16} color="#ffffff" style={{ marginRight: 4 }} />
+                    )}
+                    {getTypeLabel(nextBooking)}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.highlightCancelButton}
+                    onPress={() => handleCancel(nextBooking)}
+                    disabled={!!cancellingId}
+                  >
+                    {cancellingId === nextBooking.id ? (
+                      <ActivityIndicator size="small" color="#ffffff" />
+                    ) : (
+                      <>
+                        <Ionicons 
+                          name={nextBooking.recurringTemplateId ? "settings-outline" : "close-circle-outline"} 
+                          size={14} 
+                          color="#ffffff" 
+                          style={{ marginRight: 4 }} 
+                        />
+                        <Text style={styles.highlightCancelText}>
+                          {nextBooking.recurringTemplateId ? 'Manage' : 'Cancel'}
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.highlightDetailsRow}>
+                  <Ionicons name="calendar" size={16} color="rgba(255,255,255,0.9)" style={{ marginRight: 6 }} />
+                  <Text style={styles.highlightDetailsText}>
+                    {format(nextBooking.startTime, 'EEEE, MMMM do')}
+                  </Text>
+                </View>
+                <View style={[styles.highlightDetailsRow, { marginTop: 4 }]}>
+                  <Ionicons name="time" size={16} color="rgba(255,255,255,0.9)" style={{ marginRight: 6 }} />
+                  <Text style={styles.highlightDetailsText}>
+                    {format(nextBooking.startTime, 'HH:mm')} - {format(nextBooking.endTime, 'HH:mm')}
+                  </Text>
+                </View>
+              </View>
+            </View>
 
-          {loading ? (
-            <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 20 }} />
-          ) : bookings.length === 0 ? (
-            <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Ionicons name="calendar-outline" size={48} color={theme.icon} />
-              <Text style={[styles.emptyText, { color: theme.icon }]}>You have no upcoming bookings.</Text>
-            </View>
-          ) : (
-            <View style={[styles.list, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              {bookings.map((booking, index) => {
-                const isLast = index === bookings.length - 1;
-                return (
-                  <View key={booking.id}>
-                    <View style={styles.card}>
-                      <View style={styles.cardHeader}>
-                        <View style={{ flex: 1, paddingRight: 10 }}>
-                          <Text style={[styles.typeText, { color: theme.text }]} numberOfLines={1}>
-                            {booking.recurringTemplateId && (
-                              <Ionicons name="repeat-outline" size={15} color={theme.icon} style={{ marginRight: 4 }} />
-                            )}
-                            {getTypeLabel(booking)}
-                          </Text>
-                          <View style={styles.detailsRow}>
-                            <Ionicons name="time-outline" size={15} color={theme.icon} style={{ marginRight: 6 }} />
-                            <Text style={[styles.detailsText, { color: theme.icon }]}>
-                              {format(booking.startTime, 'EEE, MMM d')} • {format(booking.startTime, 'HH:mm')} - {format(booking.endTime, 'HH:mm')}
-                            </Text>
-                          </View>
-                        </View>
-                        <TouchableOpacity
-                          style={[styles.cancelButton, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}
-                          onPress={() => handleCancel(booking)}
-                          disabled={!!cancellingId}
-                        >
-                          {cancellingId === booking.id ? (
-                            <ActivityIndicator size="small" color="#ef4444" />
-                          ) : (
-                            <Text style={styles.cancelButtonText}>Cancel</Text>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                    {!isLast && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
+            {(bookings.length > 1 || filter === 'upcoming') && (
+              <View style={styles.section}>
+                <View style={styles.filterContainer}>
+                  <TouchableOpacity 
+                    style={[styles.filterTab, filter === 'today' && { backgroundColor: theme.tint, borderColor: theme.tint }]} 
+                    onPress={() => setFilter('today')}
+                  >
+                    <Text style={[styles.filterText, filter === 'today' ? { color: '#ffffff' } : { color: theme.icon }]}>Later Today</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.filterTab, filter === 'upcoming' && { backgroundColor: theme.tint, borderColor: theme.tint }]} 
+                    onPress={() => setFilter('upcoming')}
+                  >
+                    <Text style={[styles.filterText, filter === 'upcoming' ? { color: '#ffffff' } : { color: theme.icon }]}>Following Schedule</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {displayedBookings.length === 0 ? (
+                  <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border, padding: 30, marginTop: 10 }]}>
+                    <Ionicons name="calendar-clear-outline" size={32} color={theme.icon} />
+                    <Text style={[styles.emptyText, { color: theme.icon, fontSize: 14 }]}>
+                      No more sessions {filter === 'today' ? 'today' : 'scheduled'}.
+                    </Text>
                   </View>
-                );
-              })}
-            </View>
-          )}
-        </View>
+                ) : (
+                  <View style={[styles.list, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 10 }]}>
+                    {displayedBookings.map((booking, index) => {
+                      const isLast = index === displayedBookings.length - 1;
+                      return (
+                        <View key={booking.id}>
+                          <View style={styles.card}>
+                            <View style={styles.cardHeader}>
+                              <View style={{ flex: 1, paddingRight: 10 }}>
+                                <Text style={[styles.typeText, { color: theme.text }]} numberOfLines={1}>
+                                  {booking.recurringTemplateId && (
+                                    <Ionicons name="repeat-outline" size={15} color={theme.icon} style={{ marginRight: 4 }} />
+                                  )}
+                                  {getTypeLabel(booking)}
+                                </Text>
+                                <View style={styles.detailsRow}>
+                                  <Ionicons name="time-outline" size={15} color={theme.icon} style={{ marginRight: 6 }} />
+                                  <Text style={[styles.detailsText, { color: theme.icon }]}>
+                                    {format(booking.startTime, 'EEE, MMM d')} • {format(booking.startTime, 'HH:mm')} - {format(booking.endTime, 'HH:mm')}
+                                  </Text>
+                                </View>
+                              </View>
+                              <TouchableOpacity
+                                style={styles.cancelButton}
+                                onPress={() => handleCancel(booking)}
+                                disabled={!!cancellingId}
+                              >
+                                {cancellingId === booking.id ? (
+                                  <ActivityIndicator size="small" color={theme.icon} />
+                                ) : (
+                                  <>
+                                    <Ionicons 
+                                      name={booking.recurringTemplateId ? "settings-outline" : "close-circle-outline"} 
+                                      size={14} 
+                                      color={theme.icon} 
+                                      style={{ marginRight: 4 }} 
+                                    />
+                                    <Text style={[styles.cancelButtonText, { color: theme.text }]}>
+                                      {booking.recurringTemplateId ? 'Manage' : 'Cancel'}
+                                    </Text>
+                                  </>
+                                )}
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                          {!isLast && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            )}
+          </>
+        )}
 
       </ScrollView>
 
@@ -279,7 +374,6 @@ const styles = StyleSheet.create({
   },
   section: {
     marginTop: 10,
-    flex: 1,
   },
   sectionTitle: {
     fontSize: 22,
@@ -301,6 +395,68 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
   },
+  highlightCard: {
+    borderRadius: Radii.xl,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  highlightHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  highlightTypeText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#ffffff',
+    flex: 1,
+    paddingRight: 10,
+    letterSpacing: -0.5,
+  },
+  highlightCancelButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: Radii.pill,
+  },
+  highlightCancelText: {
+    color: '#ffffff',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  highlightDetailsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  highlightDetailsText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  filterTab: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: Radii.pill,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    marginRight: 10,
+  },
+  filterText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
   list: {
     borderRadius: Radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
@@ -321,14 +477,16 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   cancelButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
     borderRadius: Radii.pill,
+    backgroundColor: 'rgba(0,0,0,0.04)',
   },
   cancelButtonText: {
-    color: '#ef4444',
     fontWeight: '600',
-    fontSize: 13,
+    fontSize: 12,
   },
   detailsRow: {
     flexDirection: 'row',
