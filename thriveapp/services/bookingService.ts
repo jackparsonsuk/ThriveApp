@@ -1,6 +1,6 @@
-import { collection, query, where, getDocs, addDoc, Timestamp, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, Timestamp, doc, getDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../config/firebaseConfig';
-import { addMinutes, startOfDay, endOfDay, isBefore, isAfter, isEqual } from 'date-fns';
+import { addMinutes, startOfDay, endOfDay, isBefore, isAfter, isEqual, addDays, addWeeks, addMonths } from 'date-fns';
 
 export interface Booking {
     id?: string;
@@ -12,6 +12,20 @@ export interface Booking {
     groupId?: string;
     reason?: string; // For blocks
     status: 'confirmed' | 'cancelled';
+    recurringTemplateId?: string; // Links this instance to a master recurring template
+    isException?: boolean; // True if this instance was individually modified from the template
+}
+
+export interface RecurringSessionTemplate {
+    id?: string;
+    userId: string; // The client
+    ptId: string;   // The PT providing the session
+    type: 'pt';
+    frequency: 'daily' | 'weekly' | 'bi-weekly' | 'monthly';
+    startTime: Date; // Contains both the start date of the series and the time of day
+    endTime: Date;   // Contains the end time of day
+    endDate?: Date;  // Optional: When this recurring series ends
+    status: 'active' | 'cancelled';
 }
 
 export interface UserProfile {
@@ -34,6 +48,7 @@ export interface GroupSession {
 const BOOKINGS_COLLECTION = 'bookings';
 const USERS_COLLECTION = 'users';
 const GROUP_SESSIONS_COLLECTION = 'group_sessions';
+const RECURRING_TEMPLATES_COLLECTION = 'recurring_templates';
 
 // Fetch user profile to get assigned PT
 export const getUserProfile = async (userId: string): Promise<UserProfile | null> => {
@@ -243,10 +258,35 @@ export const createGroupBooking = async (userId: string, groupId: string, startT
     return docRef.id;
 };
 
-// Cancel a booking
+// Cancel a single booking
 export const cancelBooking = async (bookingId: string) => {
     const bookingRef = doc(db, BOOKINGS_COLLECTION, bookingId);
     await updateDoc(bookingRef, { status: 'cancelled' });
+};
+
+// Cancel a recurring template and all of its FUTURE materialized occurrences
+export const cancelRecurringSeries = async (templateId: string, fromDate: Date) => {
+    const batch = writeBatch(db);
+
+    // 1. Mark the template as cancelled (or set an explicit endDate if we just want it to stop generating)
+    const templateRef = doc(db, RECURRING_TEMPLATES_COLLECTION, templateId);
+    batch.update(templateRef, { status: 'cancelled', endDate: Timestamp.fromDate(fromDate) });
+
+    // 2. Query all future occurrences that have NOT happened yet and belong to this template
+    const q = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('recurringTemplateId', '==', templateId),
+        where('startTime', '>=', startOfDay(fromDate)),
+        where('status', '==', 'confirmed')
+    );
+    const snapshot = await getDocs(q);
+
+    // 3. Mark all future occurrences as cancelled
+    snapshot.docs.forEach((docSnap) => {
+        batch.update(docSnap.ref, { status: 'cancelled' });
+    });
+
+    await batch.commit();
 };
 
 // Fetch all clients (Admin/PT view)
@@ -333,4 +373,89 @@ export const blockOutSlot = async (adminId: string, startTime: Date, endTime: Da
         status: 'confirmed'
     });
     return docRef.id;
+};
+
+// --- RECURRING SESSIONS ---
+
+// Create a recurring session template and initial materialized instances
+export const createRecurringSession = async (
+    templateData: Omit<RecurringSessionTemplate, 'id'>, 
+    monthsToGenerate = 3 // Generate 3 months in advance locally initially
+) => {
+    const batch = writeBatch(db);
+
+    // 1. Create the master template document
+    const templateRef = doc(collection(db, RECURRING_TEMPLATES_COLLECTION));
+    batch.set(templateRef, {
+        ...templateData,
+        startTime: Timestamp.fromDate(templateData.startTime),
+        endTime: Timestamp.fromDate(templateData.endTime),
+        endDate: templateData.endDate ? Timestamp.fromDate(templateData.endDate) : null,
+    });
+
+    const templateId = templateRef.id;
+
+    // 2. Generate initial materialized occurrences
+    let currentStart = new Date(templateData.startTime);
+    let currentEnd = new Date(templateData.endTime);
+    
+    // Stop generating if we hit the explicit end date, or the max forward generation time
+    const maxGenerationDate = addMonths(new Date(), monthsToGenerate);
+    const hardStopDate = templateData.endDate && isBefore(templateData.endDate, maxGenerationDate)
+        ? templateData.endDate
+        : maxGenerationDate;
+
+    while (isBefore(currentStart, hardStopDate) || isEqual(currentStart, hardStopDate)) {
+        const instanceRef = doc(collection(db, BOOKINGS_COLLECTION));
+        batch.set(instanceRef, {
+            userId: templateData.userId,
+            ptId: templateData.ptId,
+            type: templateData.type,
+            status: 'confirmed',
+            startTime: Timestamp.fromDate(currentStart),
+            endTime: Timestamp.fromDate(currentEnd),
+            recurringTemplateId: templateId,
+            isException: false
+        });
+
+        // Increment time based on frequency
+        if (templateData.frequency === 'daily') {
+            currentStart = addDays(currentStart, 1);
+            currentEnd = addDays(currentEnd, 1);
+        } else if (templateData.frequency === 'weekly') {
+            currentStart = addWeeks(currentStart, 1);
+            currentEnd = addWeeks(currentEnd, 1);
+        } else if (templateData.frequency === 'bi-weekly') {
+            currentStart = addWeeks(currentStart, 2);
+            currentEnd = addWeeks(currentEnd, 2);
+        } else if (templateData.frequency === 'monthly') {
+            currentStart = addMonths(currentStart, 1);
+            currentEnd = addMonths(currentEnd, 1);
+        }
+    }
+
+    // Commit the batch write (atomic creation of template and instances)
+    await batch.commit();
+
+    return templateId;
+};
+
+// Generate future instances for an existing template (e.g. called from a cron job)
+// This is a stub for the logic that the background function will use, but can also
+// be run manually if needed to extend existing windows.
+export const generateFutureRecurringInstances = async (templateId: string, uptoDate: Date) => {
+    const templateDoc = await getDoc(doc(db, RECURRING_TEMPLATES_COLLECTION, templateId));
+    if (!templateDoc.exists()) return;
+
+    const data = templateDoc.data();
+    if (data.status !== 'active') return;
+    
+    // Look up the latest booking instance for this template to know where to resume
+    const q = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('recurringTemplateId', '==', templateId),
+        // Normally we'd order by startTime desc, limit 1. But Firestore requires index.
+        // For simplicity, we can fetch all and sort in memory if the dataset is small, or require an index.
+    );
+    // ... complete implementation would require an index on recurringTemplateId + startTime
 };

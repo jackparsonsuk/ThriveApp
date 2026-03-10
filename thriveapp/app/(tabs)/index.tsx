@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator
 import { useAuth } from '../../context/auth';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getUserBookings, getPTBookingsForInstructor, cancelBooking, Booking, getUserProfile, UserProfile } from '../../services/bookingService';
+import { getUserBookings, getPTBookingsForInstructor, cancelBooking, cancelRecurringSeries, Booking, getUserProfile, UserProfile } from '../../services/bookingService';
 import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
@@ -29,6 +29,8 @@ export default function DashboardScreen() {
     message: string;
     isDestructive?: boolean;
     confirmText?: string;
+    onSecondaryConfirm?: () => void;
+    secondaryConfirmText?: string;
     cancelText?: string;
     onConfirm?: () => void;
   }>({ visible: false, title: '', message: '' });
@@ -87,15 +89,29 @@ export default function DashboardScreen() {
   };
 
   const handleCancel = (booking: Booking) => {
-    setAlertConfig({
-      visible: true,
-      title: 'Cancel Booking',
-      message: `Are you sure you want to cancel this ${booking.type} booking on ${format(booking.startTime, 'MMM d, HH:mm')}?`,
-      isDestructive: true,
-      confirmText: 'Yes, Cancel',
-      cancelText: 'No, Keep it',
-      onConfirm: () => confirmCancellation(booking.id!)
-    });
+    if (booking.recurringTemplateId) {
+      setAlertConfig({
+        visible: true,
+        title: 'Cancel Recurring Booking',
+        message: `Do you want to cancel just this session on ${format(booking.startTime, 'MMM d, HH:mm')}, or this and all future sessions in the series?`,
+        isDestructive: true,
+        confirmText: 'Cancel This Session',
+        onConfirm: () => confirmCancellation(booking.id!),
+        secondaryConfirmText: 'Cancel Entire Series',
+        onSecondaryConfirm: () => confirmRecurringCancellation(booking.recurringTemplateId!, booking.startTime),
+        cancelText: 'Keep it'
+      });
+    } else {
+      setAlertConfig({
+        visible: true,
+        title: 'Cancel Booking',
+        message: `Are you sure you want to cancel this ${booking.type} booking on ${format(booking.startTime, 'MMM d, HH:mm')}?`,
+        isDestructive: true,
+        confirmText: 'Yes, Cancel',
+        cancelText: 'No, Keep it',
+        onConfirm: () => confirmCancellation(booking.id!)
+      });
+    }
   };
 
   const confirmCancellation = async (id: string) => {
@@ -108,7 +124,27 @@ export default function DashboardScreen() {
         visible: true,
         title: 'Error',
         message: 'Failed to cancel the booking.',
-        onConfirm: undefined
+        onConfirm: undefined,
+        onSecondaryConfirm: undefined
+      });
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
+  const confirmRecurringCancellation = async (templateId: string, fromDate: Date) => {
+    setCancellingId(templateId); // Using templateId as temporary cancellingId to show loader
+    try {
+      await cancelRecurringSeries(templateId, fromDate);
+      fetchBookingsAndProfile();
+    } catch (error) {
+      console.error("Cancellation Error Details:", error);
+      setAlertConfig({
+        visible: true,
+        title: 'Error',
+        message: 'Failed to cancel the recurring series.',
+        onConfirm: undefined,
+        onSecondaryConfirm: undefined
       });
     } finally {
       setCancellingId(null);
@@ -162,7 +198,12 @@ export default function DashboardScreen() {
                     <View style={styles.card}>
                       <View style={styles.cardHeader}>
                         <View style={{ flex: 1, paddingRight: 10 }}>
-                          <Text style={[styles.typeText, { color: theme.text }]} numberOfLines={1}>{getTypeLabel(booking)}</Text>
+                          <Text style={[styles.typeText, { color: theme.text }]} numberOfLines={1}>
+                            {booking.recurringTemplateId && (
+                              <Ionicons name="repeat-outline" size={15} color={theme.icon} style={{ marginRight: 4 }} />
+                            )}
+                            {getTypeLabel(booking)}
+                          </Text>
                           <View style={styles.detailsRow}>
                             <Ionicons name="time-outline" size={15} color={theme.icon} style={{ marginRight: 6 }} />
                             <Text style={[styles.detailsText, { color: theme.icon }]}>
@@ -199,9 +240,11 @@ export default function DashboardScreen() {
         message={alertConfig.message}
         isDestructive={alertConfig.isDestructive}
         confirmText={alertConfig.confirmText || 'Confirm'}
+        secondaryConfirmText={alertConfig.secondaryConfirmText}
         cancelText={alertConfig.cancelText || 'Cancel'}
         onClose={closeAlert}
         onConfirm={alertConfig.onConfirm}
+        onSecondaryConfirm={alertConfig.onSecondaryConfirm}
       />
     </SafeAreaView>
   );

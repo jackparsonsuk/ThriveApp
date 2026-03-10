@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate } from '../../services/bookingService';
+import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
@@ -29,6 +29,7 @@ export default function PTBookingScreen() {
     const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean }[]>([]);
     const [loading, setLoading] = useState(true);
     const [bookingLoading, setBookingLoading] = useState(false);
+    const [recurringFrequency, setRecurringFrequency] = useState<'none' | 'weekly' | 'bi-weekly' | 'monthly'>('none');
 
     // PT Assignment State
     const [ptCodeInput, setPtCodeInput] = useState('');
@@ -200,7 +201,7 @@ export default function PTBookingScreen() {
         setAlertConfig({
             visible: true,
             title: 'Confirm PT Booking',
-            message: `Book PT session for ${targetClientName} at ${format(slot.time, 'HH:mm')} for 1 hour?`,
+            message: `Book ${recurringFrequency !== 'none' ? recurringFrequency + ' ' : ''}PT session for ${targetClientName} at ${format(slot.time, 'HH:mm')}?`,
             onConfirm: () => confirmBooking(slot.time, targetPtId as string)
         });
     };
@@ -213,22 +214,33 @@ export default function PTBookingScreen() {
         const targetUserId = isPtBookingForClient ? selectedClientForBooking.id : user.uid;
 
         try {
-            // Assuming PT sessions are 1 hour default
             const endTime = addMinutes(startTime, 60);
 
-            await createBooking({
-                userId: targetUserId,
-                startTime,
-                endTime,
-                type: 'pt',
-                ptId: ptId,
-                status: 'confirmed'
-            });
+            if (recurringFrequency === 'none') {
+                await createBooking({
+                    userId: targetUserId,
+                    startTime,
+                    endTime,
+                    type: 'pt',
+                    ptId: ptId,
+                    status: 'confirmed'
+                });
+            } else {
+                await createRecurringSession({
+                    userId: targetUserId,
+                    ptId: ptId,
+                    type: 'pt',
+                    frequency: recurringFrequency as any,
+                    startTime: startTime,
+                    endTime: endTime,
+                    status: 'active'
+                });
+            }
 
             setAlertConfig({
                 visible: true,
                 title: 'Success!',
-                message: isPtBookingForClient ? `Session booked for ${selectedClientForBooking.name}.` : 'Your PT session has been booked.',
+                message: isPtBookingForClient ? `Session${recurringFrequency !== 'none' ? 's' : ''} booked for ${selectedClientForBooking.name}.` : 'Your PT session has been booked.',
                 isSuccess: true,
                 onConfirm: undefined
             });
@@ -582,6 +594,32 @@ export default function PTBookingScreen() {
                 </ScrollView>
             </View>
 
+            {userProfile?.role === 'pt' && selectedClientForBooking && (
+                <View style={[styles.frequencyContainer, { borderBottomColor: theme.border }]}>
+                    <Text style={[styles.frequencyLabel, { color: theme.text }]}>Repeat Session:</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.frequencyScroll}>
+                        {['none', 'weekly', 'bi-weekly', 'monthly'].map((freq) => (
+                            <TouchableOpacity
+                                key={freq}
+                                style={[
+                                    styles.freqButton,
+                                    { borderColor: theme.border },
+                                    recurringFrequency === freq && { backgroundColor: theme.tint, borderColor: theme.tint }
+                                ]}
+                                onPress={() => setRecurringFrequency(freq as any)}
+                            >
+                                <Text style={[
+                                    styles.freqButtonText,
+                                    { color: recurringFrequency === freq ? '#fff' : theme.icon }
+                                ]}>
+                                    {freq === 'none' ? 'No Repeat' : freq === 'bi-weekly' ? 'Bi-Weekly' : freq.charAt(0).toUpperCase() + freq.slice(1)}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                </View>
+            )}
+
             <ScrollView contentContainerStyle={styles.slotsContainer}>
                 {loading ? (
                     <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
@@ -858,5 +896,29 @@ const styles = StyleSheet.create({
     backButtonText: {
         fontSize: 14,
         fontWeight: '600',
+    },
+    frequencyContainer: {
+        paddingVertical: 12,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    frequencyLabel: {
+        fontSize: 15,
+        fontWeight: '600',
+        paddingHorizontal: 20,
+        marginBottom: 8,
+    },
+    frequencyScroll: {
+        paddingHorizontal: 15,
+        gap: 8,
+    },
+    freqButton: {
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderRadius: Radii.pill,
+        borderWidth: StyleSheet.hairlineWidth,
+    },
+    freqButtonText: {
+        fontSize: 14,
+        fontWeight: '500',
     }
 });

@@ -66,8 +66,10 @@ service cloud.firestore {
       
       // Users can cancel (update status) their own bookings
       // PTs and Admins can update any booking
+      // Specifically allow PTs to update bookings where they are the assigned PT
       allow update: if isSignedIn() && (
         resource.data.userId == request.auth.uid || 
+        resource.data.ptId == request.auth.uid ||
         isPT() || 
         isAdmin()
       );
@@ -83,6 +85,32 @@ service cloud.firestore {
       
       // Only admins can manage group sessions
       allow write: if isAdmin();
+    }
+
+    // --- RECURRING TEMPLATES COLLECTION ---
+    match /recurring_templates/{templateId} {
+      // Users can read templates they are part of (either the client or the PT)
+      // Admins can read all templates
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.ptId == request.auth.uid ||
+        isAdmin()
+      );
+
+      // PTs can create templates for their clients
+      // Admins can create templates for anyone
+      allow create: if isSignedIn() && (
+        (isPT() && request.resource.data.ptId == request.auth.uid) ||
+        isAdmin()
+      );
+
+      // PTs and Admins can update/cancel templates
+      allow update: if isSignedIn() && (
+        (isPT() && resource.data.ptId == request.auth.uid) ||
+        isAdmin()
+      );
+
+      allow delete: if isAdmin();
     }
   }
 }

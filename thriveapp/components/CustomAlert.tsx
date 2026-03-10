@@ -8,6 +8,8 @@ interface ActionAlertProps {
     onClose: () => void;
     onConfirm?: () => void;
     confirmText?: string;
+    onSecondaryConfirm?: () => void;
+    secondaryConfirmText?: string;
     cancelText?: string;
     isDestructive?: boolean;
 }
@@ -19,6 +21,8 @@ export default function CustomAlert({
     onClose,
     onConfirm,
     confirmText = 'Confirm',
+    onSecondaryConfirm,
+    secondaryConfirmText,
     cancelText = 'Cancel',
     isDestructive = false
 }: ActionAlertProps) {
@@ -42,6 +46,17 @@ export default function CustomAlert({
                                 <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={onClose}>
                                     <Text style={styles.cancelText}>{cancelText}</Text>
                                 </TouchableOpacity>
+                                {onSecondaryConfirm && secondaryConfirmText && (
+                                    <TouchableOpacity
+                                        style={[styles.button, isDestructive ? styles.destructiveButton : styles.confirmButton]}
+                                        onPress={() => {
+                                            onClose();
+                                            onSecondaryConfirm();
+                                        }}
+                                    >
+                                        <Text style={styles.confirmText}>{secondaryConfirmText}</Text>
+                                    </TouchableOpacity>
+                                )}
                                 <TouchableOpacity
                                     style={[styles.button, isDestructive ? styles.destructiveButton : styles.confirmButton]}
                                     onPress={() => {
