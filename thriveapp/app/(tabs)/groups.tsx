@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { createGroup, getPTGroups, Group, GroupInvite, inviteToGroup, getGroupMembers, getGroupInvites, getPendingInvitesForEmail, acceptGroupInvite, declineGroupInvite, getClientGroups } from '../../services/groupService';
+import { createGroup, getPTGroups, Group, GroupInvite, inviteToGroup, getGroupMembers, getGroupInvites, getPendingInvitesForEmail, acceptGroupInvite, declineGroupInvite, getClientGroups, removeGroupMember, deleteGroup } from '../../services/groupService';
 import { getUserProfile, UserProfile, getGymBookingsForDate, bookGroupSession, checkSlotAvailability, Booking, getGroupSessions, cancelBooking } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
@@ -60,6 +60,9 @@ export default function GroupsScreen() {
         message: string;
         isError?: boolean;
         isSuccess?: boolean;
+        isDestructive?: boolean;
+        confirmText?: string;
+        cancelText?: string;
         onConfirm?: () => void;
     }>({ visible: false, title: '', message: '' });
 
@@ -314,6 +317,58 @@ export default function GroupsScreen() {
         });
     };
 
+    const handleRemoveMember = (member: UserProfile) => {
+        setAlertConfig({
+            visible: true,
+            title: 'Remove Member',
+            message: `Are you sure you want to remove ${member.name} from ${selectedGroup?.name}? This will also cancel their upcoming sessions for this group.`,
+            isDestructive: true,
+            confirmText: 'Remove',
+            onConfirm: async () => {
+                setDetailsLoading(true);
+                try {
+                    await removeGroupMember(selectedGroup!.id!, member.id);
+                    await loadGroupDetails(selectedGroup!);
+                    setAlertConfig({ visible: true, title: 'Success', message: 'Member removed.', isSuccess: true, onConfirm: undefined });
+                } catch (error) {
+                    console.error('Error removing member:', error);
+                    setAlertConfig({ visible: true, title: 'Error', message: 'Failed to remove member.', isError: true, onConfirm: undefined });
+                } finally {
+                    setDetailsLoading(false);
+                }
+            }
+        });
+    };
+
+    const handleDeleteGroup = () => {
+        setAlertConfig({
+            visible: true,
+            title: 'Delete Group',
+            message: `Are you entirely sure you want to delete ${selectedGroup?.name}? This will permanently remove the group, dismiss all members, and permanently cancel all upcoming group sessions entirely for everyone.`,
+            isDestructive: true,
+            confirmText: 'Delete Group',
+            onConfirm: async () => {
+                setDetailsLoading(true);
+                try {
+                    await deleteGroup(selectedGroup!.id!, selectedGroup!.name);
+                    setAlertConfig({ 
+                        visible: true, 
+                        title: 'Success', 
+                        message: 'Group permanently deleted.', 
+                        isSuccess: true, 
+                        onConfirm: () => setSelectedGroup(null) 
+                    });
+                    loadInitialData(); // refresh the main PT groups list
+                } catch (error) {
+                    console.error('Error deleting group:', error);
+                    setAlertConfig({ visible: true, title: 'Error', message: 'Failed to delete the group.', isError: true, onConfirm: undefined });
+                } finally {
+                    setDetailsLoading(false);
+                }
+            }
+        });
+    };
+
     if (loading) {
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -542,9 +597,17 @@ export default function GroupsScreen() {
                         <View style={[styles.listWrapper, { backgroundColor: theme.card, borderColor: theme.border }]}>
                             {members.map((m, i) => (
                                 <View key={m.id}>
-                                    <View style={styles.listItem}>
-                                        <Text style={[styles.listItemText, { color: theme.text }]}>{m.name}</Text>
-                                        <Text style={[styles.listItemSub, { color: theme.icon }]}>{m.email}</Text>
+                                    <View style={[styles.listItem, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+                                        <View>
+                                            <Text style={[styles.listItemText, { color: theme.text }]}>{m.name}</Text>
+                                            <Text style={[styles.listItemSub, { color: theme.icon }]}>{m.email}</Text>
+                                        </View>
+                                        <TouchableOpacity 
+                                            style={{ paddingHorizontal: 12, paddingVertical: 6 }}
+                                            onPress={() => handleRemoveMember(m)}
+                                        >
+                                            <Ionicons name="close-circle" size={24} color={theme.icon} />
+                                        </TouchableOpacity>
                                     </View>
                                     {i < members.length - 1 && <View style={[styles.separator, { backgroundColor: theme.border, marginLeft: 0 }]} />}
                                 </View>
@@ -571,6 +634,23 @@ export default function GroupsScreen() {
                                     {i < arr.length - 1 && <View style={[styles.separator, { backgroundColor: theme.border, marginLeft: 0 }]} />}
                                 </View>
                             ))}
+                        </View>
+                    )}
+
+                    {/* Danger Zone: Delete Group */}
+                    {userProfile?.role === 'pt' && (
+                        <View style={{ marginTop: 40, marginBottom: 40 }}>
+                            <Text style={[styles.sectionTitle, { color: '#ef4444', marginBottom: 15 }]}>Danger Zone</Text>
+                            <TouchableOpacity 
+                                style={{ padding: 16, borderRadius: Radii.pill, backgroundColor: 'transparent', borderWidth: 2, borderColor: '#ef4444', alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
+                                onPress={handleDeleteGroup}
+                            >
+                                <Ionicons name="trash-outline" size={20} color="#ef4444" style={{ marginRight: 8 }} />
+                                <Text style={{ color: '#ef4444', fontSize: 16, fontWeight: '600' }}>Delete Group</Text>
+                            </TouchableOpacity>
+                            <Text style={{ color: theme.icon, fontSize: 13, textAlign: 'center', marginTop: 10 }}>
+                                This will irrevocably cancel all upcoming sessions along with deleting the group itself.
+                            </Text>
                         </View>
                     )}
                 </ScrollView>
