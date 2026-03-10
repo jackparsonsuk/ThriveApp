@@ -6,6 +6,7 @@ import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfil
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
+import { useRouter } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii } from '@/constants/theme';
 
@@ -14,6 +15,7 @@ const OPEN_HOUR = 7;
 const CLOSE_HOUR = 20;
 
 export default function AdminScheduleScreen() {
+    const router = useRouter();
     const { user } = useAuth();
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
@@ -126,7 +128,16 @@ export default function AdminScheduleScreen() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
             <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-                <Text style={[styles.title, { color: theme.text }]}>Admin Schedule</Text>
+                <View style={styles.headerTop}>
+                    <Text style={[styles.title, { color: theme.text }]}>Admin Schedule</Text>
+                    <TouchableOpacity 
+                        style={[styles.analyticsBtn, { backgroundColor: theme.tint }]}
+                        onPress={() => router.push('/analytics')}
+                    >
+                        <Ionicons name="stats-chart" size={18} color="#fff" />
+                        <Text style={styles.analyticsBtnText}>Analytics</Text>
+                    </TouchableOpacity>
+                </View>
                 <Text style={[styles.subtitle, { color: theme.icon }]}>Manage bookings and block out time slots</Text>
             </View>
 
@@ -246,6 +257,9 @@ const styles = StyleSheet.create({
     header: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20, borderBottomWidth: StyleSheet.hairlineWidth },
     title: { fontSize: 34, fontWeight: '700', letterSpacing: -0.5 },
     subtitle: { fontSize: 16, marginTop: 4 },
+    headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+    analyticsBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: Radii.pill, gap: 6 },
+    analyticsBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
     dateSelectorContainer: { borderBottomWidth: StyleSheet.hairlineWidth },
     dateSelector: { paddingHorizontal: 15, paddingVertical: 12, gap: 8 },
     dateCard: { paddingVertical: 10, paddingHorizontal: 8, borderRadius: Radii.pill, alignItems: 'center', minWidth: 54 },

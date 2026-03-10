@@ -459,3 +459,82 @@ export const generateFutureRecurringInstances = async (templateId: string, uptoD
     );
     // ... complete implementation would require an index on recurringTemplateId + startTime
 };
+
+// --- ANALYTICS ---
+
+export interface AnalyticsData {
+    bookingsToday: number;
+    bookingsThisWeek: number;
+    ptSessionsToday: number;
+    ptSessionsThisWeek: number;
+    cancelledToday: number;
+    cancelledThisWeek: number;
+    ptBreakdown: {
+        ptId: string;
+        ptName: string;
+        count: number;
+    }[];
+}
+
+export const getAnalyticsData = async (): Promise<AnalyticsData> => {
+    const now = new Date();
+    const startOfToday = startOfDay(now);
+    const endOfToday = endOfDay(now);
+    const startOfWeek = addDays(startOfToday, -now.getDay()); // Sunday
+    const endOfWeek = addDays(startOfWeek, 6);
+    endOfWeek.setHours(23, 59, 59, 999);
+
+    // Fetch all bookings for the week (to process in memory for efficiency vs multiple queries)
+    const q = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('startTime', '>=', Timestamp.fromDate(startOfWeek)),
+        where('startTime', '<=', Timestamp.fromDate(endOfWeek))
+    );
+
+    const snapshot = await getDocs(q);
+    const allBookings = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        startTime: doc.data().startTime.toDate(),
+        endTime: doc.data().endTime.toDate(),
+    })) as Booking[];
+
+    const pts = await getAllPTs();
+    const ptMap = new Map(pts.map(p => [p.id, p.name]));
+
+    const stats: AnalyticsData = {
+        bookingsToday: 0,
+        bookingsThisWeek: 0,
+        ptSessionsToday: 0,
+        ptSessionsThisWeek: 0,
+        cancelledToday: 0,
+        cancelledThisWeek: 0,
+        ptBreakdown: pts.map(p => ({ ptId: p.id, ptName: p.name, count: 0 }))
+    };
+
+    allBookings.forEach(b => {
+        const isToday = b.startTime >= startOfToday && b.startTime <= endOfToday;
+        
+        if (b.status === 'confirmed') {
+            stats.bookingsThisWeek++;
+            if (isToday) stats.bookingsToday++;
+
+            if (b.type === 'pt') {
+                stats.ptSessionsThisWeek++;
+                if (isToday) stats.ptSessionsToday++;
+
+                if (b.ptId) {
+                    const ptStat = stats.ptBreakdown.find(p => p.ptId === b.ptId);
+                    if (ptStat && isToday) {
+                        ptStat.count++;
+                    }
+                }
+            }
+        } else if (b.status === 'cancelled') {
+            stats.cancelledThisWeek++;
+            if (isToday) stats.cancelledToday++;
+        }
+    });
+
+    return stats;
+};
