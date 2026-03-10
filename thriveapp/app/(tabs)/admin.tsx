@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile, getAllUsers } from '../../services/bookingService';
-import { format, addDays, startOfDay, addMinutes, setHours, setMinutes } from 'date-fns';
+import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isToday } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
 import { useRouter } from 'expo-router';
@@ -147,8 +147,18 @@ export default function AdminScreen() {
         let currentTime = setMinutes(setHours(selectedDate, OPEN_HOUR), 0);
         const endTime = setMinutes(setHours(selectedDate, CLOSE_HOUR), 0);
 
+        const now = new Date();
+        const viewingToday = isToday(selectedDate);
+
         while (currentTime < endTime) {
             const blockEnd = addMinutes(currentTime, 15);
+            
+            // Skip if it's today and the slot has already ended
+            if (viewingToday && blockEnd <= now) {
+                currentTime = addMinutes(currentTime, 15);
+                continue;
+            }
+
             const overlapping = dailyBookings.filter(b => b.startTime < blockEnd && b.endTime > currentTime);
             blocks.push({ time: currentTime, bookings: overlapping });
             currentTime = addMinutes(currentTime, 15);

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import Head from 'expo-router/head';
 import { signInWithEmailAndPassword } from 'firebase/auth';
@@ -11,22 +11,44 @@ export default function LoginScreen() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const router = useRouter();
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
 
+    const getLoginErrorMessage = (code: string): string => {
+        switch (code) {
+            case 'auth/user-not-found':
+            case 'auth/invalid-email':
+                return 'No account found with that email address.';
+            case 'auth/wrong-password':
+            case 'auth/invalid-credential':
+                return 'Incorrect password. Please try again.';
+            case 'auth/too-many-requests':
+                return 'Too many failed attempts. Your account has been temporarily locked. Please reset your password or try again later.';
+            case 'auth/user-disabled':
+                return 'This account has been disabled. Please contact support.';
+            case 'auth/network-request-failed':
+                return 'Network error. Please check your connection and try again.';
+            default:
+                return 'Sign in failed. Please check your details and try again.';
+        }
+    };
+
     const handleLogin = async () => {
         if (!email || !password) {
-            Alert.alert('Error', 'Please fill in all fields');
+            setErrorMessage('Please fill in all fields.');
             return;
         }
+
+        setErrorMessage(null);
 
         try {
             setLoading(true);
             await signInWithEmailAndPassword(auth, email, password);
             // The context will automatically redirect upon successful login
         } catch (error: any) {
-            Alert.alert('Login Error', error.message || 'Failed to sign in');
+            setErrorMessage(getLoginErrorMessage(error.code));
         } finally {
             setLoading(false);
         }
@@ -50,7 +72,7 @@ export default function LoginScreen() {
                     placeholder="Email"
                     placeholderTextColor={theme.icon}
                     value={email}
-                    onChangeText={setEmail}
+                    onChangeText={(v) => { setEmail(v); setErrorMessage(null); }}
                     autoCapitalize="none"
                     keyboardType="email-address"
                 />
@@ -60,9 +82,15 @@ export default function LoginScreen() {
                     placeholder="Password"
                     placeholderTextColor={theme.icon}
                     value={password}
-                    onChangeText={setPassword}
+                    onChangeText={(v) => { setPassword(v); setErrorMessage(null); }}
                     secureTextEntry
                 />
+
+                {errorMessage ? (
+                    <View style={styles.errorBox}>
+                        <Text style={styles.errorText}>{errorMessage}</Text>
+                    </View>
+                ) : null}
 
                 <TouchableOpacity
                     style={[styles.button, { backgroundColor: theme.tint }]}
@@ -140,5 +168,17 @@ const styles = StyleSheet.create({
     linkText: {
         fontSize: 14,
         fontWeight: '500',
+    },
+    errorBox: {
+        backgroundColor: 'rgba(220, 38, 38, 0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(220, 38, 38, 0.4)',
+        borderRadius: Radii.md,
+        padding: 12,
+    },
+    errorText: {
+        color: '#dc2626',
+        fontSize: 14,
+        textAlign: 'center',
     },
 });
