@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, FlatList } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, FlatList, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile, getAllUsers, getUserProfile } from '../../services/bookingService';
+import { getGlobalSettings, updateGlobalSettings, GlobalSettings } from '../../services/settingsService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isToday } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
@@ -14,7 +15,7 @@ import { Colors, Radii } from '@/constants/theme';
 const OPEN_HOUR = 7;
 const CLOSE_HOUR = 20;
 
-type AdminTab = 'schedule' | 'members';
+type AdminTab = 'schedule' | 'members' | 'settings';
 
 export default function AdminScreen() {
     const router = useRouter();
@@ -34,6 +35,12 @@ export default function AdminScreen() {
     const [membersLoading, setMembersLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [roleFilter, setRoleFilter] = useState<'all' | 'client' | 'pt' | 'admin'>('all');
+
+    // Settings State
+    const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
+    const [signupCode, setSignupCode] = useState('');
+    const [savingCode, setSavingCode] = useState(false);
+    const [isEditingSignupCode, setIsEditingSignupCode] = useState(false);
 
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState<{
@@ -55,6 +62,8 @@ export default function AdminScreen() {
             fetchSchedule();
         } else if (activeTab === 'members') {
             fetchMembers();
+        } else if (activeTab === 'settings') {
+            fetchSettings();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedDate, activeTab]);
@@ -98,6 +107,52 @@ export default function AdminScreen() {
             });
         } finally {
             setMembersLoading(false);
+        }
+    };
+
+    const fetchSettings = async () => {
+        setLoading(true);
+        try {
+            const settings = await getGlobalSettings();
+            setGlobalSettings(settings);
+            setSignupCode(settings?.signupCode || '');
+        } catch (error) {
+            console.error('Error fetching settings:', error);
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to load settings.',
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSaveSignupCode = async () => {
+        if (!signupCode.trim()) {
+            Alert.alert('Error', 'Signup code cannot be empty');
+            return;
+        }
+        
+        setSavingCode(true);
+        try {
+            await updateGlobalSettings({ signupCode: signupCode.trim() });
+            setAlertConfig({
+                visible: true,
+                title: 'Success',
+                message: 'Signup code updated successfully.',
+                isDestructive: false
+            });
+        } catch (error) {
+            console.error('Error saving signup code:', error);
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to update signup code. Check permissions.',
+                isDestructive: false
+            });
+        } finally {
+            setSavingCode(false);
         }
     };
 
@@ -324,6 +379,82 @@ export default function AdminScreen() {
         </View>
     );
 
+    const renderSettings = () => (
+        <ScrollView style={styles.settingsContainer} contentContainerStyle={{ paddingBottom: 40 }}>
+            {loading ? (
+                <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
+            ) : (
+                <View style={styles.settingsSection}>
+                    <Text style={[styles.sectionTitle, { color: theme.text }]}>Global Settings</Text>
+                    <View style={[styles.settingsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                        <View style={styles.settingRow}>
+                            <View style={styles.settingInfo}>
+                                <Text style={[styles.settingLabel, { color: theme.text }]}>Signup Code</Text>
+                                <Text style={[styles.settingDescription, { color: theme.icon }]}>
+                                    Required for new client registrations. Give this code to clients so they can sign up.
+                                </Text>
+                            </View>
+                            {!isEditingSignupCode && (
+                                <TouchableOpacity 
+                                    style={[styles.editButton, { borderColor: theme.border }]}
+                                    onPress={() => setIsEditingSignupCode(true)}
+                                >
+                                    <Ionicons name="pencil" size={14} color={theme.text} />
+                                    <Text style={[styles.editButtonText, { color: theme.text }]}>Edit</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                        
+                        {isEditingSignupCode ? (
+                            <View style={styles.inputContainer}>
+                                <TextInput
+                                    style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]}
+                                    value={signupCode}
+                                    onChangeText={setSignupCode}
+                                    placeholder="Enter signup code"
+                                    placeholderTextColor={theme.icon}
+                                    autoCapitalize="none"
+                                />
+                                
+                                <TouchableOpacity 
+                                    style={[styles.cancelButton, { backgroundColor: theme.border }]}
+                                    onPress={() => {
+                                        setIsEditingSignupCode(false);
+                                        setSignupCode(globalSettings?.signupCode || '');
+                                    }}
+                                    disabled={savingCode}
+                                >
+                                    <Text style={[styles.cancelButtonText, { color: theme.text }]}>Cancel</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity 
+                                    style={[styles.saveButton, { backgroundColor: theme.tint }]}
+                                    onPress={async () => {
+                                        await handleSaveSignupCode();
+                                        setIsEditingSignupCode(false);
+                                    }}
+                                    disabled={savingCode || signupCode === globalSettings?.signupCode}
+                                >
+                                    {savingCode ? (
+                                        <ActivityIndicator size="small" color="#fff" />
+                                    ) : (
+                                        <Text style={styles.saveButtonText}>Save</Text>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
+                        ) : (
+                            <View style={[styles.codeDisplayBox, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                                <Text style={[styles.codeText, { color: theme.text }]}>
+                                    {globalSettings?.signupCode || 'No code set'}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+                </View>
+            )}
+        </ScrollView>
+    );
+
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
             <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
@@ -348,12 +479,20 @@ export default function AdminScreen() {
                         <Text style={[styles.tabText, { color: activeTab === 'schedule' ? theme.text : theme.icon }]}>Schedule</Text>
                     </TouchableOpacity>
                     {userRole === 'admin' && (
-                        <TouchableOpacity 
-                            onPress={() => setActiveTab('members')}
-                            style={[styles.tab, activeTab === 'members' && { borderBottomColor: theme.tint }]}
-                        >
-                            <Text style={[styles.tabText, { color: activeTab === 'members' ? theme.text : theme.icon }]}>Members</Text>
-                        </TouchableOpacity>
+                        <>
+                            <TouchableOpacity 
+                                onPress={() => setActiveTab('members')}
+                                style={[styles.tab, activeTab === 'members' && { borderBottomColor: theme.tint }]}
+                            >
+                                <Text style={[styles.tabText, { color: activeTab === 'members' ? theme.text : theme.icon }]}>Members</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                                onPress={() => setActiveTab('settings')}
+                                style={[styles.tab, activeTab === 'settings' && { borderBottomColor: theme.tint }]}
+                            >
+                                <Text style={[styles.tabText, { color: activeTab === 'settings' ? theme.text : theme.icon }]}>Settings</Text>
+                            </TouchableOpacity>
+                        </>
                     )}
                 </View>
             </View>
@@ -378,7 +517,9 @@ export default function AdminScreen() {
                 </View>
             )}
 
-            {activeTab === 'schedule' ? renderSchedule() : renderMembers()}
+            {activeTab === 'schedule' && renderSchedule()}
+            {activeTab === 'members' && renderMembers()}
+            {activeTab === 'settings' && renderSettings()}
 
             <CustomAlert
                 visible={alertConfig.visible}
@@ -443,5 +584,23 @@ const styles = StyleSheet.create({
     memberEmail: { fontSize: 14, marginBottom: 4 },
     memberBadgeContainer: { flexDirection: 'row' },
     roleBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
-    roleBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' }
+    roleBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+    settingsContainer: { flex: 1, padding: 16 },
+    settingsSection: { marginBottom: 30 },
+    sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12, marginLeft: 4 },
+    settingsCard: { borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, padding: 16 },
+    settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    settingInfo: { flex: 1 },
+    settingLabel: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
+    settingDescription: { fontSize: 13 },
+    inputContainer: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    input: { flex: 1, borderWidth: StyleSheet.hairlineWidth, borderRadius: Radii.md, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16 },
+    saveButton: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: Radii.md, justifyContent: 'center', alignItems: 'center', minWidth: 80 },
+    saveButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+    editButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radii.pill, borderWidth: StyleSheet.hairlineWidth },
+    editButtonText: { fontSize: 13, fontWeight: '600' },
+    cancelButton: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: Radii.md, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent', borderWidth: StyleSheet.hairlineWidth },
+    cancelButtonText: { fontSize: 14, fontWeight: '600' },
+    codeDisplayBox: { padding: 16, borderRadius: Radii.md, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.02)' },
+    codeText: { fontSize: 24, fontWeight: '700', letterSpacing: 2 }
 });

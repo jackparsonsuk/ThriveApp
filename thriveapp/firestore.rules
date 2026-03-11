@@ -145,6 +145,13 @@ service cloud.firestore {
       allow delete: if isPT() || isAdmin();
     }
 
+    // --- SETTINGS COLLECTION ---
+    match /settings/{document=**} {
+      // Anyone can read global settings for sign up verification
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // --- ERROR LOGS COLLECTION ---
     match /error_logs/{errorId} {
       // Anyone can create an error log (errors happen before login too)
