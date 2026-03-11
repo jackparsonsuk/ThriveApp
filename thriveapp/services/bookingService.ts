@@ -387,7 +387,7 @@ export const cancelRecurringSeries = async (templateId: string, fromDate: Date) 
 export const getAllPTs = async (): Promise<UserProfile[]> => {
     const q = query(
         collection(db, USERS_COLLECTION),
-        where('role', '==', 'pt')
+        where('role', 'in', ['pt', 'admin'])
     );
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as UserProfile));

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] - 2026-03-11
+
+### Changed
+- **Admin PT Privileges**: Admins are now treated as Personal Trainers throughout the app, including visibility in the Analytics breakdown, displaying in the client PT selector, and gaining access to PT-specific booking flows on the PT tab.
+
+---
+
 ## [1.8.1] - 2026-03-11
 
 ### Changed

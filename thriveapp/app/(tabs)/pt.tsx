@@ -70,7 +70,7 @@ export default function PTBookingScreen() {
             fetchAssignedPt(userProfile.assignedPtId);
         }
 
-        if (userProfile?.role === 'pt' && user?.uid) {
+        if ((userProfile?.role === 'pt' || userProfile?.role === 'admin') && user?.uid) {
             fetchClients(user.uid);
             if (selectedClientForBooking) {
                 // If PT is booking for a client, check the PT's own availability
@@ -195,7 +195,7 @@ export default function PTBookingScreen() {
     };
 
     const handleBookSlot = async (slot: { time: Date; available: boolean }) => {
-        const isPtBookingForClient = userProfile?.role === 'pt' && selectedClientForBooking;
+        const isPtBookingForClient = (userProfile?.role === 'pt' || userProfile?.role === 'admin') && selectedClientForBooking;
         const targetPtId = isPtBookingForClient ? user?.uid : userProfile?.assignedPtId;
         const targetClientName = isPtBookingForClient ? selectedClientForBooking.name : 'you';
 
@@ -213,7 +213,7 @@ export default function PTBookingScreen() {
         if (!user) return;
         setBookingLoading(true);
 
-        const isPtBookingForClient = userProfile?.role === 'pt' && selectedClientForBooking;
+        const isPtBookingForClient = (userProfile?.role === 'pt' || userProfile?.role === 'admin') && selectedClientForBooking;
         const targetUserId = isPtBookingForClient ? selectedClientForBooking.id : user.uid;
 
         try {
@@ -320,7 +320,7 @@ export default function PTBookingScreen() {
         }
     };
 
-    if (userProfile?.role === 'pt' && !selectedClientForBooking) {
+    if ((userProfile?.role === 'pt' || userProfile?.role === 'admin') && !selectedClientForBooking) {
         const ptCode = user?.uid ? user.uid.substring(0, 6).toUpperCase() : '------';
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
@@ -533,7 +533,7 @@ export default function PTBookingScreen() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
             <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-                {userProfile?.role === 'pt' && selectedClientForBooking ? (
+                {(userProfile?.role === 'pt' || userProfile?.role === 'admin') && selectedClientForBooking ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                         <View>
                             <Text style={[styles.title, { color: theme.text }]}>Book for {selectedClientForBooking.name.split(' ')[0]}</Text>
@@ -583,7 +583,7 @@ export default function PTBookingScreen() {
                 </ScrollView>
             </View>
 
-            {userProfile?.role === 'pt' && selectedClientForBooking && (
+            {((userProfile?.role === 'pt' || userProfile?.role === 'admin') && selectedClientForBooking) && (
                 <View style={[styles.frequencyContainer, { borderBottomColor: theme.border }]}>
                     <Text style={[styles.frequencyLabel, { color: theme.text }]}>Repeat Session:</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.frequencyScroll}>
