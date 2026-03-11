@@ -6,6 +6,8 @@ const GLOBAL_DOC = 'global';
 
 export interface GlobalSettings {
     signupCode?: string;
+    announcementText?: string;
+    showAnnouncement?: boolean;
 }
 
 /**

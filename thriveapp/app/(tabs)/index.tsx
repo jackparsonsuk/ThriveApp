@@ -5,6 +5,7 @@ import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getUserBookings, getPTBookingsForInstructor, cancelBooking, cancelRecurringSeries, Booking, getUserProfile, UserProfile } from '../../services/bookingService';
 import { getGroupById } from '../../services/groupService';
+import { getGlobalSettings, GlobalSettings } from '../../services/settingsService';
 import { format, isSameDay } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
@@ -19,6 +20,7 @@ export default function DashboardScreen() {
 
   type ExtendedBooking = Booking & { clientName?: string };
   const [bookings, setBookings] = useState<ExtendedBooking[]>([]);
+  const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -42,8 +44,12 @@ export default function DashboardScreen() {
   const fetchBookingsAndProfile = useCallback(async () => {
     if (!user) return;
     try {
-      const profile = await getUserProfile(user.uid);
+      const [profile, settings] = await Promise.all([
+        getUserProfile(user.uid),
+        getGlobalSettings()
+      ]);
       setUserProfile(profile);
+      setGlobalSettings(settings);
 
       const userBookings = await getUserBookings(user.uid);
       let allBookings: Booking[] = [...userBookings];
@@ -238,6 +244,15 @@ export default function DashboardScreen() {
           <Text style={[styles.subtitle, { color: theme.icon }]}>Welcome to Thrive Collective</Text>
         </View>
 
+        {globalSettings?.showAnnouncement && globalSettings?.announcementText && (
+          <View style={[styles.announcementBanner, { backgroundColor: theme.tint + '15', borderColor: theme.tint }]}>
+            <Ionicons name="megaphone-outline" size={20} color={theme.tint} style={{ marginRight: 10, marginTop: 2 }} />
+            <Text style={[styles.announcementText, { color: theme.text }]}>
+              {globalSettings.announcementText}
+            </Text>
+          </View>
+        )}
+
         {loading ? (
           <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 40 }} />
         ) : !nextBooking ? (
@@ -431,6 +446,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 15,
     letterSpacing: -0.5,
+  },
+  announcementBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 16,
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+    marginBottom: 25,
+  },
+  announcementText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+    lineHeight: 22,
   },
   emptyState: {
     padding: 40,

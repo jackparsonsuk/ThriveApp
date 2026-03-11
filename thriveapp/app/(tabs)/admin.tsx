@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, FlatList, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, FlatList, Alert, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile, getAllUsers, getUserProfile } from '../../services/bookingService';
@@ -41,6 +41,10 @@ export default function AdminScreen() {
     const [signupCode, setSignupCode] = useState('');
     const [savingCode, setSavingCode] = useState(false);
     const [isEditingSignupCode, setIsEditingSignupCode] = useState(false);
+
+    const [announcementText, setAnnouncementText] = useState('');
+    const [showAnnouncement, setShowAnnouncement] = useState(false);
+    const [savingAnnouncement, setSavingAnnouncement] = useState(false);
 
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState<{
@@ -116,6 +120,8 @@ export default function AdminScreen() {
             const settings = await getGlobalSettings();
             setGlobalSettings(settings);
             setSignupCode(settings?.signupCode || '');
+            setAnnouncementText(settings?.announcementText || '');
+            setShowAnnouncement(settings?.showAnnouncement || false);
         } catch (error) {
             console.error('Error fetching settings:', error);
             setAlertConfig({
@@ -153,6 +159,49 @@ export default function AdminScreen() {
             });
         } finally {
             setSavingCode(false);
+        }
+    };
+
+    const handleSaveAnnouncement = async () => {
+        setSavingAnnouncement(true);
+        try {
+            await updateGlobalSettings({ 
+                announcementText: announcementText.trim()
+            });
+            setAlertConfig({
+                visible: true,
+                title: 'Success',
+                message: 'Announcement settings updated.',
+                isDestructive: false
+            });
+        } catch (error) {
+            console.error('Error saving announcement:', error);
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to update announcement. Check permissions.',
+                isDestructive: false
+            });
+        } finally {
+            setSavingAnnouncement(false);
+            fetchSettings(); // Refresh to catch any other changes
+        }
+    };
+
+    const handleToggleAnnouncement = async (val: boolean) => {
+        setShowAnnouncement(val);
+        try {
+            await updateGlobalSettings({ showAnnouncement: val });
+        } catch (error) {
+            console.error('Error saving announcement toggle:', error);
+            // Revert state if it fails
+            setShowAnnouncement(!val);
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to update toggle.',
+                isDestructive: false
+            });
         }
     };
 
@@ -449,6 +498,46 @@ export default function AdminScreen() {
                                 </Text>
                             </View>
                         )}
+                    </View>
+
+                    {/* App Announcement Banner Section */}
+                    <View style={[styles.settingsCard, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 20 }]}>
+                        <View style={styles.settingRow}>
+                            <View style={styles.settingInfo}>
+                                <Text style={[styles.settingLabel, { color: theme.text }]}>App Announcement</Text>
+                                <Text style={[styles.settingDescription, { color: theme.icon }]}>
+                                    A global message displayed as a banner on every user's dashboard.
+                                </Text>
+                            </View>
+                            <Switch
+                                value={showAnnouncement}
+                                onValueChange={handleToggleAnnouncement}
+                                trackColor={{ false: theme.border, true: theme.tint }}
+                            />
+                        </View>
+                        
+                        <View style={[styles.inputContainer, { marginTop: 10 }]}>
+                            <TextInput
+                                style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text, minHeight: 80, textAlignVertical: 'top' }]}
+                                value={announcementText}
+                                onChangeText={setAnnouncementText}
+                                placeholder="E.g., Gym closed for maintenance this Friday."
+                                placeholderTextColor={theme.icon}
+                                multiline
+                            />
+                        </View>
+                        
+                        <TouchableOpacity 
+                            style={[styles.saveButton, { backgroundColor: theme.tint, marginTop: 15, alignSelf: 'flex-start' }]}
+                            onPress={handleSaveAnnouncement}
+                            disabled={savingAnnouncement || announcementText === (globalSettings?.announcementText || '')}
+                        >
+                            {savingAnnouncement ? (
+                                <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                                <Text style={styles.saveButtonText}>Save Announcement</Text>
+                            )}
+                        </TouchableOpacity>
                     </View>
                 </View>
             )}
