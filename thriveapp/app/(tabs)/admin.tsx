@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile, getAllUsers } from '../../services/bookingService';
+import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile, getAllUsers, getUserProfile } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isToday } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
@@ -22,6 +22,7 @@ export default function AdminScreen() {
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
     const [activeTab, setActiveTab] = useState<AdminTab>('schedule');
+    const [userRole, setUserRole] = useState<string>('');
     
     // Schedule State
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
@@ -57,6 +58,14 @@ export default function AdminScreen() {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedDate, activeTab]);
+
+    useEffect(() => {
+        if (user) {
+            getUserProfile(user.uid).then(profile => {
+                if (profile) setUserRole(profile.role);
+            });
+        }
+    }, [user]);
 
     const fetchSchedule = async () => {
         setLoading(true);
@@ -320,13 +329,15 @@ export default function AdminScreen() {
             <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
                 <View style={styles.headerTop}>
                     <Text style={[styles.title, { color: theme.text }]}>Admin Panel</Text>
-                    <TouchableOpacity 
-                        style={[styles.analyticsBtn, { backgroundColor: theme.tint }]}
-                        onPress={() => router.push('/analytics')}
-                    >
-                        <Ionicons name="stats-chart" size={18} color="#fff" />
-                        <Text style={styles.analyticsBtnText}>Analytics</Text>
-                    </TouchableOpacity>
+                    {userRole === 'admin' && (
+                        <TouchableOpacity 
+                            style={[styles.analyticsBtn, { backgroundColor: theme.tint }]}
+                            onPress={() => router.push('/analytics')}
+                        >
+                            <Ionicons name="stats-chart" size={18} color="#fff" />
+                            <Text style={styles.analyticsBtnText}>Analytics</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
                 
                 <View style={styles.tabContainer}>
@@ -336,12 +347,14 @@ export default function AdminScreen() {
                     >
                         <Text style={[styles.tabText, { color: activeTab === 'schedule' ? theme.text : theme.icon }]}>Schedule</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity 
-                        onPress={() => setActiveTab('members')}
-                        style={[styles.tab, activeTab === 'members' && { borderBottomColor: theme.tint }]}
-                    >
-                        <Text style={[styles.tabText, { color: activeTab === 'members' ? theme.text : theme.icon }]}>Members</Text>
-                    </TouchableOpacity>
+                    {userRole === 'admin' && (
+                        <TouchableOpacity 
+                            onPress={() => setActiveTab('members')}
+                            style={[styles.tab, activeTab === 'members' && { borderBottomColor: theme.tint }]}
+                        >
+                            <Text style={[styles.tabText, { color: activeTab === 'members' ? theme.text : theme.icon }]}>Members</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
             </View>
 
