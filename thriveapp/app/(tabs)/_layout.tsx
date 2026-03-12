@@ -7,17 +7,25 @@ import { Platform } from 'react-native';
 import { HapticTab } from '@/components/haptic-tab';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/context/auth';
-import { getUserProfile, UserProfile } from '@/services/bookingService';
+import { getUserProfile, getPendingPTRequestsForPT, UserProfile } from '@/services/bookingService';
 import { Colors } from '@/constants/theme';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme() ?? 'light';
   const { user } = useAuth();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
   useEffect(() => {
     if (user) {
-      getUserProfile(user.uid).then(setUserProfile);
+      getUserProfile(user.uid).then(profile => {
+        setUserProfile(profile);
+        if (profile?.role === 'pt' || profile?.role === 'admin') {
+          getPendingPTRequestsForPT(user.uid).then(requests => {
+            setPendingRequestCount(requests.length);
+          });
+        }
+      });
     }
   }, [user]);
 
@@ -66,6 +74,7 @@ export default function TabLayout() {
           options={{
             title: 'PT',
             tabBarIcon: ({ color }) => <Ionicons size={24} name="body" color={color} />,
+            tabBarBadge: (isAdminOrPt && pendingRequestCount > 0) ? pendingRequestCount : undefined,
           }}
         />
         <Tabs.Screen

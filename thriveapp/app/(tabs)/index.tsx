@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator
 import { useAuth } from '../../context/auth';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getUserBookings, getPTBookingsForInstructor, cancelBooking, cancelRecurringSeries, Booking, getUserProfile, UserProfile } from '../../services/bookingService';
+import { getUserBookings, getPTBookingsForInstructor, cancelBooking, cancelRecurringSeries, getUserPendingBookings, Booking, getUserProfile, UserProfile } from '../../services/bookingService';
 import { getGroupById } from '../../services/groupService';
 import { getGlobalSettings, GlobalSettings } from '../../services/settingsService';
 import { format, isSameDay } from 'date-fns';
@@ -54,17 +54,21 @@ export default function DashboardScreen() {
       const userBookings = await getUserBookings(user.uid);
       let allBookings: Booking[] = [...userBookings];
 
-      if (profile?.role === 'pt') {
+      if (profile?.role === 'pt' || profile?.role === 'admin') {
         const ptBookings = await getPTBookingsForInstructor(user.uid);
         // Combine and deduplicate
         const combined = [...userBookings, ...ptBookings];
         allBookings = Array.from(new Map(combined.map(b => [b.id, b])).values());
+      } else if (profile?.role === 'client') {
+        const pendingBookings = await getUserPendingBookings(user.uid);
+        const combined = [...userBookings, ...pendingBookings];
+        allBookings = Array.from(new Map(combined.map(b => [b.id, b])).values());
       }
 
-      // Filter out past bookings to only show upcoming
-      let upcoming = allBookings.filter(b => b.endTime > new Date() && b.status === 'confirmed');
+      // Filter out past bookings to only show upcoming (include pending)
+      let upcoming = allBookings.filter(b => b.endTime > new Date() && (b.status === 'confirmed' || b.status === 'pending'));
 
-      if (profile?.role === 'pt') {
+      if (profile?.role === 'pt' || profile?.role === 'admin') {
         // Deduplicate group sessions (so the PT doesn't see N cards for 1 group session)
         const groupSessions = new Set(upcoming.filter(b => b.type === 'group').map(b => `${b.groupId}-${b.startTime.getTime()}`));
         
@@ -88,7 +92,7 @@ export default function DashboardScreen() {
 
       // Fetch client names for PT bookings where the PT is the instructor
       const bookingsWithNames: ExtendedBooking[] = await Promise.all(upcoming.map(async (b) => {
-        if (b.type === 'pt' && profile?.role === 'pt' && b.ptId === user.uid && b.userId !== user.uid) {
+        if (b.type === 'pt' && (profile?.role === 'pt' || profile?.role === 'admin') && b.ptId === user.uid && b.userId !== user.uid) {
           const clientProfile = await getUserProfile(b.userId);
           return { ...b, clientName: clientProfile?.name || 'Unknown Client' };
         }
@@ -202,6 +206,9 @@ export default function DashboardScreen() {
   };
 
   const getTypeLabel = (booking: ExtendedBooking) => {
+    if (booking.type === 'pt' && booking.status === 'pending') {
+      return 'PT Session Request (Pending)';
+    }
     if (booking.type === 'pt' && booking.clientName) {
       return `PT Session with ${booking.clientName}`;
     }
@@ -282,14 +289,14 @@ export default function DashboardScreen() {
                       <ActivityIndicator size="small" color="#ffffff" />
                     ) : (
                       <>
-                        <Ionicons 
-                          name={nextBooking.recurringTemplateId ? "settings-outline" : "close-circle-outline"} 
-                          size={14} 
-                          color="#ffffff" 
-                          style={{ marginRight: 4 }} 
+                        <Ionicons
+                          name={nextBooking.recurringTemplateId ? "settings-outline" : "close-circle-outline"}
+                          size={14}
+                          color="#ffffff"
+                          style={{ marginRight: 4 }}
                         />
                         <Text style={styles.highlightCancelText}>
-                          {nextBooking.recurringTemplateId ? 'Manage' : 'Cancel'}
+                          {nextBooking.status === 'pending' ? 'Withdraw' : nextBooking.recurringTemplateId ? 'Manage' : 'Cancel'}
                         </Text>
                       </>
                     )}
@@ -367,14 +374,14 @@ export default function DashboardScreen() {
                                   <ActivityIndicator size="small" color={theme.icon} />
                                 ) : (
                                   <>
-                                    <Ionicons 
-                                      name={booking.recurringTemplateId ? "settings-outline" : "close-circle-outline"} 
-                                      size={14} 
-                                      color={theme.icon} 
-                                      style={{ marginRight: 4 }} 
+                                    <Ionicons
+                                      name={booking.recurringTemplateId ? "settings-outline" : "close-circle-outline"}
+                                      size={14}
+                                      color={theme.icon}
+                                      style={{ marginRight: 4 }}
                                     />
                                     <Text style={[styles.cancelButtonText, { color: theme.text }]}>
-                                      {booking.recurringTemplateId ? 'Manage' : 'Cancel'}
+                                      {booking.status === 'pending' ? 'Withdraw' : booking.recurringTemplateId ? 'Manage' : 'Cancel'}
                                     </Text>
                                   </>
                                 )}

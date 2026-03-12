@@ -11,7 +11,7 @@ export interface Booking {
     ptId?: string;
     groupId?: string;
     reason?: string; // For blocks
-    status: 'confirmed' | 'cancelled';
+    status: 'confirmed' | 'cancelled' | 'pending';
     recurringTemplateId?: string; // Links this instance to a master recurring template
     isException?: boolean; // True if this instance was individually modified from the template
 }
@@ -34,6 +34,7 @@ export interface UserProfile {
     email: string;
     role: 'client' | 'pt' | 'admin';
     assignedPtId: string | null;
+    canBookGym?: boolean;
 }
 
 
@@ -404,6 +405,48 @@ export const getAllUsers = async (): Promise<UserProfile[]> => {
 export const assignClientToPt = async (clientId: string, ptId: string | null) => {
     const userRef = doc(db, USERS_COLLECTION, clientId);
     await updateDoc(userRef, { assignedPtId: ptId });
+};
+
+// Update arbitrary user profile fields (used by admin toggle)
+export const updateUserProfile = async (userId: string, updates: Partial<Pick<UserProfile, 'canBookGym' | 'assignedPtId' | 'role'>>) => {
+    await updateDoc(doc(db, USERS_COLLECTION, userId), updates);
+};
+
+// PT queries all pending requests assigned to them
+export const getPendingPTRequestsForPT = async (ptId: string): Promise<Booking[]> => {
+    const q = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('ptId', '==', ptId),
+        where('status', '==', 'pending')
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data(),
+        startTime: d.data().startTime.toDate(),
+        endTime: d.data().endTime.toDate(),
+    })) as Booking[];
+};
+
+// PT approves or declines a pending request
+export const updateBookingStatus = async (bookingId: string, status: 'confirmed' | 'cancelled') => {
+    await updateDoc(doc(db, BOOKINGS_COLLECTION, bookingId), { status });
+};
+
+// Client fetches their own pending bookings (all dates)
+export const getUserPendingBookings = async (userId: string): Promise<Booking[]> => {
+    const q = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('userId', '==', userId),
+        where('status', '==', 'pending')
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data(),
+        startTime: d.data().startTime.toDate(),
+        endTime: d.data().endTime.toDate(),
+    })) as Booking[];
 };
 
 // Fetch clients assigned to a specific PT

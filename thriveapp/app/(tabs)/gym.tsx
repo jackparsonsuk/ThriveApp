@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getGymBookingsForDate, getPTBookingsForDate, getUserBookingsForDate, checkSlotAvailability, createBooking } from '../../services/bookingService';
+import { getGymBookingsForDate, getPTBookingsForDate, getUserBookingsForDate, getUserPendingBookings, checkSlotAvailability, createBooking, getUserProfile, UserProfile } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
@@ -19,6 +19,8 @@ export default function GymBookingScreen() {
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
 
+    const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+    const [profileLoading, setProfileLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
     const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean; attendees: number; conflictType?: string }[]>([]);
     const [loading, setLoading] = useState(false);
@@ -31,13 +33,26 @@ export default function GymBookingScreen() {
         message: string;
         isError?: boolean;
         isSuccess?: boolean;
+        confirmText?: string;
         onConfirm?: () => void;
+        secondaryConfirmText?: string;
+        onSecondaryConfirm?: () => void;
     }>({ visible: false, title: '', message: '' });
 
     const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
     // Generate the next 14 days for the selector
     const dates = Array.from({ length: 14 }).map((_, i) => addDays(startOfDay(new Date()), i));
+
+    useEffect(() => {
+        if (user) {
+            getUserProfile(user.uid).then(profile => {
+                setUserProfile(profile);
+                setProfileLoading(false);
+            });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user]);
 
     useEffect(() => {
         fetchAvailability();
@@ -65,6 +80,14 @@ export default function GymBookingScreen() {
                     if (b.type === 'group') reasonLabel = 'Group Class';
                     bookingsForDay.push({ ...b, type: 'block', reason: reasonLabel });
                 });
+
+                // Block slots where the client already has a pending PT request
+                const pendingBookings = await getUserPendingBookings(user.uid);
+                pendingBookings
+                    .filter(b => b.startTime.toDateString() === selectedDate.toDateString())
+                    .forEach(b => {
+                        bookingsForDay.push({ ...b, type: 'block', reason: 'PT Request Pending' });
+                    });
             }
 
             const slots = [];
@@ -118,31 +141,52 @@ export default function GymBookingScreen() {
     };
 
     const handleBookSlot = async (slot: { time: Date; available: boolean; isNextAvailable: boolean; attendees: number; }) => {
-        if (!user) return;
+        if (!user || !userProfile) return;
 
-        let duration = 60;
-        if (!slot.isNextAvailable) {
-            duration = 15;
+        const canGym = userProfile.canBookGym ?? true;
+        const hasPt = !!userProfile.assignedPtId;
+        const duration = slot.isNextAvailable ? 60 : 15;
+
+        if (canGym && hasPt) {
+            // Show choice modal
             setAlertConfig({
                 visible: true,
-                title: 'Limited Availability',
-                message: 'Due to capacity limits, you can only book a 15-minute session at this time. Would you like to proceed?',
-                onConfirm: undefined,
+                title: 'Book This Slot',
+                message: `What would you like to book at ${format(slot.time, 'HH:mm')}?`,
+                onConfirm: () => confirmGymBooking(slot.time, duration),
+                secondaryConfirmText: 'Request PT Session',
+                onSecondaryConfirm: () => confirmPTRequest(slot.time),
+                confirmText: 'Book Gym Session',
             });
-            // Hack to store the action since state updates are async
-            setAlertConfig(prev => ({ ...prev, onConfirm: () => confirmBooking(slot.time, duration) }));
-            return;
+        } else if (canGym && !hasPt) {
+            // Standard gym booking
+            if (!slot.isNextAvailable) {
+                setAlertConfig({
+                    visible: true,
+                    title: 'Limited Availability',
+                    message: 'Due to capacity limits, you can only book a 15-minute session at this time. Would you like to proceed?',
+                    onConfirm: () => confirmGymBooking(slot.time, duration),
+                });
+                return;
+            }
+            setAlertConfig({
+                visible: true,
+                title: 'Confirm Booking',
+                message: `Book gym session at ${format(slot.time, 'HH:mm')} for 1 hour?`,
+                onConfirm: () => confirmGymBooking(slot.time, duration),
+            });
+        } else if (!canGym && hasPt) {
+            // PT request only
+            setAlertConfig({
+                visible: true,
+                title: 'Request PT Session',
+                message: `Send a PT session request for ${format(slot.time, 'HH:mm')}?`,
+                onConfirm: () => confirmPTRequest(slot.time),
+            });
         }
-
-        setAlertConfig({
-            visible: true,
-            title: 'Confirm Booking',
-            message: `Book gym session at ${format(slot.time, 'HH:mm')} for 1 hour?`,
-            onConfirm: () => confirmBooking(slot.time, duration)
-        });
     };
 
-    const confirmBooking = async (startTime: Date, durationMinutes: number) => {
+    const confirmGymBooking = async (startTime: Date, durationMinutes: number) => {
         if (!user) return;
         setBookingLoading(true);
         try {
@@ -154,7 +198,6 @@ export default function GymBookingScreen() {
                 type: 'gym',
                 status: 'confirmed'
             });
-
             setAlertConfig({
                 visible: true,
                 title: 'Success!',
@@ -162,7 +205,7 @@ export default function GymBookingScreen() {
                 isSuccess: true,
                 onConfirm: undefined
             });
-            fetchAvailability(); // Refresh slots
+            fetchAvailability();
         } catch (error) {
             console.error('Error booking slot:', error);
             setAlertConfig({
@@ -176,6 +219,44 @@ export default function GymBookingScreen() {
         }
     };
 
+    const confirmPTRequest = async (startTime: Date) => {
+        if (!user || !userProfile?.assignedPtId) return;
+        setBookingLoading(true);
+        try {
+            const endTime = addMinutes(startTime, 60);
+            await createBooking({
+                userId: user.uid,
+                startTime,
+                endTime,
+                type: 'pt',
+                ptId: userProfile.assignedPtId,
+                status: 'pending'
+            });
+            setAlertConfig({
+                visible: true,
+                title: 'Request Sent!',
+                message: 'PT session request sent — your PT will confirm it shortly.',
+                isSuccess: true,
+                onConfirm: undefined
+            });
+            fetchAvailability();
+        } catch (error) {
+            console.error('Error sending PT request:', error);
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to send PT request. Please try again.',
+                isError: true
+            });
+        } finally {
+            setBookingLoading(false);
+        }
+    };
+
+    const canGym = userProfile?.canBookGym ?? true;
+    const hasPt = !!userProfile?.assignedPtId;
+    const isGated = !profileLoading && !canGym && !hasPt;
+
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
             <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
@@ -183,7 +264,7 @@ export default function GymBookingScreen() {
                 <Text style={styles.subtitle}>Select a date and time to train</Text>
             </View>
 
-            <View style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
+            <View style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }, isGated && { display: 'none' }]}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateSelector}>
                     {dates.map((date, index) => {
                         const isSelected = selectedDate.getTime() === date.getTime();
@@ -215,8 +296,16 @@ export default function GymBookingScreen() {
                 </ScrollView>
             </View>
 
-            <ScrollView contentContainerStyle={styles.slotsContainer}>
-                {loading ? (
+            {isGated ? (
+                <View style={styles.gatedContainer}>
+                    <Ionicons name="lock-closed-outline" size={48} color={theme.icon} />
+                    <Text style={[styles.gatedText, { color: theme.text }]}>Gym Access Required</Text>
+                    <Text style={[styles.gatedSubText, { color: theme.icon }]}>Contact your PT to gain access or book a session.</Text>
+                </View>
+            ) : null}
+
+            <ScrollView contentContainerStyle={styles.slotsContainer} style={isGated ? { display: 'none' } : undefined}>
+                {loading || profileLoading ? (
                     <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
                 ) : availableSlots.length === 0 ? (
                     <Text style={[styles.noSlotsText, { color: theme.icon }]}>No more slots available for this day.</Text>
@@ -281,6 +370,9 @@ export default function GymBookingScreen() {
                 visible={alertConfig.visible}
                 title={alertConfig.title}
                 message={alertConfig.message}
+                confirmText={alertConfig.confirmText}
+                secondaryConfirmText={alertConfig.secondaryConfirmText}
+                onSecondaryConfirm={alertConfig.onSecondaryConfirm}
                 onClose={() => {
                     closeAlert();
                     if (alertConfig.isSuccess) {
@@ -407,5 +499,24 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         fontSize: 16,
         marginTop: 50,
-    }
+    },
+    gatedContainer: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 40,
+        marginTop: 60,
+    },
+    gatedText: {
+        fontSize: 20,
+        fontWeight: '700',
+        marginTop: 16,
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    gatedSubText: {
+        fontSize: 15,
+        textAlign: 'center',
+        lineHeight: 22,
+    },
 });

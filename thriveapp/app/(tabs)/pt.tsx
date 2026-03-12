@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession, getGymBookingsForDate, checkSlotAvailability } from '../../services/bookingService';
+import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, Booking, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession, getGymBookingsForDate, checkSlotAvailability, getPendingPTRequestsForPT, updateBookingStatus } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
@@ -40,6 +40,10 @@ export default function PTBookingScreen() {
     const [clientsLoading, setClientsLoading] = useState(false);
     const [selectedClientForBooking, setSelectedClientForBooking] = useState<UserProfile | null>(null);
 
+    // Pending Requests State (PT role)
+    const [pendingRequests, setPendingRequests] = useState<Array<Booking & { clientName: string }>>([]);
+    const [pendingLoading, setPendingLoading] = useState(false);
+
     // Client's Assigned PT State
     const [assignedPtData, setAssignedPtData] = useState<UserProfile | null>(null);
 
@@ -72,6 +76,7 @@ export default function PTBookingScreen() {
 
         if ((userProfile?.role === 'pt' || userProfile?.role === 'admin') && user?.uid) {
             fetchClients(user.uid);
+            fetchPendingRequests(user.uid);
             if (selectedClientForBooking) {
                 // If PT is booking for a client, check the PT's own availability
                 fetchAvailability(user.uid);
@@ -116,6 +121,58 @@ export default function PTBookingScreen() {
         } finally {
             setClientsLoading(false);
         }
+    };
+
+    const fetchPendingRequests = async (ptId: string) => {
+        setPendingLoading(true);
+        try {
+            const requests = await getPendingPTRequestsForPT(ptId);
+            const hydrated = await Promise.all(requests.map(async (req) => {
+                const clientProfile = await getUserProfile(req.userId);
+                return { ...req, clientName: clientProfile?.name || 'Unknown Client' };
+            }));
+            hydrated.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+            setPendingRequests(hydrated);
+        } catch (error) {
+            console.error('Error fetching pending requests:', error);
+        } finally {
+            setPendingLoading(false);
+        }
+    };
+
+    const handleApproveRequest = (requestId: string, clientName: string) => {
+        setAlertConfig({
+            visible: true,
+            title: 'Approve Request',
+            message: `Confirm PT session for ${clientName}?`,
+            onConfirm: async () => {
+                try {
+                    await updateBookingStatus(requestId, 'confirmed');
+                    if (user?.uid) fetchPendingRequests(user.uid);
+                } catch (error) {
+                    console.error('Error approving request:', error);
+                    setAlertConfig({ visible: true, title: 'Error', message: 'Failed to approve request.', isError: true });
+                }
+            }
+        });
+    };
+
+    const handleDeclineRequest = (requestId: string, clientName: string) => {
+        setAlertConfig({
+            visible: true,
+            title: 'Decline Request',
+            message: `Decline PT session request from ${clientName}?`,
+            isError: true,
+            onConfirm: async () => {
+                try {
+                    await updateBookingStatus(requestId, 'cancelled');
+                    if (user?.uid) fetchPendingRequests(user.uid);
+                } catch (error) {
+                    console.error('Error declining request:', error);
+                    setAlertConfig({ visible: true, title: 'Error', message: 'Failed to decline request.', isError: true });
+                }
+            }
+        });
     };
 
     const fetchAssignedPt = async (ptId: string) => {
@@ -366,6 +423,50 @@ export default function PTBookingScreen() {
                     </View>
 
                     <View style={styles.clientsSection}>
+                        <Text style={[styles.clientsTitle, { color: theme.text, borderBottomColor: theme.border }]}>Pending Requests</Text>
+                        {pendingLoading ? (
+                            <ActivityIndicator size="small" color={theme.tint} style={{ marginTop: 20 }} />
+                        ) : pendingRequests.length === 0 ? (
+                            <Text style={[styles.noClientsText, { color: theme.icon }]}>No pending requests.</Text>
+                        ) : (
+                            <View style={[styles.groupedList, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                {pendingRequests.map((req, index) => {
+                                    const isLast = index === pendingRequests.length - 1;
+                                    return (
+                                        <View key={req.id}>
+                                            <View style={[styles.clientRow, { flexDirection: 'column', alignItems: 'flex-start', gap: 10 }]}>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={[styles.clientName, { color: theme.text }]}>{req.clientName}</Text>
+                                                    <Text style={[styles.clientEmail, { color: theme.icon }]}>
+                                                        {format(req.startTime, 'EEE, MMM d')} • {format(req.startTime, 'HH:mm')} - {format(req.endTime, 'HH:mm')}
+                                                    </Text>
+                                                </View>
+                                                <View style={{ flexDirection: 'row', gap: 8 }}>
+                                                    <TouchableOpacity
+                                                        style={[styles.bookClientButton, { backgroundColor: theme.tint }]}
+                                                        onPress={() => handleApproveRequest(req.id!, req.clientName)}
+                                                    >
+                                                        <Text style={styles.bookClientButtonText}>Approve</Text>
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity
+                                                        style={[styles.bookClientButton, { backgroundColor: '#ef4444' }]}
+                                                        onPress={() => handleDeclineRequest(req.id!, req.clientName)}
+                                                    >
+                                                        <Text style={styles.bookClientButtonText}>Decline</Text>
+                                                    </TouchableOpacity>
+                                                </View>
+                                            </View>
+                                            {!isLast && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
+                                        </View>
+                                    );
+                                })}
+                            </View>
+                        )}
+                    </View>
+
+                    <SectionDivider theme={theme} />
+
+                    <View style={styles.clientsSection}>
                         <Text style={[styles.clientsTitle, { color: theme.text, borderBottomColor: theme.border }]}>Your Clients</Text>
                         {clientsLoading ? (
                             <ActivityIndicator size="small" color={theme.tint} style={{ marginTop: 20 }} />
@@ -456,6 +557,7 @@ export default function PTBookingScreen() {
                         title={alertConfig.title}
                         message={alertConfig.message}
                         onClose={closeAlert}
+                        onConfirm={alertConfig.onConfirm}
                     />
                 </ScrollView>
             </SafeAreaView>
@@ -524,7 +626,7 @@ export default function PTBookingScreen() {
                         </View>
                     )}
                 </ScrollView>
-                <CustomAlert visible={alertConfig.visible} title={alertConfig.title} message={alertConfig.message} onClose={closeAlert} />
+                <CustomAlert visible={alertConfig.visible} title={alertConfig.title} message={alertConfig.message} onClose={closeAlert} onConfirm={alertConfig.onConfirm} />
             </SafeAreaView>
         );
     }

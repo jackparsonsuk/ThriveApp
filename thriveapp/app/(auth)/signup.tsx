@@ -47,6 +47,7 @@ export default function SignUpScreen() {
                 email: email,
                 role: 'client', // Default role
                 assignedPtId: null,
+                canBookGym: false,
             });
 
             // The context will automatically redirect upon successful login

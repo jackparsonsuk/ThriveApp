@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, FlatList, Alert, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile, getAllUsers, getUserProfile } from '../../services/bookingService';
+import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile, getAllUsers, getUserProfile, updateUserProfile } from '../../services/bookingService';
 import { getGlobalSettings, updateGlobalSettings, GlobalSettings } from '../../services/settingsService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isToday } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,6 +35,7 @@ export default function AdminScreen() {
     const [membersLoading, setMembersLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [roleFilter, setRoleFilter] = useState<'all' | 'client' | 'pt' | 'admin'>('all');
+    const [selectedMember, setSelectedMember] = useState<UserProfile | null>(null);
 
     // Settings State
     const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
@@ -359,7 +360,60 @@ export default function AdminScreen() {
         );
     };
 
-    const renderMembers = () => (
+    const handleToggleGymAccess = async (member: UserProfile, newVal: boolean) => {
+        setSelectedMember(prev => prev ? { ...prev, canBookGym: newVal } : null);
+        setAllUsers(prev => prev.map(u => u.id === member.id ? { ...u, canBookGym: newVal } : u));
+        try {
+            await updateUserProfile(member.id, { canBookGym: newVal });
+        } catch (error) {
+            console.error('Error updating gym access:', error);
+            setSelectedMember(prev => prev ? { ...prev, canBookGym: !newVal } : null);
+            setAllUsers(prev => prev.map(u => u.id === member.id ? { ...u, canBookGym: !newVal } : u));
+            setAlertConfig({ visible: true, title: 'Error', message: 'Failed to update gym access.' });
+        }
+    };
+
+    const renderMemberDetail = () => {
+        if (!selectedMember) return null;
+        return (
+            <View style={styles.membersContainer}>
+                <TouchableOpacity onPress={() => setSelectedMember(null)} style={styles.backRow}>
+                    <Ionicons name="chevron-back" size={20} color={theme.tint} />
+                    <Text style={[styles.backText, { color: theme.tint }]}>Members</Text>
+                </TouchableOpacity>
+                <View style={[styles.memberDetailCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <View style={[styles.avatar, { backgroundColor: theme.tint + '20', width: 60, height: 60, borderRadius: 30, marginBottom: 12 }]}>
+                        <Text style={[styles.avatarText, { color: theme.tint, fontSize: 24 }]}>{(selectedMember.name || selectedMember.email).charAt(0).toUpperCase()}</Text>
+                    </View>
+                    <Text style={[styles.memberName, { color: theme.text, fontSize: 20, marginBottom: 4 }]}>{selectedMember.name || 'No Name'}</Text>
+                    <Text style={[styles.memberEmail, { color: theme.icon, marginBottom: 12 }]}>{selectedMember.email}</Text>
+                    <View style={[styles.roleBadge, { backgroundColor: selectedMember.role === 'admin' ? '#ef4444' : selectedMember.role === 'pt' ? theme.tint : '#a3a3a3', marginBottom: 20 }]}>
+                        <Text style={styles.roleBadgeText}>{selectedMember.role.toUpperCase()}</Text>
+                    </View>
+                </View>
+
+                {selectedMember.role === 'client' && (
+                    <View style={[styles.settingsCard, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 16 }]}>
+                        <View style={styles.settingRow}>
+                            <View style={styles.settingInfo}>
+                                <Text style={[styles.settingLabel, { color: theme.text }]}>Gym Access</Text>
+                                <Text style={[styles.settingDescription, { color: theme.icon }]}>Allow this client to independently book gym sessions.</Text>
+                            </View>
+                            <Switch
+                                value={selectedMember.canBookGym ?? true}
+                                onValueChange={(val) => handleToggleGymAccess(selectedMember, val)}
+                                trackColor={{ false: theme.border, true: theme.tint }}
+                            />
+                        </View>
+                    </View>
+                )}
+            </View>
+        );
+    };
+
+    const renderMembers = () => {
+        if (selectedMember) return renderMemberDetail();
+        return (
         <View style={styles.membersContainer}>
             <View style={styles.searchBarContainer}>
                 <Ionicons name="search" size={20} color={theme.icon} style={styles.searchIcon} />
@@ -372,10 +426,10 @@ export default function AdminScreen() {
                 />
             </View>
 
-            <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={false} 
-                style={styles.roleFilters} 
+            <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.roleFilters}
                 contentContainerStyle={styles.roleFiltersContent}
             >
                 {['all', 'client', 'pt', 'admin'].map((role) => (
@@ -404,7 +458,10 @@ export default function AdminScreen() {
                     data={filteredUsers}
                     keyExtractor={(item) => item.id}
                     renderItem={({ item }) => (
-                        <View style={[styles.memberCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                        <TouchableOpacity
+                            style={[styles.memberCard, { backgroundColor: theme.card, borderColor: theme.border }]}
+                            onPress={() => setSelectedMember(item)}
+                        >
                             <View style={[styles.avatar, { backgroundColor: theme.tint + '20' }]}>
                                 <Text style={[styles.avatarText, { color: theme.tint }]}>{(item.name || item.email).charAt(0).toUpperCase()}</Text>
                             </View>
@@ -418,7 +475,7 @@ export default function AdminScreen() {
                                 </View>
                             </View>
                             <Ionicons name="chevron-forward" size={20} color={theme.icon} />
-                        </View>
+                        </TouchableOpacity>
                     )}
                     ListEmptyComponent={<Text style={[styles.emptyText, { textAlign: 'center', marginTop: 20 }]}>No members found.</Text>}
                     contentContainerStyle={{ paddingBottom: 20 }}
@@ -426,7 +483,8 @@ export default function AdminScreen() {
                 />
             )}
         </View>
-    );
+        );
+    };
 
     const renderSettings = () => (
         <ScrollView style={styles.settingsContainer} contentContainerStyle={{ paddingBottom: 40 }}>
@@ -691,5 +749,8 @@ const styles = StyleSheet.create({
     cancelButton: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: Radii.md, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent', borderWidth: StyleSheet.hairlineWidth },
     cancelButtonText: { fontSize: 14, fontWeight: '600' },
     codeDisplayBox: { padding: 16, borderRadius: Radii.md, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.02)' },
-    codeText: { fontSize: 24, fontWeight: '700', letterSpacing: 2 }
+    codeText: { fontSize: 24, fontWeight: '700', letterSpacing: 2 },
+    backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 4 },
+    backText: { fontSize: 16, fontWeight: '600' },
+    memberDetailCard: { borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, padding: 20, alignItems: 'center' },
 });
