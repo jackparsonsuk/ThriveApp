@@ -7,24 +7,37 @@ import { setDoc, doc } from 'firebase/firestore';
 import { auth, db } from '../../config/firebaseConfig';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii } from '@/constants/theme';
+import { getGlobalSettings } from '../../services/settingsService';
 
 export default function SignUpScreen() {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [signupCode, setSignupCode] = useState('');
+    const [codeError, setCodeError] = useState('');
     const [loading, setLoading] = useState(false);
     const router = useRouter();
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
 
     const handleSignUp = async () => {
-        if (!name || !email || !password) {
-            Alert.alert('Error', 'Please fill in all fields');
+        if (!name || !email || !password || !signupCode) {
+            Alert.alert('Error', 'Please fill in all fields (including the signup code)');
             return;
         }
 
         try {
             setLoading(true);
+            setCodeError('');
+            
+            // Verify signup code first
+            const settings = await getGlobalSettings();
+            if (settings?.signupCode && settings.signupCode !== signupCode.trim()) {
+                setCodeError('The signup code you entered is incorrect.');
+                setLoading(false);
+                return;
+            }
+
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
 
             // Store additional user formatting in Firestore
@@ -84,6 +97,26 @@ export default function SignUpScreen() {
                     onChangeText={setPassword}
                     secureTextEntry
                 />
+
+                <View>
+                    <TextInput
+                        style={[
+                            styles.input, 
+                            { backgroundColor: theme.card, borderColor: codeError ? '#ef4444' : theme.border, color: theme.text }
+                        ]}
+                        placeholder="Signup Code"
+                        placeholderTextColor={theme.icon}
+                        value={signupCode}
+                        onChangeText={(text) => {
+                            setSignupCode(text);
+                            setCodeError('');
+                        }}
+                        autoCapitalize="none"
+                    />
+                    {codeError ? (
+                        <Text style={styles.errorText}>{codeError}</Text>
+                    ) : null}
+                </View>
 
                 <TouchableOpacity
                     style={[styles.button, { backgroundColor: theme.tint }]}
@@ -153,6 +186,13 @@ const styles = StyleSheet.create({
     },
     linkText: {
         fontSize: 14,
+        fontWeight: '500',
+    },
+    errorText: {
+        color: '#ef4444',
+        fontSize: 12,
+        marginTop: 5,
+        marginLeft: 4,
         fontWeight: '500',
     },
 });

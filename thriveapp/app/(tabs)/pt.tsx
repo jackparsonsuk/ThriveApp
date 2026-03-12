@@ -121,10 +121,9 @@ export default function PTBookingScreen() {
     const fetchAssignedPt = async (ptId: string) => {
         setLoading(true);
         try {
-            const pts = await getAllPTs();
-            const pt = pts.find(p => p.id === ptId);
-            if (pt) {
-                setAssignedPtData(pt);
+            const ptProfile = await getUserProfile(ptId);
+            if (ptProfile) {
+                setAssignedPtData(ptProfile);
             }
         } catch (error) {
             console.error('Error fetching assigned PT profile:', error);
