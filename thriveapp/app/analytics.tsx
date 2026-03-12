@@ -95,6 +95,69 @@ export default function AnalyticsScreen() {
                     <StatCard title="Cancelled" value={data?.cancelledThisWeek ?? 0} icon="trash" color="#f59e0b" />
                 </View>
 
+                {/* GROUP SESSIONS */}
+                <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>Group Sessions</Text>
+                <View style={styles.statsGrid}>
+                    <StatCard title="This Week" value={data?.groupSessionsThisWeek ?? 0} icon="people" color="#3b82f6" />
+                    <StatCard title="This Month" value={data?.groupSessionsThisMonth ?? 0} icon="people-circle" color="#8b5cf6" />
+                    <StatCard title="Recurring Plans" value={data?.activeRecurringTemplates ?? 0} icon="repeat" color="#10b981" />
+                    <StatCard title="Cancel Rate" value={data?.cancellationRate ?? 0} icon="trending-down" color="#ef4444" subValue="% this week" />
+                </View>
+
+                {(data?.groupBreakdown?.length ?? 0) > 0 && (
+                    <>
+                        <Text style={[styles.subSectionTitle, { color: theme.icon }]}>By Group — {data?.currentMonth}</Text>
+                        <View style={[styles.breakdownCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                            <View style={[styles.breakdownHeader, { borderBottomColor: theme.border }]}>
+                                <Text style={[styles.breakdownHeaderText, { color: theme.icon, flex: 1 }]}>Group</Text>
+                                <Text style={[styles.breakdownHeaderText, { color: theme.icon, width: 64, textAlign: 'center' }]}>Members</Text>
+                                <Text style={[styles.breakdownHeaderText, { color: theme.icon, width: 64, textAlign: 'center' }]}>Sessions</Text>
+                            </View>
+                            {data!.groupBreakdown.map((g, index) => (
+                                <View
+                                    key={g.groupId}
+                                    style={[styles.breakdownRow, index !== data!.groupBreakdown.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth }]}
+                                >
+                                    <View style={styles.ptInfo}>
+                                        <View style={[styles.avatar, { backgroundColor: '#3b82f620' }]}>
+                                            <Text style={[styles.avatarText, { color: '#3b82f6' }]}>{g.groupName.charAt(0)}</Text>
+                                        </View>
+                                        <Text style={[styles.ptName, { color: theme.text }]}>{g.groupName}</Text>
+                                    </View>
+                                    <Text style={[styles.breakdownCount, { color: theme.icon, width: 64, textAlign: 'center', fontSize: 15 }]}>{g.memberCount}</Text>
+                                    <Text style={[styles.breakdownCount, { color: theme.text, width: 64, textAlign: 'center' }]}>{g.sessionsThisMonth}</Text>
+                                </View>
+                            ))}
+                        </View>
+                    </>
+                )}
+
+                {/* PEAK HOURS */}
+                {(data?.peakHours?.length ?? 0) > 0 && (
+                    <>
+                        <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>Peak Booking Hours</Text>
+                        <Text style={[styles.subSectionTitle, { color: theme.icon }]}>Most popular gym & PT start times this week</Text>
+                        <View style={[styles.peakCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                            {data!.peakHours.map((slot, index) => {
+                                const maxCount = data!.peakHours[0].count;
+                                const barWidth = maxCount > 0 ? (slot.count / maxCount) * 100 : 0;
+                                const rankColor = index === 0 ? theme.tint : index === 1 ? '#8b5cf6' : '#3b82f6';
+                                return (
+                                    <View key={slot.hour} style={[styles.peakRow, index !== data!.peakHours.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
+                                        <Text style={[styles.peakHourLabel, { color: theme.text }]}>{slot.hour}</Text>
+                                        <View style={styles.peakBarContainer}>
+                                            <View style={[styles.peakBarTrack, { backgroundColor: theme.border }]}>
+                                                <View style={[styles.peakBarFill, { width: `${barWidth}%`, backgroundColor: rankColor }]} />
+                                            </View>
+                                        </View>
+                                        <Text style={[styles.peakCount, { color: rankColor }]}>{slot.count}</Text>
+                                    </View>
+                                );
+                            })}
+                        </View>
+                    </>
+                )}
+
                 {/* PENDING REQUESTS */}
                 <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>Pending PT Requests</Text>
                 <View style={[styles.highlightRow, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -253,4 +316,12 @@ const styles = StyleSheet.create({
     breakdownCount: { fontSize: 17, fontWeight: '700' },
     emptyText: { padding: 20, textAlign: 'center', fontStyle: 'italic' },
     billingNote: { fontSize: 12, fontStyle: 'italic', marginTop: 8, textAlign: 'center' },
+    subSectionTitle: { fontSize: 13, fontWeight: '500', marginTop: -6, marginBottom: 12 },
+    peakCard: { borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+    peakRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
+    peakHourLabel: { fontSize: 15, fontWeight: '600', width: 72 },
+    peakBarContainer: { flex: 1 },
+    peakBarTrack: { height: 8, borderRadius: 4, overflow: 'hidden' },
+    peakBarFill: { height: '100%', borderRadius: 4 },
+    peakCount: { fontSize: 15, fontWeight: '700', width: 32, textAlign: 'right' },
 });

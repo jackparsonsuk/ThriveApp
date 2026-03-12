@@ -590,6 +590,12 @@ export interface AnalyticsData {
     clientsTotal: number;
     clientsWithGymAccess: number;
     currentMonth: string;
+    groupSessionsThisWeek: number;
+    groupSessionsThisMonth: number;
+    activeRecurringTemplates: number;
+    cancellationRate: number;
+    peakHours: { hour: string; count: number }[];
+    groupBreakdown: { groupId: string; groupName: string; sessionsThisMonth: number; memberCount: number }[];
     ptBreakdown: {
         ptId: string;
         ptName: string;
@@ -618,12 +624,27 @@ export const getAnalyticsData = async (): Promise<AnalyticsData> => {
     );
 
     // Fetch confirmed PT sessions for the month (for billing breakdown)
-    const monthQuery = query(
+    const monthPtQuery = query(
         collection(db, BOOKINGS_COLLECTION),
         where('type', '==', 'pt'),
         where('status', '==', 'confirmed'),
         where('startTime', '>=', Timestamp.fromDate(startOfCurrentMonth)),
         where('startTime', '<=', Timestamp.fromDate(endOfCurrentMonth))
+    );
+
+    // Fetch confirmed group bookings for the month
+    const monthGroupQuery = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('type', '==', 'group'),
+        where('status', '==', 'confirmed'),
+        where('startTime', '>=', Timestamp.fromDate(startOfCurrentMonth)),
+        where('startTime', '<=', Timestamp.fromDate(endOfCurrentMonth))
+    );
+
+    // Fetch active recurring templates
+    const recurringQuery = query(
+        collection(db, RECURRING_TEMPLATES_COLLECTION),
+        where('status', '==', 'active')
     );
 
     // Fetch all pending requests (no date filter — these are open requests)
@@ -638,9 +659,17 @@ export const getAnalyticsData = async (): Promise<AnalyticsData> => {
         where('role', '==', 'client')
     );
 
-    const [weekSnapshot, monthSnapshot, pendingSnapshot, clientsSnapshot, pts] = await Promise.all([
+    // Fetch all groups for name lookup
+    const groupsSnapshot = await getDocs(collection(db, 'groups'));
+    const groupMap = new Map<string, { name: string; memberCount: number }>(
+        groupsSnapshot.docs.map(d => [d.id, { name: d.data().name, memberCount: (d.data().memberIds || []).length }])
+    );
+
+    const [weekSnapshot, monthPtSnapshot, monthGroupSnapshot, recurringSnapshot, pendingSnapshot, clientsSnapshot, pts] = await Promise.all([
         getDocs(weekQuery),
-        getDocs(monthQuery),
+        getDocs(monthPtQuery),
+        getDocs(monthGroupQuery),
+        getDocs(recurringQuery),
         getDocs(pendingQuery),
         getDocs(clientsQuery),
         getAllPTs(),
@@ -657,11 +686,26 @@ export const getAnalyticsData = async (): Promise<AnalyticsData> => {
     const clientsTotal = clientDocs.length;
     const clientsWithGymAccess = clientDocs.filter(c => c.canBookGym ?? true).length;
 
-    // Build monthly PT session counts per PT
+    // Monthly PT counts per PT
     const monthlyPtCounts = new Map<string, number>();
-    monthSnapshot.docs.forEach(d => {
+    monthPtSnapshot.docs.forEach(d => {
         const ptId = d.data().ptId;
         if (ptId) monthlyPtCounts.set(ptId, (monthlyPtCounts.get(ptId) ?? 0) + 1);
+    });
+
+    // Monthly group sessions — deduplicate by groupId+startTime (each member has a row)
+    const monthGroupSessions = new Map<string, string>(); // key → groupId
+    monthGroupSnapshot.docs.forEach(d => {
+        const { groupId, startTime } = d.data();
+        if (groupId) {
+            const key = `${groupId}-${startTime.toMillis()}`;
+            monthGroupSessions.set(key, groupId);
+        }
+    });
+    // Count sessions per group this month
+    const monthGroupCounts = new Map<string, number>();
+    monthGroupSessions.forEach(gId => {
+        monthGroupCounts.set(gId, (monthGroupCounts.get(gId) ?? 0) + 1);
     });
 
     const stats: AnalyticsData = {
@@ -677,6 +721,17 @@ export const getAnalyticsData = async (): Promise<AnalyticsData> => {
         clientsTotal,
         clientsWithGymAccess,
         currentMonth: startOfCurrentMonth.toLocaleString('default', { month: 'long', year: 'numeric' }),
+        groupSessionsThisWeek: 0,
+        groupSessionsThisMonth: monthGroupSessions.size,
+        activeRecurringTemplates: recurringSnapshot.size,
+        cancellationRate: 0,
+        peakHours: [],
+        groupBreakdown: Array.from(monthGroupCounts.entries()).map(([gId, count]) => ({
+            groupId: gId,
+            groupName: groupMap.get(gId)?.name ?? 'Unknown Group',
+            sessionsThisMonth: count,
+            memberCount: groupMap.get(gId)?.memberCount ?? 0,
+        })).sort((a, b) => b.sessionsThisMonth - a.sessionsThisMonth),
         ptBreakdown: pts.map(p => ({
             ptId: p.id,
             ptName: p.name,
@@ -686,21 +741,32 @@ export const getAnalyticsData = async (): Promise<AnalyticsData> => {
         }))
     };
 
+    // Tally week bookings
+    const hourCounts = new Map<number, number>();
+    const weekGroupSessions = new Set<string>();
+    let weekConfirmedOrCancelled = 0;
+
     allBookings.forEach(b => {
         const isToday = b.startTime >= startOfToday && b.startTime <= endOfToday;
 
         if (b.status === 'confirmed') {
             stats.bookingsThisWeek++;
             if (isToday) stats.bookingsToday++;
+            weekConfirmedOrCancelled++;
 
             if (b.type === 'gym') {
                 stats.gymBookingsThisWeek++;
                 if (isToday) stats.gymBookingsToday++;
+                // Count toward peak hours
+                const h = b.startTime.getHours();
+                hourCounts.set(h, (hourCounts.get(h) ?? 0) + 1);
             }
 
             if (b.type === 'pt') {
                 stats.ptSessionsThisWeek++;
                 if (isToday) stats.ptSessionsToday++;
+                const h = b.startTime.getHours();
+                hourCounts.set(h, (hourCounts.get(h) ?? 0) + 1);
 
                 if (b.ptId) {
                     const ptStat = stats.ptBreakdown.find(p => p.ptId === b.ptId);
@@ -710,11 +776,32 @@ export const getAnalyticsData = async (): Promise<AnalyticsData> => {
                     }
                 }
             }
+
+            if (b.type === 'group' && b.groupId) {
+                const key = `${b.groupId}-${b.startTime.getTime()}`;
+                weekGroupSessions.add(key);
+            }
         } else if (b.status === 'cancelled') {
             stats.cancelledThisWeek++;
+            weekConfirmedOrCancelled++;
             if (isToday) stats.cancelledToday++;
         }
     });
+
+    stats.groupSessionsThisWeek = weekGroupSessions.size;
+    stats.cancellationRate = weekConfirmedOrCancelled > 0
+        ? Math.round((stats.cancelledThisWeek / weekConfirmedOrCancelled) * 100)
+        : 0;
+
+    // Top 3 peak hours
+    stats.peakHours = Array.from(hourCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([h, count]) => {
+            const suffix = h >= 12 ? 'PM' : 'AM';
+            const displayH = h % 12 === 0 ? 12 : h % 12;
+            return { hour: `${displayH}:00 ${suffix}`, count };
+        });
 
     return stats;
 };
