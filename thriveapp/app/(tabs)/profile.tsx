@@ -88,7 +88,7 @@ export default function ProfileScreen() {
 
                         <View style={{ flex: 1, justifyContent: 'flex-end', marginTop: 40 }}>
                             <TouchableOpacity onPress={() => router.push('/changelog')}>
-                                <Text style={[styles.versionText, { color: theme.icon }]}>Version {Constants.expoConfig?.version}</Text>
+                                <Text style={[styles.versionText, { color: theme.icon }]}>Version {Constants.expoConfig?.version} · Made by Jack · https://www.jackweb.design/</Text>
                             </TouchableOpacity>
                         </View>
                     </>

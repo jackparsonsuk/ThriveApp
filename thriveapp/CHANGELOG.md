@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-03-12
+
+### Added
+- **Membership-Based Gym Access**: Admins can toggle gym booking access per client in the Members tab. New clients default to no gym access on signup; existing users without the field default to full access.
+- **PT Session Request Workflow**: Clients with a PT assigned can request a PT session from the Gym tab, creating a `pending` booking. Clients with gym access and a PT get a choice modal (gym session or PT request); clients without gym access go straight to the request flow.
+- **Pending Slot Blocking**: Pending PT request slots are blocked on the client's calendar to prevent duplicate requests.
+- **PT Approval Dashboard**: PTs see a "Pending Requests" section at the top of their PT tab with Approve/Decline buttons per request.
+- **Dashboard Pending Requests**: Pending PT session requests appear on the client dashboard labelled "PT Session Request (Pending)" with a Withdraw button.
+- **PT Tab Badge**: PT tab shows a live badge count of outstanding pending requests.
+- **Enhanced Analytics**: Added Today's Snapshot, Group Sessions breakdown (by group, weekly/monthly), Peak Booking Hours bar chart, Pending PT Requests count, Membership Access progress bar, and PT Breakdown by month (for billing).
+
+### Changed
+- `Booking.status` now includes `'pending'` in addition to `'confirmed'` and `'cancelled'`.
+- `UserProfile` now includes optional `canBookGym` field.
+- Analytics screen redesigned with grouped sections and richer data.
+
+---
+
 ## [1.9.0] - 2026-03-12
 
 ### Added
