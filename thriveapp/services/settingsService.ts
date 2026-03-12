@@ -21,12 +21,7 @@ export const getGlobalSettings = async (): Promise<GlobalSettings> => {
         if (settingsDoc.exists()) {
             return settingsDoc.data() as GlobalSettings;
         } else {
-            console.log("Global settings document not found, creating default.");
-            // If it doesn't exist, we might want to create a default one with no code
-            // (or let the admin set it up later)
-            const defaultSettings = { signupCode: '' };
-            await setDoc(settingsRef, defaultSettings);
-            return defaultSettings;
+            return { signupCode: '' };
         }
     } catch (error) {
         console.error('Error fetching global settings:', error);

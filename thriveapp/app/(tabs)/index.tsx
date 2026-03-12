@@ -46,7 +46,7 @@ export default function DashboardScreen() {
     try {
       const [profile, settings] = await Promise.all([
         getUserProfile(user.uid),
-        getGlobalSettings()
+        getGlobalSettings().catch(() => null)
       ]);
       setUserProfile(profile);
       setGlobalSettings(settings);
