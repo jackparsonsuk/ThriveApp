@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-03-12
+
+### Added
+- **Signup Code Verification**: New required signup code field on the registration screen. Codes are validated against a global setting before account creation is allowed.
+- **Announcements Banner**: Admins can now publish a dismissible announcement banner on the dashboard, visible to all users when enabled.
+- **Admin Settings Tab**: New Settings tab in the admin panel for managing the global signup code and announcement banner (text and visibility toggle).
+- **Settings Service**: Added `settingsService.ts` to read and write global app settings stored in Firestore (`settings` collection).
+
+### Fixed
+- **PT Profile Permissions**: Clients could not load their assigned PT's profile due to a Firestore security rules limitation. Fixed by adding an explicit rule allowing clients to read the profile of their assigned PT, and updating the client code to use a direct document fetch rather than a collection query.
+
+---
+
 ## [1.8.2] - 2026-03-11
 
 ### Changed
