@@ -1,6 +1,6 @@
 import { collection, query, where, getDocs, addDoc, Timestamp, doc, getDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../config/firebaseConfig';
-import { addMinutes, startOfDay, endOfDay, isBefore, isEqual, addDays, addWeeks, addMonths } from 'date-fns';
+import { addMinutes, startOfDay, endOfDay, isBefore, isEqual, addDays, addWeeks, addMonths, startOfMonth, endOfMonth } from 'date-fns';
 
 export interface Booking {
     id?: string;
@@ -580,14 +580,22 @@ export const createRecurringSession = async (
 export interface AnalyticsData {
     bookingsToday: number;
     bookingsThisWeek: number;
+    gymBookingsToday: number;
+    gymBookingsThisWeek: number;
     ptSessionsToday: number;
     ptSessionsThisWeek: number;
     cancelledToday: number;
     cancelledThisWeek: number;
+    pendingRequestsTotal: number;
+    clientsTotal: number;
+    clientsWithGymAccess: number;
+    currentMonth: string;
     ptBreakdown: {
         ptId: string;
         ptName: string;
-        count: number;
+        countToday: number;
+        countWeek: number;
+        countMonth: number;
     }[];
 }
 
@@ -599,40 +607,96 @@ export const getAnalyticsData = async (): Promise<AnalyticsData> => {
     const endOfWeek = addDays(startOfWeek, 6);
     endOfWeek.setHours(23, 59, 59, 999);
 
-    // Fetch all bookings for the week (to process in memory for efficiency vs multiple queries)
-    const q = query(
+    const startOfCurrentMonth = startOfMonth(now);
+    const endOfCurrentMonth = endOfMonth(now);
+
+    // Fetch all bookings for the week
+    const weekQuery = query(
         collection(db, BOOKINGS_COLLECTION),
         where('startTime', '>=', Timestamp.fromDate(startOfWeek)),
         where('startTime', '<=', Timestamp.fromDate(endOfWeek))
     );
 
-    const snapshot = await getDocs(q);
-    const allBookings = snapshot.docs.map(doc => ({
+    // Fetch confirmed PT sessions for the month (for billing breakdown)
+    const monthQuery = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('type', '==', 'pt'),
+        where('status', '==', 'confirmed'),
+        where('startTime', '>=', Timestamp.fromDate(startOfCurrentMonth)),
+        where('startTime', '<=', Timestamp.fromDate(endOfCurrentMonth))
+    );
+
+    // Fetch all pending requests (no date filter — these are open requests)
+    const pendingQuery = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('status', '==', 'pending')
+    );
+
+    // Fetch all clients for membership stats
+    const clientsQuery = query(
+        collection(db, USERS_COLLECTION),
+        where('role', '==', 'client')
+    );
+
+    const [weekSnapshot, monthSnapshot, pendingSnapshot, clientsSnapshot, pts] = await Promise.all([
+        getDocs(weekQuery),
+        getDocs(monthQuery),
+        getDocs(pendingQuery),
+        getDocs(clientsQuery),
+        getAllPTs(),
+    ]);
+
+    const allBookings = weekSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
         startTime: doc.data().startTime.toDate(),
         endTime: doc.data().endTime.toDate(),
     })) as Booking[];
 
-    const pts = await getAllPTs();
-    const ptMap = new Map(pts.map(p => [p.id, p.name]));
+    const clientDocs = clientsSnapshot.docs.map(d => d.data() as UserProfile);
+    const clientsTotal = clientDocs.length;
+    const clientsWithGymAccess = clientDocs.filter(c => c.canBookGym ?? true).length;
+
+    // Build monthly PT session counts per PT
+    const monthlyPtCounts = new Map<string, number>();
+    monthSnapshot.docs.forEach(d => {
+        const ptId = d.data().ptId;
+        if (ptId) monthlyPtCounts.set(ptId, (monthlyPtCounts.get(ptId) ?? 0) + 1);
+    });
 
     const stats: AnalyticsData = {
         bookingsToday: 0,
         bookingsThisWeek: 0,
+        gymBookingsToday: 0,
+        gymBookingsThisWeek: 0,
         ptSessionsToday: 0,
         ptSessionsThisWeek: 0,
         cancelledToday: 0,
         cancelledThisWeek: 0,
-        ptBreakdown: pts.map(p => ({ ptId: p.id, ptName: p.name, count: 0 }))
+        pendingRequestsTotal: pendingSnapshot.size,
+        clientsTotal,
+        clientsWithGymAccess,
+        currentMonth: startOfCurrentMonth.toLocaleString('default', { month: 'long', year: 'numeric' }),
+        ptBreakdown: pts.map(p => ({
+            ptId: p.id,
+            ptName: p.name,
+            countToday: 0,
+            countWeek: 0,
+            countMonth: monthlyPtCounts.get(p.id) ?? 0,
+        }))
     };
 
     allBookings.forEach(b => {
         const isToday = b.startTime >= startOfToday && b.startTime <= endOfToday;
-        
+
         if (b.status === 'confirmed') {
             stats.bookingsThisWeek++;
             if (isToday) stats.bookingsToday++;
+
+            if (b.type === 'gym') {
+                stats.gymBookingsThisWeek++;
+                if (isToday) stats.gymBookingsToday++;
+            }
 
             if (b.type === 'pt') {
                 stats.ptSessionsThisWeek++;
@@ -640,8 +704,9 @@ export const getAnalyticsData = async (): Promise<AnalyticsData> => {
 
                 if (b.ptId) {
                     const ptStat = stats.ptBreakdown.find(p => p.ptId === b.ptId);
-                    if (ptStat && isToday) {
-                        ptStat.count++;
+                    if (ptStat) {
+                        ptStat.countWeek++;
+                        if (isToday) ptStat.countToday++;
                     }
                 }
             }

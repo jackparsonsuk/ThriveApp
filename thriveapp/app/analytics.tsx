@@ -6,7 +6,6 @@ import { getAnalyticsData, AnalyticsData } from '../services/bookingService';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii } from '@/constants/theme';
-import { format } from 'date-fns';
 
 export default function AnalyticsScreen() {
     const router = useRouter();
@@ -45,18 +44,24 @@ export default function AnalyticsScreen() {
         );
     }
 
-    const StatCard = ({ title, value, subValue, icon, color }: { title: string, value: number, subValue?: string, icon: any, color: string }) => (
+    const StatCard = ({ title, value, icon, color, subValue }: { title: string; value: number; icon: any; color: string; subValue?: string }) => (
         <View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <View style={[styles.iconContainer, { backgroundColor: color + '20' }]}>
-                <Ionicons name={icon} size={24} color={color} />
+                <Ionicons name={icon} size={22} color={color} />
             </View>
             <View style={styles.statInfo}>
                 <Text style={[styles.statTitle, { color: theme.icon }]}>{title}</Text>
                 <Text style={[styles.statValue, { color: theme.text }]}>{value}</Text>
-                {subValue && <Text style={[styles.statSubValue, { color: theme.icon }]}>{subValue}</Text>}
+                {subValue ? <Text style={[styles.statSubValue, { color: theme.icon }]}>{subValue}</Text> : null}
             </View>
         </View>
     );
+
+    const gymAccessPercent = data && data.clientsTotal > 0
+        ? Math.round((data.clientsWithGymAccess / data.clientsTotal) * 100)
+        : 0;
+
+    const noGymAccess = (data?.clientsTotal ?? 0) - (data?.clientsWithGymAccess ?? 0);
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
@@ -68,74 +73,118 @@ export default function AnalyticsScreen() {
                 <View style={{ width: 28 }} />
             </View>
 
-            <ScrollView 
+            <ScrollView
                 contentContainerStyle={styles.scrollContent}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.tint} />}
             >
+                {/* TODAY */}
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Today's Snapshot</Text>
                 <View style={styles.statsGrid}>
-                    <StatCard 
-                        title="Bookings" 
-                        value={data?.bookingsToday || 0} 
-                        icon="calendar" 
-                        color="#3b82f6" 
-                    />
-                    <StatCard 
-                        title="PT Sessions" 
-                        value={data?.ptSessionsToday || 0} 
-                        icon="person" 
-                        color="#10b981" 
-                    />
-                    <StatCard 
-                        title="Cancellations" 
-                        value={data?.cancelledToday || 0} 
-                        icon="close-circle" 
-                        color="#ef4444" 
-                    />
+                    <StatCard title="Total Bookings" value={data?.bookingsToday ?? 0} icon="calendar" color="#3b82f6" />
+                    <StatCard title="Gym Sessions" value={data?.gymBookingsToday ?? 0} icon="barbell" color={theme.tint} />
+                    <StatCard title="PT Sessions" value={data?.ptSessionsToday ?? 0} icon="body" color="#10b981" />
+                    <StatCard title="Cancellations" value={data?.cancelledToday ?? 0} icon="close-circle" color="#ef4444" />
                 </View>
 
-                <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 24 }]}>Weekly Performance</Text>
+                {/* WEEKLY */}
+                <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>This Week</Text>
                 <View style={styles.statsGrid}>
-                    <StatCard 
-                        title="Total Bookings" 
-                        value={data?.bookingsThisWeek || 0} 
-                        icon="bar-chart" 
-                        color={theme.tint} 
-                    />
-                    <StatCard 
-                        title="PT Total" 
-                        value={data?.ptSessionsThisWeek || 0} 
-                        icon="fitness" 
-                        color="#8b5cf6" 
-                    />
-                    <StatCard 
-                        title="Cancelled" 
-                        value={data?.cancelledThisWeek || 0} 
-                        icon="trash" 
-                        color="#f59e0b" 
-                    />
+                    <StatCard title="Total Bookings" value={data?.bookingsThisWeek ?? 0} icon="bar-chart" color={theme.tint} />
+                    <StatCard title="Gym Sessions" value={data?.gymBookingsThisWeek ?? 0} icon="barbell" color="#3b82f6" />
+                    <StatCard title="PT Sessions" value={data?.ptSessionsThisWeek ?? 0} icon="fitness" color="#8b5cf6" />
+                    <StatCard title="Cancelled" value={data?.cancelledThisWeek ?? 0} icon="trash" color="#f59e0b" />
                 </View>
 
-                <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 24 }]}>PT Breakdown (Today)</Text>
-                <View style={[styles.breakdownCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                    {data?.ptBreakdown.map((pt, index) => (
-                        <View key={pt.ptId} style={[styles.breakdownRow, index !== data.ptBreakdown.length - 1 && { borderBottomColor: theme.border }]}>
-                            <View style={styles.ptInfo}>
-                                <View style={[styles.avatar, { backgroundColor: theme.tint + '20' }]}>
-                                    <Text style={[styles.avatarText, { color: theme.tint }]}>{pt.ptName.charAt(0)}</Text>
-                                </View>
-                                <Text style={[styles.ptName, { color: theme.text }]}>{pt.ptName}</Text>
-                            </View>
-                            <View style={styles.ptCount}>
-                                <Text style={[styles.ptCountText, { color: theme.text }]}>{pt.count}</Text>
-                                <Text style={[styles.ptCountLabel, { color: theme.icon }]}>sessions</Text>
-                            </View>
+                {/* PENDING REQUESTS */}
+                <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>Pending PT Requests</Text>
+                <View style={[styles.highlightRow, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <View style={[styles.iconContainer, { backgroundColor: '#f59e0b20' }]}>
+                        <Ionicons name="time" size={22} color="#f59e0b" />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 14 }}>
+                        <Text style={[styles.highlightLabel, { color: theme.icon }]}>Awaiting PT Approval</Text>
+                        <Text style={[styles.highlightValue, { color: theme.text }]}>
+                            {data?.pendingRequestsTotal ?? 0} request{(data?.pendingRequestsTotal ?? 0) !== 1 ? 's' : ''}
+                        </Text>
+                    </View>
+                    {(data?.pendingRequestsTotal ?? 0) > 0 && (
+                        <View style={[styles.pendingBadge, { backgroundColor: '#f59e0b' }]}>
+                            <Text style={styles.pendingBadgeText}>{data?.pendingRequestsTotal}</Text>
                         </View>
-                    ))}
-                    {(!data?.ptBreakdown || data.ptBreakdown.length === 0) && (
-                        <Text style={[styles.emptyText, { color: theme.icon }]}>No PT sessions recorded today.</Text>
                     )}
                 </View>
+
+                {/* MEMBERSHIP ACCESS */}
+                <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>Membership Access</Text>
+                <View style={[styles.membershipCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <View style={styles.membershipRow}>
+                        <Text style={[styles.membershipLabel, { color: theme.icon }]}>Total Clients</Text>
+                        <Text style={[styles.membershipValue, { color: theme.text }]}>{data?.clientsTotal ?? 0}</Text>
+                    </View>
+                    <View style={[styles.divider, { backgroundColor: theme.border }]} />
+                    <View style={styles.membershipRow}>
+                        <View style={styles.membershipLabelRow}>
+                            <View style={[styles.dot, { backgroundColor: '#10b981' }]} />
+                            <Text style={[styles.membershipLabel, { color: theme.icon }]}>Gym Access Granted</Text>
+                        </View>
+                        <Text style={[styles.membershipValue, { color: '#10b981' }]}>{data?.clientsWithGymAccess ?? 0}</Text>
+                    </View>
+                    <View style={[styles.divider, { backgroundColor: theme.border }]} />
+                    <View style={styles.membershipRow}>
+                        <View style={styles.membershipLabelRow}>
+                            <View style={[styles.dot, { backgroundColor: '#ef4444' }]} />
+                            <Text style={[styles.membershipLabel, { color: theme.icon }]}>No Gym Access</Text>
+                        </View>
+                        <Text style={[styles.membershipValue, { color: '#ef4444' }]}>{noGymAccess}</Text>
+                    </View>
+                    {(data?.clientsTotal ?? 0) > 0 && (
+                        <>
+                            <View style={[styles.divider, { backgroundColor: theme.border }]} />
+                            <View style={styles.progressBarContainer}>
+                                <View style={[styles.progressBarTrack, { backgroundColor: theme.border }]}>
+                                    <View style={[styles.progressBarFill, { width: `${gymAccessPercent}%`, backgroundColor: '#10b981' }]} />
+                                </View>
+                                <Text style={[styles.progressLabel, { color: theme.icon }]}>{gymAccessPercent}% have gym access</Text>
+                            </View>
+                        </>
+                    )}
+                </View>
+
+                {/* PT BREAKDOWN */}
+                <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>PT Breakdown</Text>
+                <View style={[styles.breakdownCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <View style={[styles.breakdownHeader, { borderBottomColor: theme.border }]}>
+                        <Text style={[styles.breakdownHeaderText, { color: theme.icon, flex: 1 }]}>Trainer</Text>
+                        <Text style={[styles.breakdownHeaderText, { color: theme.icon, width: 50, textAlign: 'center' }]}>Today</Text>
+                        <Text style={[styles.breakdownHeaderText, { color: theme.icon, width: 50, textAlign: 'center' }]}>Week</Text>
+                        <Text style={[styles.breakdownHeaderText, { color: theme.tint, width: 56, textAlign: 'center' }]}>Month</Text>
+                    </View>
+                    {data?.ptBreakdown && data.ptBreakdown.length > 0 ? (
+                        data.ptBreakdown.map((pt, index) => (
+                            <View
+                                key={pt.ptId}
+                                style={[styles.breakdownRow, index !== data.ptBreakdown.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth }]}
+                            >
+                                <View style={styles.ptInfo}>
+                                    <View style={[styles.avatar, { backgroundColor: theme.tint + '20' }]}>
+                                        <Text style={[styles.avatarText, { color: theme.tint }]}>{pt.ptName.charAt(0)}</Text>
+                                    </View>
+                                    <Text style={[styles.ptName, { color: theme.text }]}>{pt.ptName}</Text>
+                                </View>
+                                <Text style={[styles.breakdownCount, { color: theme.text, width: 50, textAlign: 'center' }]}>{pt.countToday}</Text>
+                                <Text style={[styles.breakdownCount, { color: theme.text, width: 50, textAlign: 'center' }]}>{pt.countWeek}</Text>
+                                <Text style={[styles.breakdownCount, { color: theme.tint, width: 56, textAlign: 'center', fontWeight: '800' }]}>{pt.countMonth}</Text>
+                            </View>
+                        ))
+                    ) : (
+                        <Text style={[styles.emptyText, { color: theme.icon }]}>No PT data available.</Text>
+                    )}
+                </View>
+                {data?.currentMonth && (
+                    <Text style={[styles.billingNote, { color: theme.icon }]}>
+                        Month column shows confirmed PT sessions for {data.currentMonth} — use for billing.
+                    </Text>
+                )}
             </ScrollView>
         </SafeAreaView>
     );
@@ -143,42 +192,65 @@ export default function AnalyticsScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    header: { 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        justifyContent: 'space-between', 
-        paddingHorizontal: 16, 
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
         paddingVertical: 12,
-        borderBottomWidth: StyleSheet.hairlineWidth 
+        borderBottomWidth: StyleSheet.hairlineWidth,
     },
     backButton: { padding: 4 },
     title: { fontSize: 20, fontWeight: '700' },
     scrollContent: { padding: 20, paddingBottom: 40 },
-    sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 16, letterSpacing: -0.5 },
-    statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-    statCard: { 
-        flex: 1, 
-        minWidth: '45%', 
-        padding: 16, 
-        borderRadius: Radii.lg, 
-        borderWidth: StyleSheet.hairlineWidth, 
-        flexDirection: 'row', 
+    sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 14, letterSpacing: -0.5 },
+    statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+    statCard: {
+        flex: 1,
+        minWidth: '45%',
+        padding: 14,
+        borderRadius: Radii.lg,
+        borderWidth: StyleSheet.hairlineWidth,
+        flexDirection: 'row',
         alignItems: 'center',
-        gap: 12
+        gap: 10,
     },
-    iconContainer: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    iconContainer: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
     statInfo: { flex: 1 },
-    statTitle: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', marginBottom: 2 },
-    statValue: { fontSize: 24, fontWeight: '700' },
+    statTitle: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 2 },
+    statValue: { fontSize: 22, fontWeight: '700' },
     statSubValue: { fontSize: 10, marginTop: 2 },
+    highlightRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+        borderRadius: Radii.lg,
+        borderWidth: StyleSheet.hairlineWidth,
+    },
+    highlightLabel: { fontSize: 13, fontWeight: '500', marginBottom: 2 },
+    highlightValue: { fontSize: 20, fontWeight: '700' },
+    pendingBadge: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+    pendingBadgeText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+    membershipCard: { borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+    membershipRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
+    membershipLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    membershipLabel: { fontSize: 15, fontWeight: '500' },
+    membershipValue: { fontSize: 18, fontWeight: '700' },
+    dot: { width: 8, height: 8, borderRadius: 4 },
+    divider: { height: StyleSheet.hairlineWidth, marginHorizontal: 16 },
+    progressBarContainer: { paddingHorizontal: 16, paddingVertical: 14 },
+    progressBarTrack: { height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 8 },
+    progressBarFill: { height: '100%', borderRadius: 4 },
+    progressLabel: { fontSize: 12, fontWeight: '500' },
     breakdownCard: { borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
-    breakdownRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: StyleSheet.hairlineWidth },
-    ptInfo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    avatar: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
-    avatarText: { fontSize: 16, fontWeight: '700' },
-    ptName: { fontSize: 16, fontWeight: '600' },
-    ptCount: { alignItems: 'flex-end' },
-    ptCountText: { fontSize: 18, fontWeight: '700' },
-    ptCountLabel: { fontSize: 10, fontWeight: '500' },
-    emptyText: { padding: 20, textAlign: 'center', fontStyle: 'italic' }
+    breakdownHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+    breakdownHeaderText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
+    breakdownRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
+    ptInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+    avatar: { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center' },
+    avatarText: { fontSize: 14, fontWeight: '700' },
+    ptName: { fontSize: 15, fontWeight: '600' },
+    breakdownCount: { fontSize: 17, fontWeight: '700' },
+    emptyText: { padding: 20, textAlign: 'center', fontStyle: 'italic' },
+    billingNote: { fontSize: 12, fontStyle: 'italic', marginTop: 8, textAlign: 'center' },
 });
