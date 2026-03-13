@@ -25,9 +25,9 @@ service cloud.firestore {
 
     // --- USERS COLLECTION ---
     match /users/{userId} {
-      // Users can read their own profile; PTs and Admins can read all profiles; anyone can read PT profiles;
-      // clients can read the profile of their assigned PT
-      allow read: if isSignedIn() && (request.auth.uid == userId || isPT() || isAdmin() || resource.data.role == 'pt' || getUserData().get('assignedPtId', '') == userId);
+      // Users can read their own profile; PTs and Admins can read all profiles; anyone can read PT or Admin profiles
+      // (needed for PT code lookup which queries role in ['pt', 'admin']); clients can read their assigned PT's profile
+      allow read: if isSignedIn() && (request.auth.uid == userId || isPT() || isAdmin() || resource.data.role == 'pt' || resource.data.role == 'admin' || getUserData().get('assignedPtId', '') == userId);
       
       // Users can create their own profile during signup (default role is 'client')
       allow create: if isSignedIn() && request.auth.uid == userId && request.resource.data.role == 'client';

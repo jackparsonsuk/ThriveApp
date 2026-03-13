@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, Booking, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession, getGymBookingsForDate, checkSlotAvailability, getPendingPTRequestsForPT, updateBookingStatus } from '../../services/bookingService';
@@ -26,7 +26,7 @@ export default function PTBookingScreen() {
     const theme = Colors[colorScheme];
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
-    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; attendees: number }[]>([]);
+    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; attendees: number; bookedPtCount: number }[]>([]);
     const [loading, setLoading] = useState(true);
     const [bookingLoading, setBookingLoading] = useState(false);
     const [recurringFrequency, setRecurringFrequency] = useState<'none' | 'weekly' | 'bi-weekly' | 'monthly'>('none');
@@ -34,6 +34,7 @@ export default function PTBookingScreen() {
     // PT Assignment State
     const [ptCodeInput, setPtCodeInput] = useState('');
     const [assigningLoading, setAssigningLoading] = useState(false);
+    const ptCodeInputRef = useRef<TextInput>(null);
 
     // PT's Clients State
     const [clients, setClients] = useState<UserProfile[]>([]);
@@ -217,19 +218,23 @@ export default function PTBookingScreen() {
                     continue;
                 }
 
-                // For PTs, availability implies NO overlapping bookings at all since it's 1-on-1 (unless group PT)
+                // For PTs, availability implies NO overlapping blocking bookings (group, gym block) and < 2 PT sessions
                 // Assume 1 hour session. Thus check if any booking overlaps with [currentTime, currentTime + 60mins]
                 const targetEnd = addMinutes(currentTime, 60); // Standard PT session length 1hr
                 const overlappingBookings = bookingsForDay.filter(b => {
                     return b.startTime < targetEnd && b.endTime > currentTime;
                 });
 
-                const isAvailable = overlappingBookings.length === 0;
+                const ptSessions = overlappingBookings.filter(b => b.type === 'pt');
+                const blockingSessions = overlappingBookings.filter(b => b.type !== 'pt');
+
+                const isAvailable = blockingSessions.length === 0 && ptSessions.length < 2;
 
                 slots.push({
                     time: currentTime,
                     available: isAvailable,
-                    attendees: checkSlotAvailability(currentTime, gymBookingsForDay).count
+                    attendees: checkSlotAvailability(currentTime, gymBookingsForDay).count,
+                    bookedPtCount: ptSessions.length
                 });
 
                 // Advance by 15 mins for PT slots to allow 15 min increment start times
@@ -571,29 +576,63 @@ export default function PTBookingScreen() {
                     
                     {!userProfile.assignedPtId ? (
                         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-                            <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-                                <Text style={[styles.title, { color: theme.text }]}>Connect with a PT</Text>
-                            </View>
-                            <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }]}>
-                                <Text style={[styles.noPtText, { color: theme.text, textAlign: 'center' }]}>You do not have a Personal Trainer yet.</Text>
-                                <Text style={[styles.noPtSubText, { color: theme.icon, textAlign: 'center', marginBottom: 30 }]}>Enter the 6-character code provided by your Thrive Coach.</Text>
+                            <View style={[styles.ptConnectContainer, { minHeight: Dimensions.get('window').height * 0.75 }]}>
+                                {/* Icon */}
+                                <View style={[styles.ptConnectIconWrap, { backgroundColor: theme.tint + '20' }]}>
+                                    <Ionicons name="person-add-outline" size={40} color={theme.tint} />
+                                </View>
 
-                                <TextInput
-                                    style={[styles.codeInput, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
-                                    placeholder="e.g. A1B2C3"
-                                    placeholderTextColor={theme.icon}
-                                    value={ptCodeInput}
-                                    onChangeText={(text) => setPtCodeInput(text.toUpperCase())}
-                                    maxLength={6}
-                                    autoCapitalize="characters"
-                                />
+                                <Text style={[styles.ptConnectTitle, { color: theme.text }]}>Connect with a PT</Text>
+                                <Text style={[styles.ptConnectSubtitle, { color: theme.icon }]}>
+                                    Enter the 6-character code provided by your Thrive Coach.
+                                </Text>
+
+                                {/* OTP-style character boxes */}
+                                <TouchableOpacity
+                                    activeOpacity={1}
+                                    onPress={() => ptCodeInputRef.current?.focus()}
+                                    style={styles.otpRow}
+                                >
+                                    {Array.from({ length: 6 }).map((_, i) => {
+                                        const char = ptCodeInput[i] || '';
+                                        const isFilled = !!char;
+                                        return (
+                                            <View
+                                                key={i}
+                                                style={[
+                                                    styles.otpBox,
+                                                    { backgroundColor: theme.card, borderColor: isFilled ? theme.tint : theme.border },
+                                                    isFilled && { shadowColor: theme.tint, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 3 }
+                                                ]}
+                                            >
+                                                <Text style={[styles.otpChar, { color: theme.text }]}>{char}</Text>
+                                            </View>
+                                        );
+                                    })}
+                                    <TextInput
+                                        ref={ptCodeInputRef}
+                                        style={styles.otpHiddenInput}
+                                        value={ptCodeInput}
+                                        onChangeText={(text) => setPtCodeInput(text.toUpperCase())}
+                                        maxLength={6}
+                                        autoCapitalize="characters"
+                                        autoFocus
+                                    />
+                                </TouchableOpacity>
 
                                 <TouchableOpacity
-                                    style={[styles.assignButton, { backgroundColor: theme.tint }, (!ptCodeInput || ptCodeInput.length < 6) && { opacity: 0.5 }]}
+                                    style={[
+                                        styles.ptConnectButton,
+                                        { backgroundColor: theme.tint, shadowColor: theme.tint },
+                                        (!ptCodeInput || ptCodeInput.length < 6) && { opacity: 0.45 }
+                                    ]}
                                     onPress={handleAssignPT}
                                     disabled={!ptCodeInput || ptCodeInput.length < 6 || assigningLoading}
                                 >
-                                    {assigningLoading ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.assignButtonText}>Assign My PT</Text>}
+                                    {assigningLoading
+                                        ? <ActivityIndicator color="#ffffff" />
+                                        : <Text style={styles.ptConnectButtonText}>Connect to Trainer</Text>
+                                    }
                                 </TouchableOpacity>
                             </View>
                         </KeyboardAvoidingView>
@@ -741,7 +780,7 @@ export default function PTBookingScreen() {
 
                                         <View style={styles.slotDetailsContainer}>
                                             <Text style={[styles.slotDuration, { color: slot.available ? theme.tint : theme.icon }]}>
-                                                {slot.available ? '1 Hour' : 'Booked'}
+                                                {slot.available ? (slot.bookedPtCount === 1 ? '1/2 Booked' : '1 Hour') : 'Booked'}
                                             </Text>
                                             {slot.available && (
                                                 <Text style={[styles.slotAttendees, { color: theme.icon, fontSize: 13, marginLeft: 10 }]}>
@@ -928,6 +967,74 @@ const styles = StyleSheet.create({
         letterSpacing: 6,
         fontWeight: 'bold',
         marginBottom: 20,
+    },
+    ptConnectContainer: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 32,
+        paddingVertical: 40,
+    },
+    ptConnectIconWrap: {
+        width: 88,
+        height: 88,
+        borderRadius: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 28,
+    },
+    ptConnectTitle: {
+        fontSize: 30,
+        fontWeight: '700',
+        letterSpacing: -0.5,
+        textAlign: 'center',
+        marginBottom: 10,
+    },
+    ptConnectSubtitle: {
+        fontSize: 16,
+        textAlign: 'center',
+        lineHeight: 23,
+        marginBottom: 44,
+        paddingHorizontal: 8,
+    },
+    otpRow: {
+        flexDirection: 'row',
+        gap: 10,
+        justifyContent: 'center',
+        marginBottom: 36,
+    },
+    otpBox: {
+        width: 48,
+        height: 62,
+        borderRadius: 12,
+        borderWidth: 1.5,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    otpChar: {
+        fontSize: 26,
+        fontWeight: '700',
+    },
+    otpHiddenInput: {
+        position: 'absolute',
+        width: 1,
+        height: 1,
+        opacity: 0,
+    },
+    ptConnectButton: {
+        width: '100%',
+        paddingVertical: 17,
+        borderRadius: Radii.pill,
+        alignItems: 'center',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+        elevation: 4,
+    },
+    ptConnectButtonText: {
+        color: '#ffffff',
+        fontSize: 17,
+        fontWeight: '600',
     },
     assignButton: {
         paddingVertical: 15,
