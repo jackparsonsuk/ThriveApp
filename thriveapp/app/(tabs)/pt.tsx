@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, Booking, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession, getGymBookingsForDate, checkSlotAvailability, getPendingPTRequestsForPT, updateBookingStatus, getUserPendingBookings, cancelBooking } from '../../services/bookingService';
+import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, Booking, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession, getGymBookingsForDate, checkSlotAvailability, getPendingPTRequestsForPT, updateBookingStatus, getUserPendingBookings, cancelBooking, getPersonAllBookingsForDate } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
@@ -26,7 +26,7 @@ export default function PTBookingScreen() {
     const theme = Colors[colorScheme];
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
-    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; attendees: number; bookedPtCount: number }[]>([]);
+    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; attendees: number; bookedPtCount: number; conflictReason?: string }[]>([]);
     const [loading, setLoading] = useState(true);
     const [bookingLoading, setBookingLoading] = useState(false);
     const [recurringFrequency, setRecurringFrequency] = useState<'none' | 'weekly' | 'bi-weekly' | 'monthly'>('none');
@@ -239,19 +239,28 @@ export default function PTBookingScreen() {
     const fetchAvailability = async (ptId: string) => {
         setLoading(true);
         try {
-            const bookingsForDay = await getPTBookingsForDate(selectedDate, ptId);
+            const isPtBookingForClient = (userProfile?.role === 'pt' || userProfile?.role === 'admin') && !!selectedClientForBooking;
 
-            // If the user wants to book a session with this PT, they shouldn't be able to if THEY are instructing
+            // Fetch each source separately so we can generate contextual conflict reasons
+            const [ptSessionBookings, ptPersonal, gymBookingsForDay] = await Promise.all([
+                getPTBookingsForDate(selectedDate, ptId),
+                getPersonAllBookingsForDate(ptId, selectedDate),
+                getGymBookingsForDate(selectedDate),
+            ]);
+
+            let selfInstructorBookings: Booking[] = [];
+            let selfBookings: Booking[] = [];
             if (user?.uid && ptId !== user.uid) {
-                const myInstructorBookings = await getPTBookingsForDate(selectedDate, user.uid);
-                bookingsForDay.push(...myInstructorBookings);
-
-                // Add the user's personal bookings (PT, group, gym) as blocks
-                const myBookings = await getUserBookingsForDate(user.uid, selectedDate);
-                bookingsForDay.push(...myBookings);
+                [selfInstructorBookings, selfBookings] = await Promise.all([
+                    getPTBookingsForDate(selectedDate, user.uid),
+                    getPersonAllBookingsForDate(user.uid, selectedDate),
+                ]);
             }
 
-            const gymBookingsForDay = await getGymBookingsForDate(selectedDate);
+            let clientBookings: Booking[] = [];
+            if (isPtBookingForClient && selectedClientForBooking) {
+                clientBookings = await getPersonAllBookingsForDate(selectedClientForBooking.id, selectedDate);
+            }
 
             const slots = [];
             let currentTime = setMinutes(setHours(selectedDate, PT_OPEN_HOUR), 0);
@@ -264,26 +273,65 @@ export default function PTBookingScreen() {
                     continue;
                 }
 
-                // For PTs, availability implies NO overlapping blocking bookings (group, gym block) and < 2 PT sessions
-                // Assume 1 hour session. Thus check if any booking overlaps with [currentTime, currentTime + 60mins]
-                const targetEnd = addMinutes(currentTime, 60); // Standard PT session length 1hr
-                const overlappingBookings = bookingsForDay.filter(b => {
-                    return b.startTime < targetEnd && b.endTime > currentTime;
-                });
+                const targetEnd = addMinutes(currentTime, 60);
+                const overlaps = (b: Booking) => b.startTime < targetEnd && b.endTime > currentTime;
 
-                const ptSessions = overlappingBookings.filter(b => b.type === 'pt');
-                const blockingSessions = overlappingBookings.filter(b => b.type !== 'pt');
+                const ptSessions = ptSessionBookings.filter(b => overlaps(b) && b.type === 'pt');
+                const ptBlocks = ptSessionBookings.filter(b => overlaps(b) && b.type === 'block');
+                const ptPersonalConflicts = ptPersonal.filter(overlaps);
+                const clientConflicts = clientBookings.filter(overlaps);
+                const selfInstructorConflicts = selfInstructorBookings.filter(overlaps);
+                const selfConflicts = selfBookings.filter(overlaps);
 
-                const isAvailable = blockingSessions.length === 0 && ptSessions.length < 2;
+                let isAvailable = true;
+                let conflictReason: string | undefined;
+
+                if (ptBlocks.length > 0) {
+                    isAvailable = false;
+                    conflictReason = 'Blocked';
+                } else if (ptPersonalConflicts.length > 0) {
+                    isAvailable = false;
+                    const c = ptPersonalConflicts[0];
+                    if (isPtBookingForClient) {
+                        if (c.type === 'gym') conflictReason = 'You are in the gym';
+                        else if (c.type === 'group') conflictReason = 'You have a class';
+                        else conflictReason = 'You have a booking';
+                    } else {
+                        if (c.type === 'gym') conflictReason = 'PT is in the gym';
+                        else if (c.type === 'group') conflictReason = 'PT has a class';
+                        else conflictReason = 'PT is unavailable';
+                    }
+                } else if (clientConflicts.length > 0) {
+                    isAvailable = false;
+                    const c = clientConflicts[0];
+                    const firstName = selectedClientForBooking?.name?.split(' ')[0] || 'Client';
+                    if (c.type === 'gym') conflictReason = `${firstName} is in the gym`;
+                    else if (c.type === 'group') conflictReason = `${firstName} has a class`;
+                    else if (c.type === 'pt') conflictReason = `${firstName} has a PT session`;
+                    else conflictReason = `${firstName} is busy`;
+                } else if (selfInstructorConflicts.length > 0) {
+                    isAvailable = false;
+                    conflictReason = 'You are leading a session';
+                } else if (selfConflicts.length > 0) {
+                    isAvailable = false;
+                    const c = selfConflicts[0];
+                    if (c.type === 'gym') conflictReason = 'You have a gym session';
+                    else if (c.type === 'group') conflictReason = 'You have a class';
+                    else if (c.type === 'pt') conflictReason = 'You have a PT session';
+                    else conflictReason = 'You are busy';
+                } else if (ptSessions.length >= 2) {
+                    isAvailable = false;
+                    conflictReason = 'Fully Booked';
+                }
 
                 slots.push({
                     time: currentTime,
                     available: isAvailable,
                     attendees: checkSlotAvailability(currentTime, gymBookingsForDay).count,
-                    bookedPtCount: ptSessions.length
+                    bookedPtCount: ptSessions.length,
+                    conflictReason,
                 });
 
-                // Advance by 15 mins for PT slots to allow 15 min increment start times
                 currentTime = addMinutes(currentTime, 15);
             }
 
@@ -869,7 +917,7 @@ export default function PTBookingScreen() {
 
                                         <View style={styles.slotDetailsContainer}>
                                             <Text style={[styles.slotDuration, { color: slot.available ? theme.tint : theme.icon }]}>
-                                                {slot.available ? (slot.bookedPtCount === 1 ? '1/2 Booked' : '1 Hour') : 'Booked'}
+                                                {slot.available ? (slot.bookedPtCount === 1 ? '1/2 Booked' : '1 Hour') : (slot.conflictReason ?? 'Booked')}
                                             </Text>
                                             {slot.available && (
                                                 <Text style={[styles.slotAttendees, { color: theme.icon, fontSize: 13, marginLeft: 10 }]}>

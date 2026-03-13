@@ -91,6 +91,39 @@ export const getUserBookingsForDate = async (userId: string, date: Date): Promis
     })) as Booking[];
 };
 
+// Fetch ALL bookings (confirmed + pending) for a person by their userId — used for conflict checking
+export const getPersonAllBookingsForDate = async (userId: string, date: Date): Promise<Booking[]> => {
+    const start = startOfDay(date);
+    const end = endOfDay(date);
+
+    const qConfirmed = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('userId', '==', userId),
+        where('status', '==', 'confirmed'),
+        where('startTime', '>=', start),
+        where('startTime', '<=', end)
+    );
+
+    const qPending = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('userId', '==', userId),
+        where('status', '==', 'pending'),
+        where('startTime', '>=', start),
+        where('startTime', '<=', end)
+    );
+
+    const [snap1, snap2] = await Promise.all([getDocs(qConfirmed), getDocs(qPending)]);
+    const docs = [...snap1.docs, ...snap2.docs];
+    const uniqueDocs = Array.from(new Map(docs.map(doc => [doc.id, doc])).values());
+
+    return uniqueDocs.map(d => ({
+        id: d.id,
+        ...d.data(),
+        startTime: d.data().startTime.toDate(),
+        endTime: d.data().endTime.toDate(),
+    })) as Booking[];
+};
+
 // Fetch bookings where the PT is the instructor
 export const getPTBookingsForInstructor = async (ptId: string): Promise<Booking[]> => {
     const q = query(
@@ -217,9 +250,18 @@ export const getPTBookingsForDate = async (date: Date, ptId: string): Promise<Bo
         where('startTime', '<=', end)
     );
 
-    const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+    const q3 = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('type', '==', 'pt'),
+        where('ptId', '==', ptId),
+        where('status', '==', 'pending'),
+        where('startTime', '>=', start),
+        where('startTime', '<=', end)
+    );
 
-    const docs = [...snap1.docs, ...snap2.docs];
+    const [snap1, snap2, snap3] = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3)]);
+
+    const docs = [...snap1.docs, ...snap2.docs, ...snap3.docs];
 
     // De-duplicate in case of any overlap (shouldn't be, but good practice)
     const uniqueDocs = Array.from(new Map(docs.map(doc => [doc.id, doc])).values());

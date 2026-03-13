@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getGymBookingsForDate, getPTBookingsForDate, getUserBookingsForDate, getUserPendingBookings, checkSlotAvailability, createBooking, getUserProfile, UserProfile } from '../../services/bookingService';
+import { getGymBookingsForDate, getPTBookingsForDate, getUserBookingsForDate, getUserPendingBookings, checkSlotAvailability, createBooking, getUserProfile, UserProfile, getPersonAllBookingsForDate, getClientsForPt, Booking } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
@@ -22,7 +22,7 @@ export default function GymBookingScreen() {
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [profileLoading, setProfileLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
-    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean; attendees: number; conflictType?: string }[]>([]);
+    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean; attendees: number; conflictType?: string; ptAvailable: boolean }[]>([]);
     const [loading, setLoading] = useState(false);
     const [bookingLoading, setBookingLoading] = useState(false);
 
@@ -64,12 +64,26 @@ export default function GymBookingScreen() {
         try {
             const bookingsForDay = await getGymBookingsForDate(selectedDate);
 
+            let ptBookingsForDay: Booking[] = [];
+
             // If the user happens to have instructional PT bookings, block them out too
             if (user?.uid) {
                 const instructorBookings = await getPTBookingsForDate(selectedDate, user.uid);
-                instructorBookings.forEach(b => {
-                    bookingsForDay.push({ ...b, type: 'block', reason: 'PT Session Admin' });
-                });
+                if (instructorBookings.length > 0) {
+                    // Build a userId→firstName map from the PT's client list for labelling
+                    const clients = userProfile?.role === 'pt' || userProfile?.role === 'admin'
+                        ? await getClientsForPt(user.uid)
+                        : [];
+                    const clientNameMap: Record<string, string> = {};
+                    clients.forEach(c => { clientNameMap[c.id] = c.name?.split(' ')[0] || 'Client'; });
+
+                    instructorBookings.forEach(b => {
+                        const clientName = b.userId ? clientNameMap[b.userId] : undefined;
+                        const baseName = clientName ? `PT Session with ${clientName}` : 'PT Session';
+                        const reason = b.status === 'pending' ? `${baseName} (Pending)` : baseName;
+                        bookingsForDay.push({ ...b, type: 'block', reason });
+                    });
+                }
 
                 // Add the user's personal bookings (PT, group, gym) as blocks so they can't double book
                 const myBookings = await getUserBookingsForDate(user.uid, selectedDate);
@@ -88,6 +102,15 @@ export default function GymBookingScreen() {
                     .forEach(b => {
                         bookingsForDay.push({ ...b, type: 'block', reason: 'PT Request Pending' });
                     });
+
+                // Fetch the assigned PT's full schedule so we know when they're free for PT requests
+                if (userProfile?.assignedPtId) {
+                    const [ptPersonal, ptSessions] = await Promise.all([
+                        getPersonAllBookingsForDate(userProfile.assignedPtId, selectedDate),
+                        getPTBookingsForDate(selectedDate, userProfile.assignedPtId),
+                    ]);
+                    ptBookingsForDay = [...ptPersonal, ...ptSessions];
+                }
             }
 
             const slots = [];
@@ -115,12 +138,18 @@ export default function GymBookingScreen() {
 
                 const isFullHourAvailable = slotData.available && nextSlotData1.available && nextSlotData2.available && nextSlotData3.available;
 
+                // PT is available if they have no bookings overlapping the 1-hour PT session window
+                const ptSessionEnd = addMinutes(currentTime, 60);
+                const ptConflict = ptBookingsForDay.some(b => b.startTime < ptSessionEnd && b.endTime > currentTime);
+                const ptAvailable = !ptConflict;
+
                 slots.push({
                     time: currentTime,
                     available: slotData.available,
                     isNextAvailable: isFullHourAvailable,
                     attendees: slotData.count,
-                    conflictType: slotData.blockReason || (!slotData.available ? 'Full' : undefined)
+                    conflictType: slotData.blockReason || (!slotData.available ? 'Full' : undefined),
+                    ptAvailable,
                 });
 
                 currentTime = addMinutes(currentTime, 15);
@@ -140,7 +169,7 @@ export default function GymBookingScreen() {
         }
     };
 
-    const handleBookSlot = async (slot: { time: Date; available: boolean; isNextAvailable: boolean; attendees: number; }) => {
+    const handleBookSlot = async (slot: { time: Date; available: boolean; isNextAvailable: boolean; attendees: number; ptAvailable: boolean }) => {
         if (!user || !userProfile) return;
 
         const canGym = userProfile.canBookGym ?? true;
@@ -148,6 +177,17 @@ export default function GymBookingScreen() {
         const duration = slot.isNextAvailable ? 60 : 15;
 
         if (canGym && hasPt) {
+            if (!slot.ptAvailable) {
+                // PT is busy — gym only
+                setAlertConfig({
+                    visible: true,
+                    title: 'Book This Slot',
+                    message: `Your PT is unavailable at ${format(slot.time, 'HH:mm')}. You can still book a gym session.`,
+                    onConfirm: () => confirmGymBooking(slot.time, duration),
+                    confirmText: 'Book Gym Session',
+                });
+                return;
+            }
             // Show choice modal
             setAlertConfig({
                 visible: true,
@@ -176,6 +216,15 @@ export default function GymBookingScreen() {
                 onConfirm: () => confirmGymBooking(slot.time, duration),
             });
         } else if (!canGym && hasPt) {
+            if (!slot.ptAvailable) {
+                setAlertConfig({
+                    visible: true,
+                    title: 'PT Unavailable',
+                    message: `Your PT already has a booking at ${format(slot.time, 'HH:mm')}. Please choose another time.`,
+                    isError: true,
+                });
+                return;
+            }
             // PT request only
             setAlertConfig({
                 visible: true,
@@ -339,9 +388,14 @@ export default function GymBookingScreen() {
                                                     <Text style={[styles.slotDuration, { color: theme.tint }]}>
                                                         {slot.isNextAvailable ? '1 Hour' : '15 Mins'}
                                                     </Text>
-                                                    <Text style={[styles.slotAttendees, { color: theme.icon }]}>
-                                                        {slot.attendees} / 4 Booked
-                                                    </Text>
+                                                    <View style={styles.slotRightInfo}>
+                                                        {!slot.ptAvailable && hasPt && (
+                                                            <Text style={[styles.ptBusyBadge, { color: theme.icon }]}>PT Busy</Text>
+                                                        )}
+                                                        <Text style={[styles.slotAttendees, { color: theme.icon }]}>
+                                                            {slot.attendees} / 4 Booked
+                                                        </Text>
+                                                    </View>
                                                 </>
                                             ) : (
                                                 <>
@@ -482,6 +536,16 @@ const styles = StyleSheet.create({
     slotAttendees: {
         fontSize: 14,
         fontWeight: '400',
+    },
+    slotRightInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    ptBusyBadge: {
+        fontSize: 12,
+        fontWeight: '500',
+        opacity: 0.6,
     },
     slotFullText: {
         fontSize: 15,

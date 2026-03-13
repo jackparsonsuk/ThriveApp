@@ -52,10 +52,13 @@ service cloud.firestore {
       // 2. PTs and Admins can read all bookings
       // 3. ANY signed-in user can read CONFIRMED bookings for availability/capacity checks
       allow read: if isSignedIn() && (
-        resource.data.userId == request.auth.uid || 
-        isPT() || 
+        resource.data.userId == request.auth.uid ||
+        resource.data.ptId == request.auth.uid ||
+        isPT() ||
         isAdmin() ||
-        resource.data.status == 'confirmed'
+        resource.data.status == 'confirmed' ||
+        resource.data.userId == getUserData().get('assignedPtId', '') ||
+        resource.data.ptId == getUserData().get('assignedPtId', '')
       );
       
       // Users can create bookings for themselves
