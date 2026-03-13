@@ -161,9 +161,9 @@ export default function DashboardScreen() {
         message: `Do you want to cancel just this session on ${format(booking.startTime, 'MMM d, HH:mm')}, or this and all future sessions in the series?`,
         isDestructive: true,
         confirmText: 'Cancel This Session',
-        onConfirm: () => confirmCancellation(booking.id!),
+        onConfirm: () => confirmCancellation(booking.id!, booking.userId),
         secondaryConfirmText: 'Cancel Entire Series',
-        onSecondaryConfirm: () => confirmRecurringCancellation(booking.recurringTemplateId!, booking.startTime),
+        onSecondaryConfirm: () => confirmRecurringCancellation(booking.recurringTemplateId!, booking.startTime, booking.userId),
         cancelText: 'Keep it'
       });
     } else {
@@ -174,14 +174,14 @@ export default function DashboardScreen() {
         isDestructive: true,
         confirmText: 'Yes, Cancel',
         cancelText: 'No, Keep it',
-        onConfirm: () => confirmCancellation(booking.id!)
+        onConfirm: () => confirmCancellation(booking.id!, booking.userId)
       });
     }
   };
 
-  const confirmCancellation = async (id: string) => {
+  const confirmCancellation = async (id: string, bookingUserId?: string) => {
     setCancellingId(id);
-    const cancelledBy = userProfile?.role === 'pt' || userProfile?.role === 'admin' ? 'pt' : 'client';
+    const cancelledBy = bookingUserId === user?.uid ? 'client' : 'pt';
     try {
       await cancelBooking(id, cancelledBy);
       fetchBookingsAndProfile();
@@ -198,9 +198,9 @@ export default function DashboardScreen() {
     }
   };
 
-  const confirmRecurringCancellation = async (templateId: string, fromDate: Date) => {
+  const confirmRecurringCancellation = async (templateId: string, fromDate: Date, bookingUserId?: string) => {
     setCancellingId(templateId); // Using templateId as temporary cancellingId to show loader
-    const cancelledBy = userProfile?.role === 'pt' || userProfile?.role === 'admin' ? 'pt' : 'client';
+    const cancelledBy = bookingUserId === user?.uid ? 'client' : 'pt';
     try {
       await cancelRecurringSeries(templateId, fromDate, cancelledBy);
       fetchBookingsAndProfile();
@@ -362,7 +362,8 @@ export default function DashboardScreen() {
                     {displayedBookings.map((booking, index) => {
                       const isLast = index === displayedBookings.length - 1;
                       const isCancelled = booking.status === 'cancelled';
-                      const cancelledByLabel = booking.cancelledBy === 'pt' ? 'Cancelled by PT'
+                      const cancelledByLabel = booking.type === 'gym' ? 'Cancelled'
+                        : booking.cancelledBy === 'pt' ? 'Cancelled by PT'
                         : booking.cancelledBy === 'admin' ? 'Cancelled by admin'
                         : booking.cancelledBy === 'client' ? 'Cancelled by client'
                         : 'Cancelled';

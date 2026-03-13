@@ -89,11 +89,15 @@ export default function PTBookingScreen() {
             }
         }
 
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedDate, userProfile, user, selectedClientForBooking]);
+
+    useEffect(() => {
         if (userProfile?.role === 'client' && user?.uid) {
             fetchClientPendingSessions(user.uid);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedDate, userProfile, user, selectedClientForBooking]);
+    }, [userProfile, user]);
 
     const loadUserProfile = async () => {
         if (!user) return;
@@ -158,7 +162,10 @@ export default function PTBookingScreen() {
             onConfirm: async () => {
                 try {
                     await updateBookingStatus(requestId, 'confirmed');
-                    if (user?.uid) fetchPendingRequests(user.uid);
+                    if (user?.uid) {
+                        fetchPendingRequests(user.uid);
+                        fetchAvailability(user.uid);
+                    }
                 } catch (error) {
                     console.error('Error approving request:', error);
                     setAlertConfig({ visible: true, title: 'Error', message: 'Failed to approve request.', isError: true });
@@ -176,7 +183,10 @@ export default function PTBookingScreen() {
             onConfirm: async () => {
                 try {
                     await updateBookingStatus(requestId, 'cancelled');
-                    if (user?.uid) fetchPendingRequests(user.uid);
+                    if (user?.uid) {
+                        fetchPendingRequests(user.uid);
+                        fetchAvailability(user.uid);
+                    }
                 } catch (error) {
                     console.error('Error declining request:', error);
                     setAlertConfig({ visible: true, title: 'Error', message: 'Failed to decline request.', isError: true });

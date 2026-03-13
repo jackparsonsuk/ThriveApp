@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getGymBookingsForDate, getPTBookingsForDate, getUserBookingsForDate, getUserPendingBookings, checkSlotAvailability, createBooking, getUserProfile, UserProfile, getPersonAllBookingsForDate, getClientsForPt, Booking } from '../../services/bookingService';
+import { getGymBookingsForDate, getPTBookingsForDate, checkSlotAvailability, createBooking, getUserProfile, UserProfile, getPersonAllBookingsForDate, getClientsForPt, Booking } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -59,6 +59,11 @@ export default function GymBookingScreen() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedDate]);
 
+    useFocusEffect(useCallback(() => {
+        fetchAvailability();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedDate, userProfile]));
+
     const fetchAvailability = async () => {
         setLoading(true);
         try {
@@ -85,23 +90,16 @@ export default function GymBookingScreen() {
                     });
                 }
 
-                // Add the user's personal bookings (PT, group, gym) as blocks so they can't double book
-                const myBookings = await getUserBookingsForDate(user.uid, selectedDate);
+                // Add the user's personal bookings (confirmed + pending) as blocks so they can't double book
+                const myBookings = await getPersonAllBookingsForDate(user.uid, selectedDate);
                 myBookings.forEach(b => {
-                    let reasonLabel = 'Booked';
-                    if (b.type === 'pt') reasonLabel = 'PT Session';
-                    if (b.type === 'gym') reasonLabel = 'Gym Session';
-                    if (b.type === 'group') reasonLabel = 'Group Class';
-                    bookingsForDay.push({ ...b, type: 'block', reason: reasonLabel });
+                    let reason = 'Booked';
+                    if (b.type === 'pt' && b.status === 'pending') reason = 'PT Request Pending';
+                    else if (b.type === 'pt') reason = 'PT Session';
+                    else if (b.type === 'gym') reason = 'Gym Session';
+                    else if (b.type === 'group') reason = 'Group Class';
+                    bookingsForDay.push({ ...b, type: 'block', reason });
                 });
-
-                // Block slots where the client already has a pending PT request
-                const pendingBookings = await getUserPendingBookings(user.uid);
-                pendingBookings
-                    .filter(b => b.startTime.toDateString() === selectedDate.toDateString())
-                    .forEach(b => {
-                        bookingsForDay.push({ ...b, type: 'block', reason: 'PT Request Pending' });
-                    });
 
                 // Fetch the assigned PT's full schedule so we know when they're free for PT requests
                 if (userProfile?.assignedPtId) {
@@ -109,7 +107,8 @@ export default function GymBookingScreen() {
                         getPersonAllBookingsForDate(userProfile.assignedPtId, selectedDate),
                         getPTBookingsForDate(selectedDate, userProfile.assignedPtId),
                     ]);
-                    ptBookingsForDay = [...ptPersonal, ...ptSessions];
+                    const combined = [...ptPersonal, ...ptSessions];
+                    ptBookingsForDay = Array.from(new Map(combined.map(b => [b.id, b])).values());
                 }
             }
 
