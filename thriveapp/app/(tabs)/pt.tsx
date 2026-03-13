@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, Booking, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession, getGymBookingsForDate, checkSlotAvailability, getPendingPTRequestsForPT, updateBookingStatus } from '../../services/bookingService';
+import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, Booking, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession, getGymBookingsForDate, checkSlotAvailability, getPendingPTRequestsForPT, updateBookingStatus, getUserPendingBookings, cancelBooking } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
@@ -45,6 +45,11 @@ export default function PTBookingScreen() {
     const [pendingRequests, setPendingRequests] = useState<Array<Booking & { clientName: string }>>([]);
     const [pendingLoading, setPendingLoading] = useState(false);
 
+    // Client's pending PT session requests
+    const [clientPendingSessions, setClientPendingSessions] = useState<Booking[]>([]);
+    const [clientPendingLoading, setClientPendingLoading] = useState(false);
+    const [cancellingSessionId, setCancellingSessionId] = useState<string | null>(null);
+
     // Client's Assigned PT State
     const [assignedPtData, setAssignedPtData] = useState<UserProfile | null>(null);
 
@@ -82,6 +87,10 @@ export default function PTBookingScreen() {
                 // If PT is booking for a client, check the PT's own availability
                 fetchAvailability(user.uid);
             }
+        }
+
+        if (userProfile?.role === 'client' && user?.uid) {
+            fetchClientPendingSessions(user.uid);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedDate, userProfile, user, selectedClientForBooking]);
@@ -171,6 +180,43 @@ export default function PTBookingScreen() {
                 } catch (error) {
                     console.error('Error declining request:', error);
                     setAlertConfig({ visible: true, title: 'Error', message: 'Failed to decline request.', isError: true });
+                }
+            }
+        });
+    };
+
+    const fetchClientPendingSessions = async (userId: string) => {
+        setClientPendingLoading(true);
+        try {
+            const sessions = await getUserPendingBookings(userId);
+            const upcoming = sessions
+                .filter(s => s.endTime > new Date())
+                .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+            setClientPendingSessions(upcoming);
+        } catch (error) {
+            console.error('Error fetching pending sessions:', error);
+        } finally {
+            setClientPendingLoading(false);
+        }
+    };
+
+    const handleCancelPendingSession = (session: Booking) => {
+        setAlertConfig({
+            visible: true,
+            title: 'Cancel Request',
+            message: `Cancel your PT session request for ${format(session.startTime, 'EEE, MMM d')} at ${format(session.startTime, 'HH:mm')}?`,
+            isError: true,
+            onConfirm: async () => {
+                if (!session.id) return;
+                setCancellingSessionId(session.id);
+                try {
+                    await cancelBooking(session.id, 'client');
+                    if (user?.uid) fetchClientPendingSessions(user.uid);
+                } catch (error) {
+                    console.error('Error cancelling pending session:', error);
+                    setAlertConfig({ visible: true, title: 'Error', message: 'Failed to cancel the request.', isError: true });
+                } finally {
+                    setCancellingSessionId(null);
                 }
             }
         });
@@ -662,6 +708,49 @@ export default function PTBookingScreen() {
                                     <Text style={[styles.noPtText, { color: theme.text, textAlign: 'center' }]}>Failed to load your PT's details.</Text>
                                 </View>
                             )}
+
+                            {/* Pending session requests */}
+                            <View style={styles.clientsSection}>
+                                <Text style={[styles.clientsTitle, { color: theme.text, borderBottomColor: theme.border }]}>Pending Requests</Text>
+                                {clientPendingLoading ? (
+                                    <ActivityIndicator size="small" color={theme.tint} style={{ marginTop: 20 }} />
+                                ) : clientPendingSessions.length === 0 ? (
+                                    <Text style={[styles.noClientsText, { color: theme.icon }]}>No pending session requests.</Text>
+                                ) : (
+                                    <View style={[styles.groupedList, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                        {clientPendingSessions.map((session, index) => {
+                                            const isLast = index === clientPendingSessions.length - 1;
+                                            return (
+                                                <View key={session.id}>
+                                                    <View style={[styles.clientRow, { flexDirection: 'column', alignItems: 'flex-start', gap: 10 }]}>
+                                                        <View style={{ flex: 1 }}>
+                                                            <Text style={[styles.clientName, { color: theme.text }]}>PT Session Request</Text>
+                                                            <Text style={[styles.clientEmail, { color: theme.icon }]}>
+                                                                {format(session.startTime, 'EEE, MMM d')} • {format(session.startTime, 'HH:mm')} - {format(session.endTime, 'HH:mm')}
+                                                            </Text>
+                                                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                                                                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#F59E0B', marginRight: 6 }} />
+                                                                <Text style={{ color: '#F59E0B', fontSize: 12, fontWeight: '600' }}>Awaiting approval</Text>
+                                                            </View>
+                                                        </View>
+                                                        <TouchableOpacity
+                                                            style={[styles.bookClientButton, { backgroundColor: '#ef4444' }]}
+                                                            onPress={() => handleCancelPendingSession(session)}
+                                                            disabled={cancellingSessionId === session.id}
+                                                        >
+                                                            {cancellingSessionId === session.id
+                                                                ? <ActivityIndicator size="small" color="#ffffff" />
+                                                                : <Text style={styles.bookClientButtonText}>Cancel Request</Text>
+                                                            }
+                                                        </TouchableOpacity>
+                                                    </View>
+                                                    {!isLast && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
+                                                </View>
+                                            );
+                                        })}
+                                    </View>
+                                )}
+                            </View>
                         </View>
                     )}
                 </ScrollView>

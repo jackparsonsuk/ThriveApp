@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator
 import { useAuth } from '../../context/auth';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getUserBookings, getPTBookingsForInstructor, getUserCancelledUpcomingBookings, getPTCancelledBookingsForInstructor, cancelBooking, cancelRecurringSeries, getUserPendingBookings, Booking, getUserProfile, UserProfile } from '../../services/bookingService';
+import { getUserBookings, getPTBookingsForInstructor, getUserCancelledUpcomingBookings, getPTCancelledBookingsForInstructor, cancelBooking, cancelRecurringSeries, Booking, getUserProfile, UserProfile } from '../../services/bookingService';
 import { getGroupById } from '../../services/groupService';
 import { getGlobalSettings, GlobalSettings } from '../../services/settingsService';
 import { format, isSameDay } from 'date-fns';
@@ -59,10 +59,6 @@ export default function DashboardScreen() {
         // Combine and deduplicate
         const combined = [...userBookings, ...ptBookings];
         allBookings = Array.from(new Map(combined.map(b => [b.id, b])).values());
-      } else if (profile?.role === 'client') {
-        const pendingBookings = await getUserPendingBookings(user.uid);
-        const combined = [...userBookings, ...pendingBookings];
-        allBookings = Array.from(new Map(combined.map(b => [b.id, b])).values());
       }
 
       // Fetch upcoming cancelled bookings and merge in (requires composite indexes — degrades gracefully if missing)
@@ -79,8 +75,9 @@ export default function DashboardScreen() {
         console.warn('Cancelled bookings query failed (index may be missing):', e);
       }
 
-      // Filter out past bookings to only show upcoming (include pending and cancelled)
-      let upcoming = allBookings.filter(b => b.endTime > new Date() && (b.status === 'confirmed' || b.status === 'pending' || b.status === 'cancelled'));
+      // Filter out past bookings to only show upcoming (confirmed and cancelled; pending PT requests shown in PT tab)
+      const isPtOrAdmin = profile?.role === 'pt' || profile?.role === 'admin';
+      let upcoming = allBookings.filter(b => b.endTime > new Date() && (b.status === 'confirmed' || b.status === 'cancelled' || (b.status === 'pending' && isPtOrAdmin)));
 
       if (profile?.role === 'pt' || profile?.role === 'admin') {
         // Deduplicate group sessions (so the PT doesn't see N cards for 1 group session)
