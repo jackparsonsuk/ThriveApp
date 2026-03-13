@@ -14,6 +14,7 @@ export interface Booking {
     status: 'confirmed' | 'cancelled' | 'pending';
     recurringTemplateId?: string; // Links this instance to a master recurring template
     isException?: boolean; // True if this instance was individually modified from the template
+    cancelledBy?: 'pt' | 'client' | 'admin';
 }
 
 export interface RecurringSessionTemplate {
@@ -98,6 +99,40 @@ export const getPTBookingsForInstructor = async (ptId: string): Promise<Booking[
         where('status', '==', 'confirmed')
     );
 
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        startTime: doc.data().startTime.toDate(),
+        endTime: doc.data().endTime.toDate(),
+    })) as Booking[];
+};
+
+// Fetch upcoming cancelled bookings for a user (startTime in future)
+export const getUserCancelledUpcomingBookings = async (userId: string): Promise<Booking[]> => {
+    const q = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('userId', '==', userId),
+        where('status', '==', 'cancelled'),
+        where('startTime', '>=', new Date())
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        startTime: doc.data().startTime.toDate(),
+        endTime: doc.data().endTime.toDate(),
+    })) as Booking[];
+};
+
+// Fetch upcoming cancelled bookings where user is the PT instructor
+export const getPTCancelledBookingsForInstructor = async (ptId: string): Promise<Booking[]> => {
+    const q = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('ptId', '==', ptId),
+        where('status', '==', 'cancelled'),
+        where('startTime', '>=', new Date())
+    );
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => ({
         id: doc.id,
@@ -285,16 +320,16 @@ export const bookGroupSession = async (groupId: string, ptId: string, startTime:
 
 
 // Cancel a single booking (and related group/block bookings if applicable)
-export const cancelBooking = async (bookingId: string) => {
+export const cancelBooking = async (bookingId: string, cancelledBy?: 'pt' | 'client' | 'admin') => {
     const bookingRef = doc(db, BOOKINGS_COLLECTION, bookingId);
     const bookingSnap = await getDoc(bookingRef);
-    
+
     if (!bookingSnap.exists()) return;
-    
+
     const data = bookingSnap.data() as Booking;
-    
+
     const batch = writeBatch(db);
-    batch.update(bookingRef, { status: 'cancelled' });
+    batch.update(bookingRef, { status: 'cancelled', ...(cancelledBy ? { cancelledBy } : {}) });
 
     // If it's a group booking, we must cancel all related member bookings and the block booking
     if (data.type === 'group' && data.groupId) {
@@ -323,36 +358,38 @@ export const cancelBooking = async (bookingId: string) => {
             getDocs(blockBookingsQuery)
         ]);
         
+        const cancelUpdate = { status: 'cancelled', ...(cancelledBy ? { cancelledBy } : {}) };
+
         groupSnap.docs.forEach(docSnap => {
             if (docSnap.id !== bookingId) {
-                batch.update(docSnap.ref, { status: 'cancelled' });
+                batch.update(docSnap.ref, cancelUpdate);
             }
         });
-        
+
         blockSnap.docs.forEach(docSnap => {
             // Check if the reason starts with "Group Session" to be safe
             const blockData = docSnap.data();
             if (blockData.reason && blockData.reason.includes('Group Session')) {
-                batch.update(docSnap.ref, { status: 'cancelled' });
+                batch.update(docSnap.ref, cancelUpdate);
             }
         });
     } else if (data.type === 'block' && data.reason && data.reason.includes('Group Session')) {
         // If they managed to click cancel on the block booking itself
         const start = data.startTime;
-        const groupName = data.reason.replace('Group Session: ', '').trim();
-        
+
         const groupBookingsQuery = query(
             collection(db, BOOKINGS_COLLECTION),
             where('type', '==', 'group'),
             where('startTime', '==', start),
             where('status', '==', 'confirmed')
         );
-        
+
         const groupSnap = await getDocs(groupBookingsQuery);
-        
-        // As a fallback, we cancel group bookings at this time 
+
+        const cancelUpdate = { status: 'cancelled', ...(cancelledBy ? { cancelledBy } : {}) };
+        // As a fallback, we cancel group bookings at this time
         groupSnap.docs.forEach(docSnap => {
-            batch.update(docSnap.ref, { status: 'cancelled' });
+            batch.update(docSnap.ref, cancelUpdate);
         });
     }
 
@@ -360,7 +397,7 @@ export const cancelBooking = async (bookingId: string) => {
 };
 
 // Cancel a recurring template and all of its FUTURE materialized occurrences
-export const cancelRecurringSeries = async (templateId: string, fromDate: Date) => {
+export const cancelRecurringSeries = async (templateId: string, fromDate: Date, cancelledBy?: 'pt' | 'client' | 'admin') => {
     const batch = writeBatch(db);
 
     // 1. Mark the template as cancelled (or set an explicit endDate if we just want it to stop generating)
@@ -376,9 +413,10 @@ export const cancelRecurringSeries = async (templateId: string, fromDate: Date) 
     );
     const snapshot = await getDocs(q);
 
+    const cancelUpdate = { status: 'cancelled', ...(cancelledBy ? { cancelledBy } : {}) };
     // 3. Mark all future occurrences as cancelled
     snapshot.docs.forEach((docSnap) => {
-        batch.update(docSnap.ref, { status: 'cancelled' });
+        batch.update(docSnap.ref, cancelUpdate);
     });
 
     await batch.commit();

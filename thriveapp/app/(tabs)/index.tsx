@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator
 import { useAuth } from '../../context/auth';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getUserBookings, getPTBookingsForInstructor, cancelBooking, cancelRecurringSeries, getUserPendingBookings, Booking, getUserProfile, UserProfile } from '../../services/bookingService';
+import { getUserBookings, getPTBookingsForInstructor, getUserCancelledUpcomingBookings, getPTCancelledBookingsForInstructor, cancelBooking, cancelRecurringSeries, getUserPendingBookings, Booking, getUserProfile, UserProfile } from '../../services/bookingService';
 import { getGroupById } from '../../services/groupService';
 import { getGlobalSettings, GlobalSettings } from '../../services/settingsService';
 import { format, isSameDay } from 'date-fns';
@@ -65,8 +65,22 @@ export default function DashboardScreen() {
         allBookings = Array.from(new Map(combined.map(b => [b.id, b])).values());
       }
 
-      // Filter out past bookings to only show upcoming (include pending)
-      let upcoming = allBookings.filter(b => b.endTime > new Date() && (b.status === 'confirmed' || b.status === 'pending'));
+      // Fetch upcoming cancelled bookings and merge in (requires composite indexes — degrades gracefully if missing)
+      try {
+        const cancelledUser = await getUserCancelledUpcomingBookings(user.uid);
+        let cancelledBookings: Booking[] = [...cancelledUser];
+        if (profile?.role === 'pt' || profile?.role === 'admin') {
+          const cancelledPT = await getPTCancelledBookingsForInstructor(user.uid);
+          const combined = [...cancelledUser, ...cancelledPT];
+          cancelledBookings = Array.from(new Map(combined.map(b => [b.id, b])).values());
+        }
+        allBookings = Array.from(new Map([...allBookings, ...cancelledBookings].map(b => [b.id, b])).values());
+      } catch (e) {
+        console.warn('Cancelled bookings query failed (index may be missing):', e);
+      }
+
+      // Filter out past bookings to only show upcoming (include pending and cancelled)
+      let upcoming = allBookings.filter(b => b.endTime > new Date() && (b.status === 'confirmed' || b.status === 'pending' || b.status === 'cancelled'));
 
       if (profile?.role === 'pt' || profile?.role === 'admin') {
         // Deduplicate group sessions (so the PT doesn't see N cards for 1 group session)
@@ -170,8 +184,9 @@ export default function DashboardScreen() {
 
   const confirmCancellation = async (id: string) => {
     setCancellingId(id);
+    const cancelledBy = userProfile?.role === 'pt' || userProfile?.role === 'admin' ? 'pt' : 'client';
     try {
-      await cancelBooking(id);
+      await cancelBooking(id, cancelledBy);
       fetchBookingsAndProfile();
     } catch (error) {
       setAlertConfig({
@@ -188,8 +203,9 @@ export default function DashboardScreen() {
 
   const confirmRecurringCancellation = async (templateId: string, fromDate: Date) => {
     setCancellingId(templateId); // Using templateId as temporary cancellingId to show loader
+    const cancelledBy = userProfile?.role === 'pt' || userProfile?.role === 'admin' ? 'pt' : 'client';
     try {
-      await cancelRecurringSeries(templateId, fromDate);
+      await cancelRecurringSeries(templateId, fromDate, cancelledBy);
       fetchBookingsAndProfile();
     } catch (error) {
       console.error("Cancellation Error Details:", error);
@@ -225,8 +241,8 @@ export default function DashboardScreen() {
   };
 
   const now = new Date();
-  const nextBooking = bookings.length > 0 ? bookings[0] : null;
-  const remainingBookings = bookings.slice(1);
+  const nextBooking = bookings.find(b => b.status !== 'cancelled') ?? null;
+  const remainingBookings = bookings.filter(b => b !== nextBooking);
   
   const displayedBookings = remainingBookings.filter(b => {
     if (filter === 'today') {
@@ -262,13 +278,14 @@ export default function DashboardScreen() {
 
         {loading ? (
           <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 40 }} />
-        ) : !nextBooking ? (
+        ) : bookings.length === 0 ? (
           <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 20 }]}>
             <Ionicons name="calendar-outline" size={48} color={theme.icon} />
             <Text style={[styles.emptyText, { color: theme.icon }]}>You have no upcoming bookings.</Text>
           </View>
         ) : (
           <>
+            {nextBooking && (
             <View style={styles.section}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>Next Session</Text>
               <View style={[styles.highlightCard, { backgroundColor: theme.tint }]}>
@@ -317,8 +334,9 @@ export default function DashboardScreen() {
                 </View>
               </View>
             </View>
+            )}
 
-            {(bookings.length > 1 || filter === 'upcoming') && (
+            {(remainingBookings.length > 0 || filter === 'upcoming') && (
               <View style={styles.section}>
                 <View style={styles.filterContainer}>
                   <TouchableOpacity 
@@ -346,8 +364,13 @@ export default function DashboardScreen() {
                   <View style={[styles.list, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 10 }]}>
                     {displayedBookings.map((booking, index) => {
                       const isLast = index === displayedBookings.length - 1;
+                      const isCancelled = booking.status === 'cancelled';
+                      const cancelledByLabel = booking.cancelledBy === 'pt' ? 'Cancelled by PT'
+                        : booking.cancelledBy === 'admin' ? 'Cancelled by admin'
+                        : booking.cancelledBy === 'client' ? 'Cancelled by client'
+                        : 'Cancelled';
                       return (
-                        <View key={booking.id}>
+                        <View key={booking.id} style={{ opacity: isCancelled ? 0.5 : 1 }}>
                           <View style={styles.card}>
                             <View style={styles.cardHeader}>
                               <View style={{ flex: 1, paddingRight: 10 }}>
@@ -363,8 +386,13 @@ export default function DashboardScreen() {
                                     {format(booking.startTime, 'EEE, MMM d')} • {format(booking.startTime, 'HH:mm')} - {format(booking.endTime, 'HH:mm')}
                                   </Text>
                                 </View>
+                                {isCancelled && (
+                                  <View style={styles.cancelledBadge}>
+                                    <Text style={styles.cancelledBadgeText}>{cancelledByLabel}</Text>
+                                  </View>
+                                )}
                               </View>
-                              {booking.type !== 'group' && (
+                              {booking.type !== 'group' && !isCancelled && (
                               <TouchableOpacity
                                 style={styles.cancelButton}
                                 onPress={() => handleCancel(booking)}
@@ -587,5 +615,20 @@ const styles = StyleSheet.create({
   separator: {
     height: StyleSheet.hairlineWidth,
     marginLeft: 16,
-  }
+  },
+  cancelledBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: Radii.pill,
+    backgroundColor: 'rgba(255,59,48,0.1)',
+    marginTop: 6,
+  },
+  cancelledBadgeText: {
+    color: '#FF3B30',
+    fontWeight: '600',
+    fontSize: 12,
+  },
 });
