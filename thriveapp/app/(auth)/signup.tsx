@@ -8,6 +8,7 @@ import { auth, db } from '../../config/firebaseConfig';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii } from '@/constants/theme';
 import { getGlobalSettings } from '../../services/settingsService';
+import { getAllPTs, assignClientToPt } from '../../services/bookingService';
 
 export default function SignUpScreen() {
     const [name, setName] = useState('');
@@ -30,25 +31,41 @@ export default function SignUpScreen() {
             setLoading(true);
             setCodeError('');
             
-            // Verify signup code first
+            const trimmedCode = signupCode.trim();
+
+            // Validate code before creating account — settings and PT profiles are publicly readable
             const settings = await getGlobalSettings();
-            if (settings?.signupCode && settings.signupCode !== signupCode.trim()) {
-                setCodeError('The signup code you entered is incorrect.');
-                setLoading(false);
-                return;
+            const isGlobalCode = !settings?.signupCode || settings.signupCode === trimmedCode;
+
+            let matchedPtId: string | null = null;
+            if (!isGlobalCode) {
+                const pts = await getAllPTs();
+                const matchedPt = pts.find(
+                    pt => pt.id.substring(0, 6).toUpperCase() === trimmedCode.toUpperCase()
+                );
+                if (matchedPt) {
+                    matchedPtId = matchedPt.id;
+                } else {
+                    setCodeError('The signup code you entered is incorrect.');
+                    setLoading(false);
+                    return;
+                }
             }
 
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
 
-            // Store additional user formatting in Firestore
             await setDoc(doc(db, 'users', userCredential.user.uid), {
                 id: userCredential.user.uid,
                 name: name,
                 email: email,
-                role: 'client', // Default role
-                assignedPtId: null,
+                role: 'client',
+                assignedPtId: matchedPtId,
                 canBookGym: false,
             });
+
+            if (matchedPtId) {
+                await assignClientToPt(userCredential.user.uid, matchedPtId);
+            }
 
             // The context will automatically redirect upon successful login
         } catch (error: any) {
