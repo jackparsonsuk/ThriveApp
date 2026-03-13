@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-03-13
+
+### Added
+- **Contextual Conflict Labels**: Unavailable slots on the PT tab now show specific reasons instead of a generic "Booked" — e.g. "Sarah is in the gym", "PT has a class", "You have a PT session", "Fully Booked".
+- **PT Busy Indicator on Gym Tab**: When a client views the gym booking screen, slots where their assigned PT already has a booking show a "PT Busy" badge. Tapping the slot offers gym-only booking and blocks the PT session request.
+- **Instructor Block Labels**: When a PT views the gym tab, their own PT sessions are labelled "PT Session with {Client}" rather than "PT Session Admin". Pending sessions include a "(Pending)" suffix.
+- **PT Signup Codes**: Clients can now sign up using a PT-specific code in addition to the global signup code, automatically assigning them to that PT on registration.
+
+### Fixed
+- **Pending Bookings Ignored in Availability**: `getPTBookingsForDate` now includes pending PT sessions, so a pending request from one client correctly blocks that slot for other clients.
+- **PT's Own Gym Sessions Not Blocking PT Availability**: The PT's personal confirmed and pending bookings (gym, group, etc.) are now included in the availability check, preventing clients from requesting a PT session when the PT is already in the gym.
+- **Client Schedule Not Checked When PT Books**: When a PT books a session for a client, the client's existing bookings are now checked — the PT can no longer double-book a client into a slot they're already using.
+- **Cancelled By Attribution**: Cancellation attribution now uses booking ownership rather than the user's role. A PT cancelling their own gym session is recorded as "client" not "pt".
+- **Gym Sessions Showing Cancelled By Client**: Gym session cancellations now show a plain "Cancelled" label — the who-cancelled distinction only applies to PT and group sessions.
+- **Availability Not Refreshing After Approve/Decline**: Approving or declining a PT session request now refreshes the availability slot calendar immediately, reflecting the change without a manual reload.
+- **Gym Tab Not Refreshing After Navigation**: The gym tab now re-fetches availability when focused, so cancelled sessions disappear immediately when returning from the dashboard.
+
+### Changed
+- **Firestore Rules**: Clients can now read their assigned PT's bookings (by `userId` and `ptId`) to support availability checking. Users can read any booking where they are listed as the PT.
+- **Pending Session Effect**: `fetchClientPendingSessions` is now in its own effect and no longer re-fires on every date change.
+- **Gym Tab Availability Queries**: Replaced two separate booking fetches (`getUserBookingsForDate` + `getUserPendingBookings`) with a single `getPersonAllBookingsForDate` call, reducing redundant network requests. Combined PT availability data is now deduplicated.
+
+---
+
 ## [2.0.1] - 2026-03-13
 
 ### Fixed
