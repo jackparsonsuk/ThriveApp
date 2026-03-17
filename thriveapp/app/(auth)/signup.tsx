@@ -60,7 +60,7 @@ export default function SignUpScreen() {
                 email: email,
                 role: 'client',
                 assignedPtId: matchedPtId,
-                canBookGym: false,
+                canBookGym: true,
             });
 
             if (matchedPtId) {

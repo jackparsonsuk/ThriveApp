@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, FlatList, Alert, Switch } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, FlatList, Alert, Switch, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile, getAllUsers, getUserProfile, updateUserProfile } from '../../services/bookingService';
 import { getGlobalSettings, updateGlobalSettings, GlobalSettings } from '../../services/settingsService';
-import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isToday } from 'date-fns';
+import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isToday, isBefore } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
 import { useRouter } from 'expo-router';
@@ -23,6 +23,9 @@ export default function AdminScreen() {
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
     const [activeTab, setActiveTab] = useState<AdminTab>('schedule');
+    const flatListRef = useRef<FlatList>(null);
+    const scheduleRef = useRef<FlatList>(null);
+    const [hasScrolledToToday, setHasScrolledToToday] = useState(false);
     const [userRole, setUserRole] = useState<string>('');
     
     // Schedule State
@@ -60,7 +63,7 @@ export default function AdminScreen() {
 
     const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
-    const dates = Array.from({ length: 14 }).map((_, i) => addDays(startOfDay(new Date()), i));
+    const dates = useMemo(() => Array.from({ length: 22 }).map((_, i) => addDays(startOfDay(new Date()), i - 7)), []);
 
     useEffect(() => {
         if (activeTab === 'schedule') {
@@ -72,6 +75,53 @@ export default function AdminScreen() {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedDate, activeTab]);
+
+    useEffect(() => {
+        if (activeTab === 'schedule' && !hasScrolledToToday) {
+            const timer = setTimeout(() => {
+                flatListRef.current?.scrollToIndex({ index: 7, animated: false });
+                setHasScrolledToToday(true);
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [activeTab, hasScrolledToToday]);
+
+    const scheduleBlocks = useMemo(() => {
+        const blocks = [];
+        let currentTime = setMinutes(setHours(selectedDate, OPEN_HOUR), 0);
+        const endTime = setMinutes(setHours(selectedDate, CLOSE_HOUR), 0);
+
+        while (currentTime < endTime) {
+            const blockEnd = addMinutes(currentTime, 15);
+            const overlapping = dailyBookings.filter(b => b.startTime < blockEnd && b.endTime > currentTime);
+            blocks.push({ time: currentTime, bookings: overlapping });
+            currentTime = addMinutes(currentTime, 15);
+        }
+        return blocks;
+    }, [selectedDate, dailyBookings]);
+
+    useEffect(() => {
+        if (activeTab === 'schedule' && isToday(selectedDate) && scheduleBlocks.length > 0) {
+            const now = new Date();
+            const totalMinutesFromStart = (now.getHours() - OPEN_HOUR) * 60 + now.getMinutes();
+            let blockIndex = Math.floor(totalMinutesFromStart / 15);
+            
+            // Boundary checks
+            if (blockIndex < 0) blockIndex = 0;
+            if (blockIndex >= scheduleBlocks.length) blockIndex = scheduleBlocks.length - 1;
+
+            if (blockIndex > 0) {
+                const timer = setTimeout(() => {
+                    scheduleRef.current?.scrollToIndex({ 
+                        index: blockIndex, 
+                        animated: true,
+                        viewPosition: 0 
+                    });
+                }, 600);
+                return () => clearTimeout(timer);
+            }
+        }
+    }, [selectedDate, activeTab, scheduleBlocks.length]);
 
     useEffect(() => {
         if (user) {
@@ -257,106 +307,118 @@ export default function AdminScreen() {
     }, [allUsers, searchQuery, roleFilter]);
 
     const renderSchedule = () => {
-        const blocks = [];
-        let currentTime = setMinutes(setHours(selectedDate, OPEN_HOUR), 0);
-        const endTime = setMinutes(setHours(selectedDate, CLOSE_HOUR), 0);
-
         const now = new Date();
         const viewingToday = isToday(selectedDate);
-
-        while (currentTime < endTime) {
-            const blockEnd = addMinutes(currentTime, 15);
-            
-            // Skip if it's today and the slot has already ended
-            if (viewingToday && blockEnd <= now) {
-                currentTime = addMinutes(currentTime, 15);
-                continue;
-            }
-
-            const overlapping = dailyBookings.filter(b => b.startTime < blockEnd && b.endTime > currentTime);
-            blocks.push({ time: currentTime, bookings: overlapping });
-            currentTime = addMinutes(currentTime, 15);
-        }
+        const isPastDate = isBefore(selectedDate, startOfDay(now));
 
         return (
-            <ScrollView contentContainerStyle={styles.scheduleContainer}>
+            <View style={{ flex: 1 }}>
                 {loading ? (
                     <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
                 ) : (
-                    blocks.map((block, index) => {
-                        const hasBlock = block.bookings.some(b => b.type === 'block');
-                        return (
-                            <View key={index} style={[styles.timeBlock, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                                <View style={[styles.timeHeader, { borderBottomColor: theme.border }]}>
-                                    <Text style={[styles.timeText, { color: theme.text }]}>{format(block.time, 'HH:mm')}</Text>
-                                    {!hasBlock ? (
-                                        <TouchableOpacity style={[styles.blockBtn, { borderColor: theme.tint }]} onPress={() => handleBlockSlot(block.time)}>
-                                            <Ionicons name="lock-closed" size={14} color={theme.tint} />
-                                            <Text style={[styles.blockBtnText, { color: theme.tint }]}>Block Slot</Text>
-                                        </TouchableOpacity>
-                                    ) : (
-                                        <TouchableOpacity
-                                            style={styles.blockedBadge}
-                                            onPress={() => {
-                                                const blockBooking = block.bookings.find(b => b.type === 'block');
-                                                if (blockBooking && blockBooking.id) {
-                                                    handleCancelBooking(blockBooking.id, 'this blocked slot');
-                                                }
-                                            }}
-                                        >
-                                            <Ionicons name="lock-open" size={14} color="#fff" />
-                                            <Text style={styles.blockedText}>UNBLOCK</Text>
-                                        </TouchableOpacity>
-                                    )}
-                                </View>
-                                <View style={styles.attendeesList}>
-                                    {block.bookings.length === 0 && !hasBlock && (
-                                        <Text style={[styles.emptyText, { color: theme.icon }]}>No one booked.</Text>
-                                    )}
-                                    {(() => {
-                                        const groupBlock = block.bookings.find(b => b.type === 'block' && b.reason?.includes('Group Session'));
-                                        if (groupBlock) {
-                                            const groupName = groupBlock.reason?.replace('Group Session: ', '') || 'Group Session';
-                                            return (
-                                                <View style={[styles.attendeeCard, { borderBottomColor: theme.border }]}>
-                                                    <View style={styles.attendeeInfo}>
-                                                        <Text style={[styles.attendeeName, { color: theme.text, fontStyle: 'italic' }]}>
-                                                            (Blocked, {groupName})
-                                                        </Text>
-                                                    </View>
-                                                    <TouchableOpacity onPress={() => handleCancelBooking(groupBlock.id!, groupName)}>
-                                                        <Ionicons name="close-circle" size={24} color={theme.icon} />
-                                                    </TouchableOpacity>
-                                                </View>
-                                            );
-                                        }
+                    <FlatList
+                        ref={scheduleRef}
+                        data={scheduleBlocks}
+                        keyExtractor={(_, index) => index.toString()}
+                        contentContainerStyle={styles.scheduleContainer}
+                        initialNumToRender={20}
+                        onScrollToIndexFailed={(info) => {
+                            setTimeout(() => {
+                                scheduleRef.current?.scrollToIndex({ index: info.index, animated: false });
+                            }, 100);
+                        }}
+                        renderItem={({ item: block }) => {
+                            const hasBlock = block.bookings.some((b: Booking) => b.type === 'block');
+                            const blockEnd = addMinutes(block.time, 15);
+                            const isPastSlot = isPastDate || (viewingToday && blockEnd <= now);
 
-                                        return block.bookings.map(b => {
-                                            if (b.type === 'block') return null;
-                                            const userName = b.user?.name || b.user?.email || 'Unknown Client';
-                                            return (
-                                                <View key={b.id} style={[styles.attendeeCard, { borderBottomColor: theme.border }]}>
-                                                    <View style={styles.attendeeInfo}>
-                                                        <Text style={[styles.attendeeName, { color: theme.text }]}>{userName}</Text>
-                                                        <View style={styles.badgeContainer}>
-                                                            <Text style={styles.typeBadge}>{b.type.toUpperCase()}</Text>
-                                                            {b.type === 'pt' && <Text style={[styles.ptBadge, { backgroundColor: theme.tint }]}>PT Session</Text>}
-                                                            {b.type === 'group' && <Text style={styles.groupBadge}>Group</Text>}
-                                                        </View>
-                                                    </View>
-                                                    <TouchableOpacity onPress={() => handleCancelBooking(b.id!, userName)}>
-                                                        <Ionicons name="close-circle" size={24} color={theme.icon} />
-                                                    </TouchableOpacity>
+                            return (
+                                <View style={[styles.timeBlock, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                    <View style={[styles.timeHeader, { borderBottomColor: theme.border }]}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                            <Text style={[styles.timeText, { color: theme.text }]}>{format(block.time, 'HH:mm')}</Text>
+                                            {viewingToday && block.time <= now && blockEnd > now && (
+                                                <View style={{ backgroundColor: theme.tint, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                                    <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>NOW</Text>
                                                 </View>
-                                            );
-                                        });
-                                    })()}
+                                            )}
+                                        </View>
+                                        {!hasBlock ? (
+                                            !isPastSlot && (
+                                                <TouchableOpacity style={[styles.blockBtn, { borderColor: theme.tint }]} onPress={() => handleBlockSlot(block.time)}>
+                                                    <Ionicons name="lock-closed" size={14} color={theme.tint} />
+                                                    <Text style={[styles.blockBtnText, { color: theme.tint }]}>Block Slot</Text>
+                                                </TouchableOpacity>
+                                            )
+                                        ) : (
+                                            <TouchableOpacity
+                                                style={[styles.blockedBadge, isPastSlot && { opacity: 0.7 }]}
+                                                onPress={() => {
+                                                    if (isPastSlot) return;
+                                                    const blockBooking = block.bookings.find((b: Booking) => b.type === 'block');
+                                                    if (blockBooking && blockBooking.id) {
+                                                        handleCancelBooking(blockBooking.id, 'this blocked slot');
+                                                    }
+                                                }}
+                                            >
+                                                <Ionicons name="lock-open" size={14} color="#fff" />
+                                                <Text style={styles.blockedText}>{isPastSlot ? 'BLOCKED' : 'UNBLOCK'}</Text>
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
+                                    <View style={styles.attendeesList}>
+                                        {block.bookings.length === 0 && !hasBlock && (
+                                            <Text style={[styles.emptyText, { color: theme.icon }]}>No one booked.</Text>
+                                        )}
+                                        {(() => {
+                                            const groupBlock = block.bookings.find((b: Booking) => b.type === 'block' && b.reason?.includes('Group Session'));
+                                            if (groupBlock) {
+                                                const groupName = groupBlock.reason?.replace('Group Session: ', '') || 'Group Session';
+                                                return (
+                                                    <View style={[styles.attendeeCard, { borderBottomColor: theme.border }]}>
+                                                        <View style={styles.attendeeInfo}>
+                                                            <Text style={[styles.attendeeName, { color: theme.text, fontStyle: 'italic' }]}>
+                                                                (Blocked, {groupName})
+                                                            </Text>
+                                                        </View>
+                                                        {!isPastSlot && (
+                                                            <TouchableOpacity onPress={() => handleCancelBooking(groupBlock.id!, groupName)}>
+                                                                <Ionicons name="close-circle" size={24} color={theme.icon} />
+                                                            </TouchableOpacity>
+                                                        )}
+                                                    </View>
+                                                );
+                                            }
+
+                                            return block.bookings.map((b: Booking & { user?: UserProfile }) => {
+                                                if (b.type === 'block') return null;
+                                                const userName = b.user?.name || b.user?.email || 'Unknown Client';
+                                                return (
+                                                    <View key={b.id} style={[styles.attendeeCard, { borderBottomColor: theme.border }]}>
+                                                        <View style={styles.attendeeInfo}>
+                                                            <Text style={[styles.attendeeName, { color: theme.text }]}>{userName}</Text>
+                                                            <View style={styles.badgeContainer}>
+                                                                <Text style={styles.typeBadge}>{b.type.toUpperCase()}</Text>
+                                                                {b.type === 'pt' && <Text style={[styles.ptBadge, { backgroundColor: theme.tint }]}>PT Session</Text>}
+                                                                {b.type === 'group' && <Text style={styles.groupBadge}>Group</Text>}
+                                                            </View>
+                                                        </View>
+                                                        {!isPastSlot && (
+                                                            <TouchableOpacity onPress={() => handleCancelBooking(b.id!, userName)}>
+                                                                <Ionicons name="close-circle" size={24} color={theme.icon} />
+                                                            </TouchableOpacity>
+                                                        )}
+                                                    </View>
+                                                );
+                                            });
+                                        })()}
+                                    </View>
                                 </View>
-                            </View>
-                        );
-                    })
+                            );
+                        }}
+                    />
                 )}
-            </ScrollView>
+            </View>
         );
     };
 
@@ -646,12 +708,28 @@ export default function AdminScreen() {
 
             {activeTab === 'schedule' && (
                 <View style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateSelector}>
-                        {dates.map((date, index) => {
+                    <FlatList
+                        ref={flatListRef}
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.dateSelector}
+                        data={dates}
+                        keyExtractor={(_, i) => i.toString()}
+                        initialNumToRender={15}
+                        onScrollToIndexFailed={(info) => {
+                            setTimeout(() => {
+                                flatListRef.current?.scrollToIndex({ index: info.index, animated: false });
+                            }, 100);
+                        }}
+                        getItemLayout={(_, index) => ({
+                            length: 62, // minWidth (54) + gap (8)
+                            offset: 62 * index,
+                            index,
+                        })}
+                        renderItem={({ item: date }) => {
                             const isSelected = selectedDate.getTime() === date.getTime();
                             return (
                                 <TouchableOpacity
-                                    key={index}
                                     style={[styles.dateCard, { backgroundColor: isSelected ? theme.tint : 'transparent' }, isSelected && styles.dateCardSelected]}
                                     onPress={() => setSelectedDate(date)}
                                 >
@@ -659,8 +737,8 @@ export default function AdminScreen() {
                                     <Text style={[styles.dateText, { color: isSelected ? '#fff' : theme.text }]}>{format(date, 'd')}</Text>
                                 </TouchableOpacity>
                             );
-                        })}
-                    </ScrollView>
+                        }}
+                    />
                 </View>
             )}
 
