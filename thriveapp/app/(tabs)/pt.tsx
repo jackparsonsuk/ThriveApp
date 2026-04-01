@@ -30,6 +30,7 @@ export default function PTBookingScreen() {
     const [loading, setLoading] = useState(true);
     const [bookingLoading, setBookingLoading] = useState(false);
     const [recurringFrequency, setRecurringFrequency] = useState<'none' | 'weekly' | 'bi-weekly' | 'monthly'>('none');
+    const [isManagingAvailability, setIsManagingAvailability] = useState(false);
 
     // PT Assignment State
     const [ptCodeInput, setPtCodeInput] = useState('');
@@ -83,14 +84,14 @@ export default function PTBookingScreen() {
         if ((userProfile?.role === 'pt' || userProfile?.role === 'admin') && user?.uid) {
             fetchClients(user.uid);
             fetchPendingRequests(user.uid);
-            if (selectedClientForBooking) {
-                // If PT is booking for a client, check the PT's own availability
+            if (selectedClientForBooking || isManagingAvailability) {
+                // If PT is booking for a client or managing availability, check the PT's own availability
                 fetchAvailability(user.uid);
             }
         }
 
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedDate, userProfile, user, selectedClientForBooking]);
+    }, [selectedDate, userProfile, user, selectedClientForBooking, isManagingAvailability]);
 
     useEffect(() => {
         if (userProfile?.role === 'client' && user?.uid) {
@@ -250,17 +251,19 @@ export default function PTBookingScreen() {
         setLoading(true);
         try {
             const isPtBookingForClient = (userProfile?.role === 'pt' || userProfile?.role === 'admin') && !!selectedClientForBooking;
+            const targetPtId = isManagingAvailability ? user?.uid : ptId;
+            if (!targetPtId) return;
 
             // Fetch each source separately so we can generate contextual conflict reasons
             const [ptSessionBookings, ptPersonal, gymBookingsForDay] = await Promise.all([
-                getPTBookingsForDate(selectedDate, ptId),
-                getPersonAllBookingsForDate(ptId, selectedDate),
+                getPTBookingsForDate(selectedDate, targetPtId),
+                getPersonAllBookingsForDate(targetPtId, selectedDate),
                 getGymBookingsForDate(selectedDate),
             ]);
 
             let selfInstructorBookings: Booking[] = [];
             let selfBookings: Booking[] = [];
-            if (user?.uid && ptId !== user.uid) {
+            if (user?.uid && targetPtId !== user.uid) {
                 [selfInstructorBookings, selfBookings] = await Promise.all([
                     getPTBookingsForDate(selectedDate, user.uid),
                     getPersonAllBookingsForDate(user.uid, selectedDate),
@@ -288,6 +291,7 @@ export default function PTBookingScreen() {
 
                 const ptSessions = ptSessionBookings.filter(b => overlaps(b) && b.type === 'pt');
                 const ptBlocks = ptSessionBookings.filter(b => overlaps(b) && b.type === 'block');
+                const ptOwnBlocks = ptSessionBookings.filter(b => overlaps(b) && b.type === 'pt_block');
                 const ptPersonalConflicts = ptPersonal.filter(overlaps);
                 const clientConflicts = clientBookings.filter(overlaps);
                 const selfInstructorConflicts = selfInstructorBookings.filter(overlaps);
@@ -295,43 +299,58 @@ export default function PTBookingScreen() {
 
                 let isAvailable = true;
                 let conflictReason: string | undefined;
+                let isBlockedByMe = false;
+                let blockBookingId: string | undefined;
 
-                if (ptBlocks.length > 0) {
-                    isAvailable = false;
-                    conflictReason = 'Blocked';
-                } else if (ptPersonalConflicts.length > 0) {
-                    isAvailable = false;
-                    const c = ptPersonalConflicts[0];
-                    if (isPtBookingForClient) {
-                        if (c.type === 'gym') conflictReason = 'You are in the gym';
-                        else if (c.type === 'group') conflictReason = 'You have a class';
-                        else conflictReason = 'You have a booking';
+                if (ptOwnBlocks.length > 0) {
+                    if (isManagingAvailability) {
+                        isAvailable = true;
+                        isBlockedByMe = true;
+                        blockBookingId = ptOwnBlocks[0].id;
+                        conflictReason = 'Unblock';
                     } else {
-                        if (c.type === 'gym') conflictReason = 'PT is in the gym';
-                        else if (c.type === 'group') conflictReason = 'PT has a class';
-                        else conflictReason = 'PT is unavailable';
+                        isAvailable = false;
+                        conflictReason = 'Unavailable';
                     }
-                } else if (clientConflicts.length > 0) {
-                    isAvailable = false;
-                    const c = clientConflicts[0];
-                    const firstName = selectedClientForBooking?.name?.split(' ')[0] || 'Client';
-                    if (c.type === 'gym') conflictReason = `${firstName} is in the gym`;
-                    else if (c.type === 'group') conflictReason = `${firstName} has a class`;
-                    else if (c.type === 'pt') conflictReason = `${firstName} has a PT session`;
-                    else conflictReason = `${firstName} is busy`;
-                } else if (selfInstructorConflicts.length > 0) {
-                    isAvailable = false;
-                    conflictReason = 'You are leading a session';
-                } else if (selfConflicts.length > 0) {
-                    isAvailable = false;
-                    const c = selfConflicts[0];
-                    if (c.type === 'gym') conflictReason = 'You have a gym session';
-                    else if (c.type === 'group') conflictReason = 'You have a class';
-                    else if (c.type === 'pt') conflictReason = 'You have a PT session';
-                    else conflictReason = 'You are busy';
-                } else if (ptSessions.length >= 2) {
-                    isAvailable = false;
-                    conflictReason = 'Fully Booked';
+                } else if (!isManagingAvailability) {
+                    // Only check for other conflicts if we are NOT managing our own availability
+                    if (ptBlocks.length > 0) {
+                        isAvailable = false;
+                        conflictReason = 'Blocked';
+                    } else if (ptPersonalConflicts.length > 0) {
+                        isAvailable = false;
+                        const c = ptPersonalConflicts[0];
+                        if (isPtBookingForClient) {
+                            if (c.type === 'gym') conflictReason = 'You are in the gym';
+                            else if (c.type === 'group') conflictReason = 'You have a class';
+                            else conflictReason = 'You have a booking';
+                        } else {
+                            if (c.type === 'gym') conflictReason = 'PT is in the gym';
+                            else if (c.type === 'group') conflictReason = 'PT has a class';
+                            else conflictReason = 'PT is unavailable';
+                        }
+                    } else if (clientConflicts.length > 0) {
+                        isAvailable = false;
+                        const c = clientConflicts[0];
+                        const firstName = selectedClientForBooking?.name?.split(' ')[0] || 'Client';
+                        if (c.type === 'gym') conflictReason = `${firstName} is in the gym`;
+                        else if (c.type === 'group') conflictReason = `${firstName} has a class`;
+                        else if (c.type === 'pt') conflictReason = `${firstName} has a PT session`;
+                        else conflictReason = `${firstName} is busy`;
+                    } else if (selfInstructorConflicts.length > 0) {
+                        isAvailable = false;
+                        conflictReason = 'You are leading a session';
+                    } else if (selfConflicts.length > 0) {
+                        isAvailable = false;
+                        const c = selfConflicts[0];
+                        if (c.type === 'gym') conflictReason = 'You have a gym session';
+                        else if (c.type === 'group') conflictReason = 'You have a class';
+                        else if (c.type === 'pt') conflictReason = 'You have a PT session';
+                        else conflictReason = 'You are busy';
+                    } else if (ptSessions.length >= 2) {
+                        isAvailable = false;
+                        conflictReason = 'Fully Booked';
+                    }
                 }
 
                 slots.push({
@@ -340,6 +359,8 @@ export default function PTBookingScreen() {
                     attendees: checkSlotAvailability(currentTime, gymBookingsForDay).count,
                     bookedPtCount: ptSessions.length,
                     conflictReason,
+                    isBlockedByMe,
+                    blockBookingId
                 });
 
                 currentTime = addMinutes(currentTime, 15);
@@ -359,7 +380,37 @@ export default function PTBookingScreen() {
         }
     };
 
-    const handleBookSlot = async (slot: { time: Date; available: boolean }) => {
+    const handleBookSlot = async (slot: { time: Date; available: boolean; isBlockedByMe?: boolean; blockBookingId?: string }) => {
+        if (isManagingAvailability) {
+            if (slot.isBlockedByMe && slot.blockBookingId) {
+                setAlertConfig({
+                    visible: true,
+                    title: 'Unblock Time',
+                    message: `Do you want to unblock ${format(slot.time, 'HH:mm')}?`,
+                    onConfirm: async () => {
+                        try {
+                            setBookingLoading(true);
+                            await cancelBooking(slot.blockBookingId!, 'pt');
+                            if (user?.uid) fetchAvailability(user.uid);
+                            setAlertConfig({ visible: true, title: 'Success!', message: 'Time unblocked successfully.', isSuccess: true });
+                        } catch (e) {
+                            setAlertConfig({ visible: true, title: 'Error', message: 'Failed to unblock.', isError: true });
+                        } finally {
+                            setBookingLoading(false);
+                        }
+                    }
+                });
+            } else {
+                setAlertConfig({
+                    visible: true,
+                    title: 'Block Time',
+                    message: `Block out ${recurringFrequency !== 'none' ? recurringFrequency + ' ' : ''}time at ${format(slot.time, 'HH:mm')}?`,
+                    onConfirm: () => confirmBooking(slot.time, user!.uid, 'pt_block')
+                });
+            }
+            return;
+        }
+
         const isPtBookingForClient = (userProfile?.role === 'pt' || userProfile?.role === 'admin') && selectedClientForBooking;
         const targetPtId = isPtBookingForClient ? user?.uid : userProfile?.assignedPtId;
         const targetClientName = isPtBookingForClient ? selectedClientForBooking.name : 'you';
@@ -370,16 +421,16 @@ export default function PTBookingScreen() {
             visible: true,
             title: 'Confirm PT Booking',
             message: `Book ${recurringFrequency !== 'none' ? recurringFrequency + ' ' : ''}PT session for ${targetClientName} at ${format(slot.time, 'HH:mm')}?`,
-            onConfirm: () => confirmBooking(slot.time, targetPtId as string)
+            onConfirm: () => confirmBooking(slot.time, targetPtId as string, 'pt')
         });
     };
 
-    const confirmBooking = async (startTime: Date, ptId: string) => {
+    const confirmBooking = async (startTime: Date, ptId: string, bookingType: 'pt' | 'pt_block' = 'pt') => {
         if (!user) return;
         setBookingLoading(true);
 
         const isPtBookingForClient = (userProfile?.role === 'pt' || userProfile?.role === 'admin') && selectedClientForBooking;
-        const targetUserId = isPtBookingForClient ? selectedClientForBooking.id : user.uid;
+        const targetUserId = isManagingAvailability ? user.uid : (isPtBookingForClient ? selectedClientForBooking.id : user.uid);
 
         try {
             const endTime = addMinutes(startTime, 60);
@@ -389,7 +440,7 @@ export default function PTBookingScreen() {
                     userId: targetUserId,
                     startTime,
                     endTime,
-                    type: 'pt',
+                    type: bookingType,
                     ptId: ptId,
                     status: 'confirmed'
                 });
@@ -397,7 +448,7 @@ export default function PTBookingScreen() {
                 await createRecurringSession({
                     userId: targetUserId,
                     ptId: ptId,
-                    type: 'pt',
+                    type: bookingType as any,
                     frequency: recurringFrequency as any,
                     startTime: startTime,
                     endTime: endTime,
@@ -408,7 +459,7 @@ export default function PTBookingScreen() {
             setAlertConfig({
                 visible: true,
                 title: 'Success!',
-                message: isPtBookingForClient ? `Session${recurringFrequency !== 'none' ? 's' : ''} booked for ${selectedClientForBooking.name}.` : 'Your PT session has been booked.',
+                message: isManagingAvailability ? `Time block${recurringFrequency !== 'none' ? 's' : ''} added.` : (isPtBookingForClient ? `Session${recurringFrequency !== 'none' ? 's' : ''} booked for ${selectedClientForBooking.name}.` : 'Your PT session has been booked.'),
                 isSuccess: true,
                 onConfirm: undefined
             });
@@ -485,7 +536,7 @@ export default function PTBookingScreen() {
         }
     };
 
-    if ((userProfile?.role === 'pt' || userProfile?.role === 'admin') && !selectedClientForBooking) {
+    if ((userProfile?.role === 'pt' || userProfile?.role === 'admin') && !selectedClientForBooking && !isManagingAvailability) {
         const ptCode = user?.uid ? user.uid.substring(0, 6).toUpperCase() : '------';
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
@@ -605,6 +656,12 @@ export default function PTBookingScreen() {
                         ) : (
                             <Text style={[styles.noClientsText, { color: theme.icon }]}>You don't have any clients assigned yet.</Text>
                         )}
+                        <TouchableOpacity
+                            style={[styles.bookClientButton, { backgroundColor: theme.icon, alignSelf: 'center', marginTop: 25, paddingHorizontal: 24, paddingVertical: 12 }]}
+                            onPress={() => setIsManagingAvailability(true)}
+                        >
+                            <Text style={[styles.bookClientButtonText, { fontSize: 16 }]}>Manage My Availability</Text>
+                        </TouchableOpacity>
                     </View>
 
                     <SectionDivider theme={theme} />
@@ -830,6 +887,16 @@ export default function PTBookingScreen() {
                             <Text style={[styles.backButtonText, { color: theme.text }]}>Back</Text>
                         </TouchableOpacity>
                     </View>
+                ) : isManagingAvailability ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <View>
+                            <Text style={[styles.title, { color: theme.text }]}>Manage Availability</Text>
+                            <Text style={[styles.subtitle, { color: theme.icon }]}>Block out times</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => setIsManagingAvailability(false)} style={[styles.backButton, { backgroundColor: theme.border }]}>
+                            <Text style={[styles.backButtonText, { color: theme.text }]}>Back</Text>
+                        </TouchableOpacity>
+                    </View>
                 ) : (
                     <View>
                         <Text style={[styles.title, { color: theme.text }]}>Book PT Session</Text>
@@ -870,7 +937,7 @@ export default function PTBookingScreen() {
                 </ScrollView>
             </View>
 
-            {((userProfile?.role === 'pt' || userProfile?.role === 'admin') && selectedClientForBooking) && (
+            {((userProfile?.role === 'pt' || userProfile?.role === 'admin') && (selectedClientForBooking || isManagingAvailability)) && (
                 <View style={[styles.frequencyContainer, { borderBottomColor: theme.border }]}>
                     <Text style={[styles.frequencyLabel, { color: theme.text }]}>Repeat Session:</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.frequencyScroll}>
@@ -927,9 +994,12 @@ export default function PTBookingScreen() {
 
                                         <View style={styles.slotDetailsContainer}>
                                             <Text style={[styles.slotDuration, { color: slot.available ? theme.tint : theme.icon }]}>
-                                                {slot.available ? (slot.bookedPtCount === 1 ? '1/2 Booked' : '1 Hour') : (slot.conflictReason ?? 'Booked')}
+                                                {slot.available ? (
+                                                    // @ts-ignore
+                                                    slot.isBlockedByMe ? 'Blocked (Tap to unblock)' : (slot.bookedPtCount === 1 ? '1/2 Booked' : '1 Hour')
+                                                ) : (slot.conflictReason ?? 'Booked')}
                                             </Text>
-                                            {slot.available && (
+                                            {slot.available && !((slot as any).isBlockedByMe) && (
                                                 <Text style={[styles.slotAttendees, { color: theme.icon, fontSize: 13, marginLeft: 10 }]}>
                                                     {slot.attendees} / 4 Booked
                                                 </Text>

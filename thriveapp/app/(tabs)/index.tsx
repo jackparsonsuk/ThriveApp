@@ -233,6 +233,7 @@ export default function DashboardScreen() {
       case 'pt': return 'Personal Training';
       case 'group': return 'Group Class';
       case 'block': return booking.reason || 'Blocked Time';
+      case 'pt_block': return 'Unavailable';
       default: return booking.type;
     }
   };

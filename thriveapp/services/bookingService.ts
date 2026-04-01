@@ -7,7 +7,7 @@ export interface Booking {
     userId: string;
     startTime: Date;
     endTime: Date;
-    type: 'gym' | 'pt' | 'group' | 'block';
+    type: 'gym' | 'pt' | 'group' | 'block' | 'pt_block';
     ptId?: string;
     groupId?: string;
     reason?: string; // For blocks
@@ -21,7 +21,7 @@ export interface RecurringSessionTemplate {
     id?: string;
     userId: string; // The client
     ptId: string;   // The PT providing the session
-    type: 'pt';
+    type: 'pt' | 'pt_block';
     frequency: 'daily' | 'weekly' | 'bi-weekly' | 'monthly';
     startTime: Date; // Contains both the start date of the series and the time of day
     endTime: Date;   // Contains the end time of day
@@ -259,9 +259,18 @@ export const getPTBookingsForDate = async (date: Date, ptId: string): Promise<Bo
         where('startTime', '<=', end)
     );
 
-    const [snap1, snap2, snap3] = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3)]);
+    const q4 = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('type', '==', 'pt_block'),
+        where('ptId', '==', ptId),
+        where('status', '==', 'confirmed'),
+        where('startTime', '>=', start),
+        where('startTime', '<=', end)
+    );
 
-    const docs = [...snap1.docs, ...snap2.docs, ...snap3.docs];
+    const [snap1, snap2, snap3, snap4] = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3), getDocs(q4)]);
+
+    const docs = [...snap1.docs, ...snap2.docs, ...snap3.docs, ...snap4.docs];
 
     // De-duplicate in case of any overlap (shouldn't be, but good practice)
     const uniqueDocs = Array.from(new Map(docs.map(doc => [doc.id, doc])).values());

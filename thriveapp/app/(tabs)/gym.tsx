@@ -22,7 +22,7 @@ export default function GymBookingScreen() {
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [profileLoading, setProfileLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
-    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean; attendees: number; conflictType?: string; ptAvailable: boolean }[]>([]);
+    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean; attendees: number; conflictType?: string; ptAvailable: boolean; ptOccupied?: boolean }[]>([]);
     const [loading, setLoading] = useState(false);
     const [bookingLoading, setBookingLoading] = useState(false);
 
@@ -141,6 +141,10 @@ export default function GymBookingScreen() {
                 const ptSessionEnd = addMinutes(currentTime, 60);
                 const ptConflict = ptBookingsForDay.some(b => b.startTime < ptSessionEnd && b.endTime > currentTime);
                 const ptAvailable = !ptConflict;
+                
+                // PT is occupied exactly at this 15 minute slot (to distinguish from simply not having a full 60min window)
+                const targetSlotEnd = addMinutes(currentTime, 15);
+                const ptOccupied = ptBookingsForDay.some(b => b.startTime < targetSlotEnd && b.endTime > currentTime);
 
                 slots.push({
                     time: currentTime,
@@ -149,6 +153,7 @@ export default function GymBookingScreen() {
                     attendees: slotData.count,
                     conflictType: slotData.blockReason || (!slotData.available ? 'Full' : undefined),
                     ptAvailable,
+                    ptOccupied,
                 });
 
                 currentTime = addMinutes(currentTime, 15);
@@ -168,7 +173,7 @@ export default function GymBookingScreen() {
         }
     };
 
-    const handleBookSlot = async (slot: { time: Date; available: boolean; isNextAvailable: boolean; attendees: number; ptAvailable: boolean }) => {
+    const handleBookSlot = async (slot: { time: Date; available: boolean; isNextAvailable: boolean; attendees: number; ptAvailable: boolean; ptOccupied?: boolean }) => {
         if (!user || !userProfile) return;
 
         const canGym = userProfile.canBookGym ?? true;
@@ -389,7 +394,9 @@ export default function GymBookingScreen() {
                                                     </Text>
                                                     <View style={styles.slotRightInfo}>
                                                         {!slot.ptAvailable && hasPt && (
-                                                            <Text style={[styles.ptBusyBadge, { color: theme.icon }]}>PT Busy</Text>
+                                                            <Text style={[styles.ptBusyBadge, { color: theme.icon }]}>
+                                                                {slot.ptOccupied ? 'PT Busy' : 'PT < 1hr Free'}
+                                                            </Text>
                                                         )}
                                                         <Text style={[styles.slotAttendees, { color: theme.icon }]}>
                                                             {slot.attendees} / 4 Booked
