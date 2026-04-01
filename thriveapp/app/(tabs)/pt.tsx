@@ -297,6 +297,7 @@ export default function PTBookingScreen() {
                 const clientConflicts = clientBookings.filter(overlaps);
                 const selfInstructorConflicts = selfInstructorBookings.filter(overlaps);
                 const selfConflicts = selfBookings.filter(overlaps);
+                const gymBlocks = gymBookingsForDay.filter(b => overlaps(b) && b.type === 'block');
 
                 let isAvailable = true;
                 let conflictReason: string | undefined;
@@ -325,6 +326,11 @@ export default function PTBookingScreen() {
                         isAvailable = false;
                         conflictReason = 'Blocked';
                         conflictBookingId = ptBlocks[0].id;
+                        conflictBookingType = 'block';
+                    } else if (gymBlocks.length > 0) {
+                        isAvailable = false;
+                        conflictReason = gymBlocks[0].reason || 'Gym Closed';
+                        conflictBookingId = 'admin-block';
                         conflictBookingType = 'block';
                     } else if (ptPersonalConflicts.length > 0) {
                         isAvailable = false;

@@ -149,8 +149,9 @@ export default function GymBookingScreen() {
                 const ptOccupied = ptBookingsForDay.some(b => b.startTime < targetSlotEnd && b.endTime > currentTime);
 
                 const myConflict = userMyBookings.find(b => b.startTime < targetSlotEnd && b.endTime > currentTime);
-                const conflictBookingId = myConflict?.id;
-                const conflictBookingType = myConflict?.type;
+                const generalBlock = bookingsForDay.find(b => b.type === 'block' && b.startTime < targetSlotEnd && b.endTime > currentTime);
+                const conflictBookingId = myConflict?.id || (generalBlock ? 'admin-block' : undefined);
+                const conflictBookingType = myConflict?.type || generalBlock?.type;
 
                 slots.push({
                     time: currentTime,
