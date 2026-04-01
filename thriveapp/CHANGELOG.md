@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-04-01
+
+### Added
+- **PT Blockout Slot Grouping**: Consecutive administrative blockouts on Gym and PT calendars are now grouped into unified visual blocks with a single outline for better clarity.
+- **Contextual Blockout Labels**: Blocked slots now display specific reasons (e.g., "Sarah is in the gym", "PT has a class", "You have a PT session") instead of generic labels.
+- **Unified Blockout Outlines**: Enhanced UI to recognize sequential 15-minute blockout slots and apply a continuous border around the grouping.
+
 ## [2.1.1] - 2026-03-17
 
 ### Added
