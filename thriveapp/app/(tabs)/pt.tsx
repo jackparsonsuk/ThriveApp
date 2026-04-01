@@ -26,10 +26,11 @@ export default function PTBookingScreen() {
     const theme = Colors[colorScheme];
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
-    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; attendees: number; bookedPtCount: number; conflictReason?: string }[]>([]);
+    const [availableSlots, setAvailableSlots] = useState<{ time: Date; endTime?: Date; available: boolean; attendees: number; bookedPtCount: number; conflictReason?: string; isBlockedByMe?: boolean; blockBookingId?: string }[]>([]);
     const [loading, setLoading] = useState(true);
     const [bookingLoading, setBookingLoading] = useState(false);
     const [recurringFrequency, setRecurringFrequency] = useState<'none' | 'weekly' | 'bi-weekly' | 'monthly'>('none');
+    const [blockDuration, setBlockDuration] = useState<number>(1);
     const [isManagingAvailability, setIsManagingAvailability] = useState(false);
 
     // PT Assignment State
@@ -380,13 +381,13 @@ export default function PTBookingScreen() {
         }
     };
 
-    const handleBookSlot = async (slot: { time: Date; available: boolean; isBlockedByMe?: boolean; blockBookingId?: string }) => {
+    const handleBookSlot = async (slot: { time: Date; endTime?: Date; available: boolean; isBlockedByMe?: boolean; blockBookingId?: string }) => {
         if (isManagingAvailability) {
             if (slot.isBlockedByMe && slot.blockBookingId) {
                 setAlertConfig({
                     visible: true,
                     title: 'Unblock Time',
-                    message: `Do you want to unblock ${format(slot.time, 'HH:mm')}?`,
+                    message: `Do you want to unblock ${format(slot.time, 'HH:mm')}${slot.endTime ? ' to ' + format(slot.endTime, 'HH:mm') : ''}?`,
                     onConfirm: async () => {
                         try {
                             setBookingLoading(true);
@@ -401,11 +402,12 @@ export default function PTBookingScreen() {
                     }
                 });
             } else {
+                const endTimeStr = format(addMinutes(slot.time, blockDuration * 60), 'HH:mm');
                 setAlertConfig({
                     visible: true,
                     title: 'Block Time',
-                    message: `Block out ${recurringFrequency !== 'none' ? recurringFrequency + ' ' : ''}time at ${format(slot.time, 'HH:mm')}?`,
-                    onConfirm: () => confirmBooking(slot.time, user!.uid, 'pt_block')
+                    message: `Block out ${blockDuration} hour(s) from ${format(slot.time, 'HH:mm')} to ${endTimeStr}${recurringFrequency !== 'none' ? ' (' + recurringFrequency + ')' : ''}?`,
+                    onConfirm: () => confirmBooking(slot.time, user!.uid, 'pt_block', blockDuration * 60)
                 });
             }
             return;
@@ -425,7 +427,7 @@ export default function PTBookingScreen() {
         });
     };
 
-    const confirmBooking = async (startTime: Date, ptId: string, bookingType: 'pt' | 'pt_block' = 'pt') => {
+    const confirmBooking = async (startTime: Date, ptId: string, bookingType: 'pt' | 'pt_block' = 'pt', durationMinutes: number = 60) => {
         if (!user) return;
         setBookingLoading(true);
 
@@ -433,7 +435,7 @@ export default function PTBookingScreen() {
         const targetUserId = isManagingAvailability ? user.uid : (isPtBookingForClient ? selectedClientForBooking.id : user.uid);
 
         try {
-            const endTime = addMinutes(startTime, 60);
+            const endTime = addMinutes(startTime, durationMinutes);
 
             if (recurringFrequency === 'none') {
                 await createBooking({
@@ -963,6 +965,32 @@ export default function PTBookingScreen() {
                 </View>
             )}
 
+            {isManagingAvailability && (
+                <View style={[styles.frequencyContainer, { borderBottomColor: theme.border, borderTopWidth: 0 }]}>
+                    <Text style={[styles.frequencyLabel, { color: theme.text }]}>Block Duration:</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.frequencyScroll}>
+                        {[1, 2, 3, 4, 5, 6, 7, 8].map((hours) => (
+                            <TouchableOpacity
+                                key={hours}
+                                style={[
+                                    styles.freqButton,
+                                    { borderColor: theme.border },
+                                    blockDuration === hours && { backgroundColor: theme.tint, borderColor: theme.tint }
+                                ]}
+                                onPress={() => setBlockDuration(hours)}
+                            >
+                                <Text style={[
+                                    styles.freqButtonText,
+                                    { color: blockDuration === hours ? '#fff' : theme.icon }
+                                ]}>
+                                    {hours} hr{hours > 1 ? 's' : ''}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                </View>
+            )}
+
             <ScrollView contentContainerStyle={styles.slotsContainer}>
                 {loading ? (
                     <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
@@ -972,12 +1000,44 @@ export default function PTBookingScreen() {
                     <View style={[styles.slotsList, { backgroundColor: theme.card, borderColor: theme.border }]}>
                         {availableSlots.map((slot, index) => {
                             const isLast = index === availableSlots.length - 1;
+
+                            // Grouping outline logic
+                            const isMyBlock = slot.isBlockedByMe && slot.blockBookingId;
+                            const prevSlot = isMyBlock && index > 0 ? availableSlots[index - 1] : null;
+                            const nextSlot = isMyBlock && index < availableSlots.length - 1 ? availableSlots[index + 1] : null;
+
+                            const isFirstInBlock = isMyBlock && prevSlot?.blockBookingId !== slot.blockBookingId;
+                            const isLastInBlock = isMyBlock && nextSlot?.blockBookingId !== slot.blockBookingId;
+                            const isMiddleInBlock = isMyBlock && !isFirstInBlock && !isLastInBlock;
+
+                            let outlineStyle: any = {};
+                            if (isMyBlock) {
+                                outlineStyle = {
+                                    borderColor: theme.tint,
+                                    borderLeftWidth: 2,
+                                    borderRightWidth: 2,
+                                };
+                                if (isFirstInBlock) {
+                                    outlineStyle.borderTopWidth = 2;
+                                    outlineStyle.borderTopLeftRadius = 8;
+                                    outlineStyle.borderTopRightRadius = 8;
+                                    outlineStyle.marginTop = 4;
+                                }
+                                if (isLastInBlock) {
+                                    outlineStyle.borderBottomWidth = 2;
+                                    outlineStyle.borderBottomLeftRadius = 8;
+                                    outlineStyle.borderBottomRightRadius = 8;
+                                    outlineStyle.marginBottom = 4;
+                                }
+                            }
+
                             return (
                                 <View key={index}>
                                     <TouchableOpacity
                                         style={[
                                             styles.slotRow,
-                                            !slot.available && styles.slotRowUnavailable
+                                            !slot.available && styles.slotRowUnavailable,
+                                            outlineStyle
                                         ]}
                                         disabled={!slot.available || bookingLoading}
                                         onPress={() => handleBookSlot(slot)}
@@ -1012,7 +1072,7 @@ export default function PTBookingScreen() {
                                             )}
                                         </View>
                                     </TouchableOpacity>
-                                    {!isLast && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
+                                    {(!isLast && !(isMyBlock && !isLastInBlock)) && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
                                 </View>
                             );
                         })}
