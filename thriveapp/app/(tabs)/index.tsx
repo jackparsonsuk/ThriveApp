@@ -338,7 +338,7 @@ export default function DashboardScreen() {
 
             {(remainingBookings.length > 0 || filter === 'upcoming') && (
               <View style={styles.section}>
-                <View style={[styles.filterContainer, { justifyContent: 'space-between', alignItems: 'center' }]}>
+                <View style={styles.filterContainer}>
                   <View style={{ flexDirection: 'row' }}>
                     <TouchableOpacity 
                       style={[styles.filterTab, filter === 'today' && { backgroundColor: theme.tint, borderColor: theme.tint }]} 
@@ -353,13 +353,15 @@ export default function DashboardScreen() {
                       <Text style={[styles.filterText, filter === 'upcoming' ? { color: '#ffffff' } : { color: theme.icon }]}>Following Schedule</Text>
                     </TouchableOpacity>
                   </View>
-                  <TouchableOpacity 
-                    style={{ flexDirection: 'row', alignItems: 'center', opacity: 0.8 }} 
-                    onPress={() => setShowCancelled(!showCancelled)}
-                  >
-                    <Ionicons name={showCancelled ? "checkbox" : "square-outline"} size={20} color={theme.icon} style={{ marginRight: 6 }} />
-                    <Text style={{ fontSize: 13, color: theme.icon, fontWeight: '500' }}>Show Cancelled</Text>
-                  </TouchableOpacity>
+                  {bookings.some(b => b.status === 'cancelled') && (
+                    <TouchableOpacity 
+                      style={{ flexDirection: 'row', alignItems: 'center', opacity: 0.8 }} 
+                      onPress={() => setShowCancelled(!showCancelled)}
+                    >
+                      <Ionicons name={showCancelled ? "checkbox" : "square-outline"} size={20} color={theme.icon} style={{ marginRight: 6 }} />
+                      <Text style={{ fontSize: 13, color: theme.icon, fontWeight: '500' }}>Show Cancelled</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 {displayedBookings.length === 0 ? (
@@ -568,7 +570,11 @@ const styles = StyleSheet.create({
   },
   filterContainer: {
     flexDirection: 'row',
-    marginBottom: 10,
+    marginBottom: 15,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   filterTab: {
     paddingVertical: 8,
