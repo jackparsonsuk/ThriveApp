@@ -26,7 +26,7 @@ export default function PTBookingScreen() {
     const theme = Colors[colorScheme];
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
-    const [availableSlots, setAvailableSlots] = useState<{ time: Date; endTime?: Date; available: boolean; attendees: number; bookedPtCount: number; conflictReason?: string; isBlockedByMe?: boolean; blockBookingId?: string }[]>([]);
+    const [availableSlots, setAvailableSlots] = useState<{ time: Date; endTime?: Date; available: boolean; attendees: number; bookedPtCount: number; conflictReason?: string; isBlockedByMe?: boolean; blockBookingId?: string; conflictBookingId?: string; conflictBookingType?: string; }[]>([]);
     const [loading, setLoading] = useState(true);
     const [bookingLoading, setBookingLoading] = useState(false);
     const [recurringFrequency, setRecurringFrequency] = useState<'none' | 'weekly' | 'bi-weekly' | 'monthly'>('none');
@@ -302,25 +302,35 @@ export default function PTBookingScreen() {
                 let conflictReason: string | undefined;
                 let isBlockedByMe = false;
                 let blockBookingId: string | undefined;
+                let conflictBookingId: string | undefined;
+                let conflictBookingType: string | undefined;
 
                 if (ptOwnBlocks.length > 0) {
                     if (isManagingAvailability) {
                         isAvailable = true;
                         isBlockedByMe = true;
                         blockBookingId = ptOwnBlocks[0].id;
+                        conflictBookingId = ptOwnBlocks[0].id;
+                        conflictBookingType = 'pt_block';
                         conflictReason = 'Unblock';
                     } else {
                         isAvailable = false;
                         conflictReason = 'Unavailable';
+                        conflictBookingId = ptOwnBlocks[0].id;
+                        conflictBookingType = 'pt_block';
                     }
                 } else if (!isManagingAvailability) {
                     // Only check for other conflicts if we are NOT managing our own availability
                     if (ptBlocks.length > 0) {
                         isAvailable = false;
                         conflictReason = 'Blocked';
+                        conflictBookingId = ptBlocks[0].id;
+                        conflictBookingType = 'block';
                     } else if (ptPersonalConflicts.length > 0) {
                         isAvailable = false;
                         const c = ptPersonalConflicts[0];
+                        conflictBookingId = c.id;
+                        conflictBookingType = c.type;
                         if (isPtBookingForClient) {
                             if (c.type === 'gym') conflictReason = 'You are in the gym';
                             else if (c.type === 'group') conflictReason = 'You have a class';
@@ -333,6 +343,8 @@ export default function PTBookingScreen() {
                     } else if (clientConflicts.length > 0) {
                         isAvailable = false;
                         const c = clientConflicts[0];
+                        conflictBookingId = c.id;
+                        conflictBookingType = c.type;
                         const firstName = selectedClientForBooking?.name?.split(' ')[0] || 'Client';
                         if (c.type === 'gym') conflictReason = `${firstName} is in the gym`;
                         else if (c.type === 'group') conflictReason = `${firstName} has a class`;
@@ -340,10 +352,14 @@ export default function PTBookingScreen() {
                         else conflictReason = `${firstName} is busy`;
                     } else if (selfInstructorConflicts.length > 0) {
                         isAvailable = false;
+                        conflictBookingId = selfInstructorConflicts[0].id;
+                        conflictBookingType = 'pt';
                         conflictReason = 'You are leading a session';
                     } else if (selfConflicts.length > 0) {
                         isAvailable = false;
                         const c = selfConflicts[0];
+                        conflictBookingId = c.id;
+                        conflictBookingType = c.type;
                         if (c.type === 'gym') conflictReason = 'You have a gym session';
                         else if (c.type === 'group') conflictReason = 'You have a class';
                         else if (c.type === 'pt') conflictReason = 'You have a PT session';
@@ -351,6 +367,11 @@ export default function PTBookingScreen() {
                     } else if (ptSessions.length >= 2) {
                         isAvailable = false;
                         conflictReason = 'Fully Booked';
+                        conflictBookingId = ptSessions[0].id;
+                        conflictBookingType = 'pt';
+                    } else if (ptSessions.length === 1) {
+                        conflictBookingId = ptSessions[0].id;
+                        conflictBookingType = 'pt';
                     }
                 }
 
@@ -361,7 +382,9 @@ export default function PTBookingScreen() {
                     bookedPtCount: ptSessions.length,
                     conflictReason,
                     isBlockedByMe,
-                    blockBookingId
+                    blockBookingId,
+                    conflictBookingId,
+                    conflictBookingType
                 });
 
                 currentTime = addMinutes(currentTime, 15);
@@ -1002,18 +1025,27 @@ export default function PTBookingScreen() {
                             const isLast = index === availableSlots.length - 1;
 
                             // Grouping outline logic
-                            const isMyBlock = slot.isBlockedByMe && slot.blockBookingId;
-                            const prevSlot = isMyBlock && index > 0 ? availableSlots[index - 1] : null;
-                            const nextSlot = isMyBlock && index < availableSlots.length - 1 ? availableSlots[index + 1] : null;
+                            const hasGroup = !!slot.conflictBookingId;
+                            const prevSlot = hasGroup && index > 0 ? availableSlots[index - 1] : null;
+                            const nextSlot = hasGroup && index < availableSlots.length - 1 ? availableSlots[index + 1] : null;
 
-                            const isFirstInBlock = isMyBlock && prevSlot?.blockBookingId !== slot.blockBookingId;
-                            const isLastInBlock = isMyBlock && nextSlot?.blockBookingId !== slot.blockBookingId;
-                            const isMiddleInBlock = isMyBlock && !isFirstInBlock && !isLastInBlock;
+                            const isFirstInBlock = hasGroup && prevSlot?.conflictBookingId !== slot.conflictBookingId;
+                            const isLastInBlock = hasGroup && nextSlot?.conflictBookingId !== slot.conflictBookingId;
+                            const isMiddleInBlock = hasGroup && !isFirstInBlock && !isLastInBlock;
 
                             let outlineStyle: any = {};
-                            if (isMyBlock) {
+                            if (hasGroup) {
+                                const bookingColors: Record<string, string> = { 
+                                    pt_block: theme.tint, 
+                                    pt: '#10B981', 
+                                    gym: '#3B82F6', 
+                                    group: '#8B5CF6', 
+                                    block: '#64748B' 
+                                };
+                                const groupColor = bookingColors[slot.conflictBookingType ?? ''] || theme.tint;
+
                                 outlineStyle = {
-                                    borderColor: theme.tint,
+                                    borderColor: groupColor,
                                     borderLeftWidth: 2,
                                     borderRightWidth: 2,
                                 };
@@ -1072,7 +1104,7 @@ export default function PTBookingScreen() {
                                             )}
                                         </View>
                                     </TouchableOpacity>
-                                    {(!isLast && !(isMyBlock && !isLastInBlock)) && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
+                                    {(!isLast && !(hasGroup && !isLastInBlock)) && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
                                 </View>
                             );
                         })}

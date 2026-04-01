@@ -25,6 +25,7 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'today' | 'upcoming'>('today');
+  const [showCancelled, setShowCancelled] = useState(false);
 
   // Custom Alert State
   const [alertConfig, setAlertConfig] = useState<{
@@ -243,6 +244,7 @@ export default function DashboardScreen() {
   const remainingBookings = bookings.filter(b => b !== nextBooking);
   
   const displayedBookings = remainingBookings.filter(b => {
+    if (!showCancelled && b.status === 'cancelled') return false;
     if (filter === 'today') {
       return isSameDay(b.startTime, now);
     }
@@ -276,7 +278,7 @@ export default function DashboardScreen() {
 
         {loading ? (
           <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 40 }} />
-        ) : bookings.length === 0 ? (
+        ) : bookings.filter(b => showCancelled || b.status !== 'cancelled').length === 0 ? (
           <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 20 }]}>
             <Ionicons name="calendar-outline" size={48} color={theme.icon} />
             <Text style={[styles.emptyText, { color: theme.icon }]}>You have no upcoming bookings.</Text>
@@ -336,18 +338,27 @@ export default function DashboardScreen() {
 
             {(remainingBookings.length > 0 || filter === 'upcoming') && (
               <View style={styles.section}>
-                <View style={styles.filterContainer}>
+                <View style={[styles.filterContainer, { justifyContent: 'space-between', alignItems: 'center' }]}>
+                  <View style={{ flexDirection: 'row' }}>
+                    <TouchableOpacity 
+                      style={[styles.filterTab, filter === 'today' && { backgroundColor: theme.tint, borderColor: theme.tint }]} 
+                      onPress={() => setFilter('today')}
+                    >
+                      <Text style={[styles.filterText, filter === 'today' ? { color: '#ffffff' } : { color: theme.icon }]}>Later Today</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.filterTab, filter === 'upcoming' && { backgroundColor: theme.tint, borderColor: theme.tint }]} 
+                      onPress={() => setFilter('upcoming')}
+                    >
+                      <Text style={[styles.filterText, filter === 'upcoming' ? { color: '#ffffff' } : { color: theme.icon }]}>Following Schedule</Text>
+                    </TouchableOpacity>
+                  </View>
                   <TouchableOpacity 
-                    style={[styles.filterTab, filter === 'today' && { backgroundColor: theme.tint, borderColor: theme.tint }]} 
-                    onPress={() => setFilter('today')}
+                    style={{ flexDirection: 'row', alignItems: 'center', opacity: 0.8 }} 
+                    onPress={() => setShowCancelled(!showCancelled)}
                   >
-                    <Text style={[styles.filterText, filter === 'today' ? { color: '#ffffff' } : { color: theme.icon }]}>Later Today</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.filterTab, filter === 'upcoming' && { backgroundColor: theme.tint, borderColor: theme.tint }]} 
-                    onPress={() => setFilter('upcoming')}
-                  >
-                    <Text style={[styles.filterText, filter === 'upcoming' ? { color: '#ffffff' } : { color: theme.icon }]}>Following Schedule</Text>
+                    <Ionicons name={showCancelled ? "checkbox" : "square-outline"} size={20} color={theme.icon} style={{ marginRight: 6 }} />
+                    <Text style={{ fontSize: 13, color: theme.icon, fontWeight: '500' }}>Show Cancelled</Text>
                   </TouchableOpacity>
                 </View>
 

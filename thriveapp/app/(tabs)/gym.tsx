@@ -22,7 +22,7 @@ export default function GymBookingScreen() {
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [profileLoading, setProfileLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
-    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean; attendees: number; conflictType?: string; ptAvailable: boolean; ptOccupied?: boolean }[]>([]);
+    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean; attendees: number; conflictType?: string; ptAvailable: boolean; ptOccupied?: boolean; conflictBookingId?: string; conflictBookingType?: string; }[]>([]);
     const [loading, setLoading] = useState(false);
     const [bookingLoading, setBookingLoading] = useState(false);
 
@@ -70,6 +70,7 @@ export default function GymBookingScreen() {
             const bookingsForDay = await getGymBookingsForDate(selectedDate);
 
             let ptBookingsForDay: Booking[] = [];
+            let userMyBookings: Booking[] = [];
 
             // If the user happens to have instructional PT bookings, block them out too
             if (user?.uid) {
@@ -92,6 +93,7 @@ export default function GymBookingScreen() {
 
                 // Add the user's personal bookings (confirmed + pending) as blocks so they can't double book
                 const myBookings = await getPersonAllBookingsForDate(user.uid, selectedDate);
+                userMyBookings = myBookings;
                 myBookings.forEach(b => {
                     let reason = 'Booked';
                     if (b.type === 'pt' && b.status === 'pending') reason = 'PT Request Pending';
@@ -146,6 +148,10 @@ export default function GymBookingScreen() {
                 const targetSlotEnd = addMinutes(currentTime, 15);
                 const ptOccupied = ptBookingsForDay.some(b => b.startTime < targetSlotEnd && b.endTime > currentTime);
 
+                const myConflict = userMyBookings.find(b => b.startTime < targetSlotEnd && b.endTime > currentTime);
+                const conflictBookingId = myConflict?.id;
+                const conflictBookingType = myConflict?.type;
+
                 slots.push({
                     time: currentTime,
                     available: slotData.available,
@@ -154,6 +160,8 @@ export default function GymBookingScreen() {
                     conflictType: slotData.blockReason || (!slotData.available ? 'Full' : undefined),
                     ptAvailable,
                     ptOccupied,
+                    conflictBookingId,
+                    conflictBookingType
                 });
 
                 currentTime = addMinutes(currentTime, 15);
@@ -366,12 +374,53 @@ export default function GymBookingScreen() {
                     <View style={[styles.slotsList, { backgroundColor: theme.card, borderColor: theme.border }]}>
                         {availableSlots.map((slot, index) => {
                             const isLast = index === availableSlots.length - 1;
+
+                            // Grouping outline logic
+                            const hasGroup = !!slot.conflictBookingId;
+                            const prevSlot = hasGroup && index > 0 ? availableSlots[index - 1] : null;
+                            const nextSlot = hasGroup && index < availableSlots.length - 1 ? availableSlots[index + 1] : null;
+
+                            const isFirstInBlock = hasGroup && prevSlot?.conflictBookingId !== slot.conflictBookingId;
+                            const isLastInBlock = hasGroup && nextSlot?.conflictBookingId !== slot.conflictBookingId;
+                            const isMiddleInBlock = hasGroup && !isFirstInBlock && !isLastInBlock;
+
+                            let outlineStyle: any = {};
+                            if (hasGroup) {
+                                const bookingColors: Record<string, string> = { 
+                                    pt_block: theme.tint, 
+                                    pt: '#10B981', 
+                                    gym: '#3B82F6', 
+                                    group: '#8B5CF6', 
+                                    block: '#64748B' 
+                                };
+                                const groupColor = bookingColors[slot.conflictBookingType ?? ''] || theme.tint;
+
+                                outlineStyle = {
+                                    borderColor: groupColor,
+                                    borderLeftWidth: 2,
+                                    borderRightWidth: 2,
+                                };
+                                if (isFirstInBlock) {
+                                    outlineStyle.borderTopWidth = 2;
+                                    outlineStyle.borderTopLeftRadius = 8;
+                                    outlineStyle.borderTopRightRadius = 8;
+                                    outlineStyle.marginTop = 4;
+                                }
+                                if (isLastInBlock) {
+                                    outlineStyle.borderBottomWidth = 2;
+                                    outlineStyle.borderBottomLeftRadius = 8;
+                                    outlineStyle.borderBottomRightRadius = 8;
+                                    outlineStyle.marginBottom = 4;
+                                }
+                            }
+
                             return (
                                 <View key={index}>
                                     <TouchableOpacity
                                         style={[
                                             styles.slotRow,
-                                            !slot.available && styles.slotRowUnavailable
+                                            !slot.available && styles.slotRowUnavailable,
+                                            outlineStyle
                                         ]}
                                         disabled={!slot.available || bookingLoading}
                                         onPress={() => handleBookSlot(slot)}
@@ -418,7 +467,7 @@ export default function GymBookingScreen() {
                                             )}
                                         </View>
                                     </TouchableOpacity>
-                                    {!isLast && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
+                                    {(!isLast && !(hasGroup && !isLastInBlock)) && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
                                 </View>
                             );
                         })}
