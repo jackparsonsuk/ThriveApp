@@ -836,6 +836,8 @@ export const getAnalyticsData = async (): Promise<AnalyticsData> => {
     let weekConfirmedOrCancelled = 0;
 
     allBookings.forEach(b => {
+        if (b.type === 'block' || b.type === 'pt_block') return;
+
         const isToday = b.startTime >= startOfToday && b.startTime <= endOfToday;
 
         if (b.status === 'confirmed') {
