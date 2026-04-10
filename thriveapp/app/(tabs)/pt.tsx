@@ -50,6 +50,8 @@ export default function PTBookingScreen() {
     const [pendingLoading, setPendingLoading] = useState(false);
 
     // Client's pending PT session requests
+    const [clientPendingSessions, setClientPendingSessions] = useState<Booking[]>([]);
+    const [clientPendingLoading, setClientPendingLoading] = useState(false);
     const [cancellingSessionId, setCancellingSessionId] = useState<string | null>(null);
     const flatListRef = useRef<FlatList>(null);
     const [hasInitialScrolled, setHasInitialScrolled] = useState(false);
