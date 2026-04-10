@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, Dimensions, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, Booking, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession, getGymBookingsForDate, checkSlotAvailability, getPendingPTRequestsForPT, updateBookingStatus, getUserPendingBookings, cancelBooking, getPersonAllBookingsForDate } from '../../services/bookingService';
@@ -9,6 +9,8 @@ import CustomAlert from '../../components/CustomAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii } from '@/constants/theme';
+import { BOOKING_WINDOW_DAYS } from '@/constants/config';
+import { useMouseDragScroll } from '@/hooks/useMouseDragScroll';
 import * as Clipboard from 'expo-clipboard';
 
 // Assuming PT operating hours
@@ -48,9 +50,10 @@ export default function PTBookingScreen() {
     const [pendingLoading, setPendingLoading] = useState(false);
 
     // Client's pending PT session requests
-    const [clientPendingSessions, setClientPendingSessions] = useState<Booking[]>([]);
-    const [clientPendingLoading, setClientPendingLoading] = useState(false);
     const [cancellingSessionId, setCancellingSessionId] = useState<string | null>(null);
+    const flatListRef = useRef<FlatList>(null);
+    const [hasInitialScrolled, setHasInitialScrolled] = useState(false);
+    const { onScroll, dragProps } = useMouseDragScroll(flatListRef);
 
     // Client's Assigned PT State
     const [assignedPtData, setAssignedPtData] = useState<UserProfile | null>(null);
@@ -67,8 +70,8 @@ export default function PTBookingScreen() {
 
     const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
-    // Generate the next 14 days for the selector
-    const dates = Array.from({ length: 14 }).map((_, i) => addDays(startOfDay(new Date()), i));
+    // Generate the next BOOKING_WINDOW_DAYS days for the selector
+    const dates = Array.from({ length: BOOKING_WINDOW_DAYS }).map((_, i) => addDays(startOfDay(new Date()), i));
 
     useEffect(() => {
         if (user) {
@@ -93,6 +96,21 @@ export default function PTBookingScreen() {
 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedDate, userProfile, user, selectedClientForBooking, isManagingAvailability]);
+
+    useEffect(() => {
+        const index = dates.findIndex(d => d.getTime() === selectedDate.getTime());
+        if (index !== -1 && (index > 0 || hasInitialScrolled)) {
+            const timer = setTimeout(() => {
+                flatListRef.current?.scrollToIndex({ 
+                    index, 
+                    animated: true, 
+                    viewPosition: 0.5 
+                });
+                setHasInitialScrolled(true);
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [selectedDate]);
 
     useEffect(() => {
         if (userProfile?.role === 'client' && user?.uid) {
@@ -936,13 +954,33 @@ export default function PTBookingScreen() {
                 )}
             </View>
 
-            <View style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateSelector}>
-                    {dates.map((date, index) => {
+            <View 
+                style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}
+                {...dragProps}
+            >
+                <FlatList
+                    ref={flatListRef}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.dateSelector}
+                    data={dates}
+                    keyExtractor={(_, index) => index.toString()}
+                    onScroll={onScroll}
+                    scrollEventThrottle={16}
+                    getItemLayout={(_, index) => ({
+                        length: 62, // minWidth (54) + gap (8)
+                        offset: 62 * index,
+                        index,
+                    })}
+                    onScrollToIndexFailed={(info) => {
+                        setTimeout(() => {
+                            flatListRef.current?.scrollToIndex({ index: info.index, animated: false });
+                        }, 100);
+                    }}
+                    renderItem={({ item: date }) => {
                         const isSelected = selectedDate.getTime() === date.getTime();
                         return (
                             <TouchableOpacity
-                                key={index}
                                 style={[
                                     styles.dateCard,
                                     { backgroundColor: isSelected ? theme.tint : 'transparent' },
@@ -964,8 +1002,8 @@ export default function PTBookingScreen() {
                                 </Text>
                             </TouchableOpacity>
                         );
-                    })}
-                </ScrollView>
+                    }}
+                />
             </View>
 
             {((userProfile?.role === 'pt' || userProfile?.role === 'admin') && (selectedClientForBooking || isManagingAvailability)) && (

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { getGymBookingsForDate, getPTBookingsForDate, checkSlotAvailability, createBooking, getUserProfile, UserProfile, getPersonAllBookingsForDate, getClientsForPt, Booking } from '../../services/bookingService';
@@ -9,6 +9,8 @@ import CustomAlert from '../../components/CustomAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii } from '@/constants/theme';
+import { BOOKING_WINDOW_DAYS } from '@/constants/config';
+import { useMouseDragScroll } from '@/hooks/useMouseDragScroll';
 
 const GYM_OPEN_HOUR = 7;
 const GYM_CLOSE_HOUR = 20;
@@ -25,6 +27,9 @@ export default function GymBookingScreen() {
     const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean; attendees: number; conflictType?: string; ptAvailable: boolean; ptOccupied?: boolean; conflictBookingId?: string; conflictBookingType?: string; }[]>([]);
     const [loading, setLoading] = useState(false);
     const [bookingLoading, setBookingLoading] = useState(false);
+    const flatListRef = useRef<FlatList>(null);
+    const [hasInitialScrolled, setHasInitialScrolled] = useState(false);
+    const { onScroll, dragProps } = useMouseDragScroll(flatListRef);
 
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState<{
@@ -41,8 +46,8 @@ export default function GymBookingScreen() {
 
     const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
-    // Generate the next 14 days for the selector
-    const dates = Array.from({ length: 14 }).map((_, i) => addDays(startOfDay(new Date()), i));
+    // Generate the next BOOKING_WINDOW_DAYS days for the selector
+    const dates = Array.from({ length: BOOKING_WINDOW_DAYS }).map((_, i) => addDays(startOfDay(new Date()), i));
 
     useEffect(() => {
         if (user) {
@@ -63,6 +68,21 @@ export default function GymBookingScreen() {
         fetchAvailability();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedDate, userProfile]));
+
+    useEffect(() => {
+        const index = dates.findIndex(d => d.getTime() === selectedDate.getTime());
+        if (index !== -1 && (index > 0 || hasInitialScrolled)) {
+            const timer = setTimeout(() => {
+                flatListRef.current?.scrollToIndex({ 
+                    index, 
+                    animated: true, 
+                    viewPosition: 0.5 
+                });
+                setHasInitialScrolled(true);
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [selectedDate]);
 
     const fetchAvailability = async () => {
         setLoading(true);
@@ -326,13 +346,33 @@ export default function GymBookingScreen() {
                 <Text style={styles.subtitle}>Select a date and time to train</Text>
             </View>
 
-            <View style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }, isGated && { display: 'none' }]}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateSelector}>
-                    {dates.map((date, index) => {
+            <View 
+                style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }, isGated && { display: 'none' }]}
+                {...dragProps}
+            >
+                <FlatList
+                    ref={flatListRef}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.dateSelector}
+                    data={dates}
+                    keyExtractor={(_, index) => index.toString()}
+                    onScroll={onScroll}
+                    scrollEventThrottle={16}
+                    getItemLayout={(_, index) => ({
+                        length: 62, // minWidth (54) + gap (8)
+                        offset: 62 * index,
+                        index,
+                    })}
+                    onScrollToIndexFailed={(info) => {
+                        setTimeout(() => {
+                            flatListRef.current?.scrollToIndex({ index: info.index, animated: false });
+                        }, 100);
+                    }}
+                    renderItem={({ item: date }) => {
                         const isSelected = selectedDate.getTime() === date.getTime();
                         return (
                             <TouchableOpacity
-                                key={index}
                                 style={[
                                     styles.dateCard,
                                     { backgroundColor: isSelected ? theme.tint : 'transparent' },
@@ -340,22 +380,16 @@ export default function GymBookingScreen() {
                                 ]}
                                 onPress={() => setSelectedDate(date)}
                             >
-                                <Text style={[
-                                    styles.dayText,
-                                    { color: isSelected ? '#fff' : theme.icon }
-                                ]}>
+                                <Text style={[styles.dayText, { color: isSelected ? '#fff' : theme.icon }]}>
                                     {format(date, 'EEE')}
                                 </Text>
-                                <Text style={[
-                                    styles.dateText,
-                                    { color: isSelected ? '#fff' : theme.text }
-                                ]}>
+                                <Text style={[styles.dateText, { color: isSelected ? '#fff' : theme.text }]}>
                                     {format(date, 'd')}
                                 </Text>
                             </TouchableOpacity>
                         );
-                    })}
-                </ScrollView>
+                    }}
+                />
             </View>
 
             {isGated ? (

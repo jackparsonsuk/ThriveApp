@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Modal } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Modal, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { createGroup, getPTGroups, Group, GroupInvite, inviteToGroup, getGroupMembers, getGroupInvites, getPendingInvitesForEmail, acceptGroupInvite, declineGroupInvite, getClientGroups, removeGroupMember, deleteGroup } from '../../services/groupService';
@@ -10,6 +10,8 @@ import CustomAlert from '../../components/CustomAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii } from '@/constants/theme';
+import { BOOKING_WINDOW_DAYS } from '@/constants/config';
+import { useMouseDragScroll } from '@/hooks/useMouseDragScroll';
 
 const PT_OPEN_HOUR = 7;
 const PT_CLOSE_HOUR = 20;
@@ -52,6 +54,9 @@ export default function GroupsScreen() {
     const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; attendees: number; blockReason?: string }[]>([]);
     const [slotsLoading, setSlotsLoading] = useState(false);
     const [bookingLoading, setBookingLoading] = useState(false);
+    const flatListRef = useRef<FlatList>(null);
+    const [hasInitialScrolled, setHasInitialScrolled] = useState(false);
+    const { onScroll, dragProps } = useMouseDragScroll(flatListRef);
 
     // Custom Alert
     const [alertConfig, setAlertConfig] = useState<{
@@ -68,7 +73,7 @@ export default function GroupsScreen() {
 
     const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
-    const dates = Array.from({ length: 14 }).map((_, i) => addDays(startOfDay(new Date()), i));
+    const dates = Array.from({ length: BOOKING_WINDOW_DAYS }).map((_, i) => addDays(startOfDay(new Date()), i));
 
     useEffect(() => {
         if (user) loadInitialData();
@@ -209,6 +214,23 @@ export default function GroupsScreen() {
             fetchAvailability();
         }
     }, [selectedDate, isBookingMode, selectedGroup]);
+
+    useEffect(() => {
+        if (isBookingMode) {
+            const index = dates.findIndex(d => d.getTime() === selectedDate.getTime());
+            if (index !== -1 && (index > 0 || hasInitialScrolled)) {
+                const timer = setTimeout(() => {
+                    flatListRef.current?.scrollToIndex({ 
+                        index, 
+                        animated: true, 
+                        viewPosition: 0.5 
+                    });
+                    setHasInitialScrolled(true);
+                }, 100);
+                return () => clearTimeout(timer);
+            }
+        }
+    }, [selectedDate, isBookingMode]);
 
     const fetchAvailability = async () => {
         if (!selectedGroup) return;
@@ -458,13 +480,33 @@ export default function GroupsScreen() {
                     </View>
                 </View>
                 
-                <View style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateSelector}>
-                        {dates.map((date, index) => {
+                <View 
+                    style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}
+                    {...dragProps}
+                >
+                    <FlatList
+                        ref={flatListRef}
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.dateSelector}
+                        data={dates}
+                        keyExtractor={(_, index) => index.toString()}
+                        onScroll={onScroll}
+                        scrollEventThrottle={16}
+                        getItemLayout={(_, index) => ({
+                            length: 62, // minWidth (54) + gap (8)
+                            offset: 62 * index,
+                            index,
+                        })}
+                        onScrollToIndexFailed={(info) => {
+                            setTimeout(() => {
+                                flatListRef.current?.scrollToIndex({ index: info.index, animated: false });
+                            }, 100);
+                        }}
+                        renderItem={({ item: date }) => {
                             const isSelected = selectedDate.getTime() === date.getTime();
                             return (
                                 <TouchableOpacity
-                                    key={index}
                                     style={[styles.dateCard, { backgroundColor: isSelected ? theme.tint : 'transparent' }, isSelected && styles.dateCardSelected]}
                                     onPress={() => setSelectedDate(date)}
                                 >
@@ -472,8 +514,8 @@ export default function GroupsScreen() {
                                     <Text style={[styles.dateText, { color: isSelected ? '#fff' : theme.text }]}>{format(date, 'd')}</Text>
                                 </TouchableOpacity>
                             );
-                        })}
-                    </ScrollView>
+                        }}
+                    />
                 </View>
                 
                 <ScrollView contentContainerStyle={styles.slotsContainer}>

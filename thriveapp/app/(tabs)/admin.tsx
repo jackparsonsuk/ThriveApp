@@ -10,6 +10,8 @@ import CustomAlert from '../../components/CustomAlert';
 import { useRouter } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii } from '@/constants/theme';
+import { BOOKING_WINDOW_DAYS } from '@/constants/config';
+import { useMouseDragScroll } from '@/hooks/useMouseDragScroll';
 
 // Operating hours
 const OPEN_HOUR = 7;
@@ -32,6 +34,7 @@ export default function AdminScreen() {
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
     const [dailyBookings, setDailyBookings] = useState<(Booking & { user?: UserProfile })[]>([]);
     const [loading, setLoading] = useState(false);
+    const { onScroll, dragProps } = useMouseDragScroll(flatListRef);
 
     // Members State
     const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
@@ -63,7 +66,7 @@ export default function AdminScreen() {
 
     const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
-    const dates = useMemo(() => Array.from({ length: 22 }).map((_, i) => addDays(startOfDay(new Date()), i - 7)), []);
+    const dates = useMemo(() => Array.from({ length: 7 + BOOKING_WINDOW_DAYS }).map((_, i) => addDays(startOfDay(new Date()), i - 7)), []);
 
     useEffect(() => {
         if (activeTab === 'schedule') {
@@ -707,7 +710,10 @@ export default function AdminScreen() {
             </View>
 
             {activeTab === 'schedule' && (
-                <View style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
+                <View 
+                    style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}
+                    {...dragProps}
+                >
                     <FlatList
                         ref={flatListRef}
                         horizontal
@@ -715,6 +721,8 @@ export default function AdminScreen() {
                         contentContainerStyle={styles.dateSelector}
                         data={dates}
                         keyExtractor={(_, i) => i.toString()}
+                        onScroll={onScroll}
+                        scrollEventThrottle={16}
                         initialNumToRender={15}
                         onScrollToIndexFailed={(info) => {
                             setTimeout(() => {
