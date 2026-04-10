@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii } from '@/constants/theme';
+import UpdateBanner from '../../components/UpdateBanner';
 
 export default function DashboardScreen() {
   const { user } = useAuth();
@@ -354,6 +355,8 @@ export default function DashboardScreen() {
           <Text style={[styles.greeting, { color: theme.text }]}>Hello, {userProfile?.name?.split(' ')[0] || 'there'}</Text>
           <Text style={[styles.subtitle, { color: theme.icon }]}>Welcome to Thrive Collective</Text>
         </View>
+
+        <UpdateBanner latestVersion={globalSettings?.latestVersion} />
 
         {globalSettings?.showAnnouncement && globalSettings?.announcementText && (
           <View style={[styles.announcementBanner, { backgroundColor: theme.tint + '15', borderColor: theme.tint }]}>

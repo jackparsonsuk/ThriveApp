@@ -8,6 +8,7 @@ export interface GlobalSettings {
     signupCode?: string;
     announcementText?: string;
     showAnnouncement?: boolean;
+    latestVersion?: string;
 }
 
 /**
