@@ -401,9 +401,21 @@ export default function AdminScreen() {
                                                         <View style={styles.attendeeInfo}>
                                                             <Text style={[styles.attendeeName, { color: theme.text }]}>{userName}</Text>
                                                             <View style={styles.badgeContainer}>
-                                                                <Text style={styles.typeBadge}>{b.type.toUpperCase()}</Text>
-                                                                {b.type === 'pt' && <Text style={[styles.ptBadge, { backgroundColor: theme.tint }]}>PT Session</Text>}
-                                                                {b.type === 'group' && <Text style={styles.groupBadge}>Group</Text>}
+                                                                {b.type === 'pt' ? (
+                                                                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                                                                        <Text style={[styles.ptBadge, { backgroundColor: theme.tint }]}>PT Session</Text>
+                                                                        {(b as any).instructorName && (
+                                                                            <Text style={{ fontSize: 13, fontWeight: '500', color: theme.icon }}>
+                                                                                with {(b as any).instructorName}
+                                                                            </Text>
+                                                                        )}
+                                                                    </View>
+                                                                ) : (
+                                                                    <>
+                                                                        <Text style={styles.typeBadge}>{b.type.toUpperCase()}</Text>
+                                                                        {b.type === 'group' && <Text style={styles.groupBadge}>Group</Text>}
+                                                                    </>
+                                                                )}
                                                             </View>
                                                         </View>
                                                         {!isPastSlot && (

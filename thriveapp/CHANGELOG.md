@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-04-10
+
+### Added
+- **Paired PT Sessions**: Personal Trainers can now add a second client to any existing solo PT booking. This facilitates "paired workouts" while correctly managing gym capacity and instructor availability.
+- **PT Partner Selection**: Implemented a client selection modal for trainers to quickly assign a partner to a session.
+
+### Changed
+- **Intelligent Session Grouping**: Dashboard and Gym screens now automatically group paired sessions into a single visual entry (e.g., "PT Session with User A and User B") for a cleaner, unified view.
+- **Unified Session Cancellation**: Cancelling a paired PT session as a trainer now triggers automated cancellation for both participants simultaneously, with a clear confirmation alert.
+- **Admin Schedule Refinement**: Consolidated redundant "PT" labels in the Admin Panel and added instructor names to all PT sessions for better visibility of trainer assignments.
+- **Instant UI Refresh**: The dashboard now re-fetches booking data immediately after a partner is added, ensuring the UI reflects changes without a manual reload.
+
 ## [2.3.0] - 2026-04-10
 
 ### Added

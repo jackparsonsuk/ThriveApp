@@ -575,14 +575,21 @@ export const getAllBookingsForDate = async (date: Date): Promise<(Booking & { us
         if (booking.type === 'block') {
             return booking;
         }
-        const userProfile = await getUserProfile(booking.userId);
+        
+        // Fetch client profile and instructor profile (if PT session) in parallel
+        const [userProfile, ptProfile] = await Promise.all([
+            getUserProfile(booking.userId),
+            booking.type === 'pt' && booking.ptId ? getUserProfile(booking.ptId) : Promise.resolve(null)
+        ]);
+
         return {
             ...booking,
-            user: userProfile || undefined
+            user: userProfile || undefined,
+            instructorName: ptProfile?.name || undefined
         };
     }));
 
-    return hydratedBookings;
+    return hydratedBookings as (Booking & { user?: UserProfile; instructorName?: string })[];
 };
 
 // Block out a specific slot

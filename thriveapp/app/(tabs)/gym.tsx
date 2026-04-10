@@ -103,11 +103,28 @@ export default function GymBookingScreen() {
                     const clientNameMap: Record<string, string> = {};
                     clients.forEach(c => { clientNameMap[c.id] = c.name?.split(' ')[0] || 'Client'; });
 
+                    // Group sessions by start time to handle paired workouts
+                    const groupedPT = new Map<number, Booking[]>();
                     instructorBookings.forEach(b => {
-                        const clientName = b.userId ? clientNameMap[b.userId] : undefined;
-                        const baseName = clientName ? `PT Session with ${clientName}` : 'PT Session';
-                        const reason = b.status === 'pending' ? `${baseName} (Pending)` : baseName;
-                        bookingsForDay.push({ ...b, type: 'block', reason });
+                        const time = b.startTime.getTime();
+                        if (!groupedPT.has(time)) groupedPT.set(time, []);
+                        groupedPT.get(time)!.push(b);
+                    });
+
+                    groupedPT.forEach((sessions, time) => {
+                        const names = sessions.map(s => s.userId ? clientNameMap[s.userId] : 'Client').filter(n => n);
+                        let baseName = 'PT Session';
+                        if (names.length === 1) {
+                            baseName = `PT Session with ${names[0]}`;
+                        } else if (names.length > 1) {
+                            baseName = `PT Session with ${names[0]} and ${names[1]}`;
+                        }
+                        
+                        const isPending = sessions.some(s => s.status === 'pending');
+                        const reason = isPending ? `${baseName} (Pending)` : baseName;
+                        
+                        // Push one block representing the group
+                        bookingsForDay.push({ ...sessions[0], type: 'block', reason });
                     });
                 }
 

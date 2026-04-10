@@ -1,9 +1,9 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Image, Modal, FlatList } from 'react-native';
 import { useAuth } from '../../context/auth';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getUserBookings, getPTBookingsForInstructor, getUserCancelledUpcomingBookings, getPTCancelledBookingsForInstructor, cancelBooking, cancelRecurringSeries, Booking, getUserProfile, UserProfile } from '../../services/bookingService';
+import { getUserBookings, getPTBookingsForInstructor, getUserCancelledUpcomingBookings, getPTCancelledBookingsForInstructor, cancelBooking, cancelRecurringSeries, Booking, getUserProfile, UserProfile, getClientsForPt, createBooking } from '../../services/bookingService';
 import { getGroupById } from '../../services/groupService';
 import { getGlobalSettings, GlobalSettings } from '../../services/settingsService';
 import { format, isSameDay } from 'date-fns';
@@ -18,7 +18,11 @@ export default function DashboardScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
 
-  type ExtendedBooking = Booking & { clientName?: string };
+  type ExtendedBooking = Booking & { 
+    clientName?: string; 
+    partnerName?: string;
+    partnerBookingId?: string;
+  };
   const [bookings, setBookings] = useState<ExtendedBooking[]>([]);
   const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,6 +30,10 @@ export default function DashboardScreen() {
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'today' | 'upcoming'>('today');
   const [showCancelled, setShowCancelled] = useState(false);
+  const [ptsClients, setPtsClients] = useState<UserProfile[]>([]);
+  const [partnerModalVisible, setPartnerModalVisible] = useState(false);
+  const [selectedBookingForPartner, setSelectedBookingForPartner] = useState<ExtendedBooking | null>(null);
+  const [addingPartnerLoading, setAddingPartnerLoading] = useState(false);
 
   // Custom Alert State
   const [alertConfig, setAlertConfig] = useState<{
@@ -51,6 +59,11 @@ export default function DashboardScreen() {
       ]);
       setUserProfile(profile);
       setGlobalSettings(settings);
+
+      if (profile?.role === 'pt' || profile?.role === 'admin') {
+        const clients = await getClientsForPt(user.uid);
+        setPtsClients(clients);
+      }
 
       const userBookings = await getUserBookings(user.uid);
       let allBookings: Booking[] = [...userBookings];
@@ -120,7 +133,34 @@ export default function DashboardScreen() {
       // Sort upcoming first
       const sorted = bookingsWithNames.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 
-      setBookings(sorted);
+      // Group paired PT sessions for the instructor
+      const grouped: ExtendedBooking[] = [];
+      const processedPTUniqueKeys = new Set<string>();
+
+      if (profile?.role === 'pt' || profile?.role === 'admin') {
+        sorted.forEach(booking => {
+          if (booking.type === 'pt' && booking.status === 'confirmed' && booking.ptId === user.uid) {
+            const slotKey = `${booking.ptId}-${booking.startTime.getTime()}`;
+            if (processedPTUniqueKeys.has(slotKey)) {
+              // This is the second person in the slot, find the first and update it
+              const existingIndex = grouped.findIndex(b => b.type === 'pt' && `${b.ptId}-${b.startTime.getTime()}` === slotKey);
+              if (existingIndex !== -1) {
+                grouped[existingIndex] = {
+                  ...grouped[existingIndex],
+                  partnerName: booking.clientName,
+                  partnerBookingId: booking.id
+                };
+              }
+              return;
+            }
+            processedPTUniqueKeys.add(slotKey);
+          }
+          grouped.push(booking);
+        });
+        setBookings(grouped);
+      } else {
+        setBookings(sorted);
+      }
     } catch {
       console.error('Error fetching bookings');
     } finally {
@@ -162,29 +202,36 @@ export default function DashboardScreen() {
         message: `Do you want to cancel just this session on ${format(booking.startTime, 'MMM d, HH:mm')}, or this and all future sessions in the series?`,
         isDestructive: true,
         confirmText: 'Cancel This Session',
-        onConfirm: () => confirmCancellation(booking.id!, booking.userId),
+        onConfirm: () => confirmCancellation(booking.id!, (booking as any).partnerBookingId, booking.userId),
         secondaryConfirmText: 'Cancel Entire Series',
         onSecondaryConfirm: () => confirmRecurringCancellation(booking.recurringTemplateId!, booking.startTime, booking.userId),
         cancelText: 'Keep it'
       });
     } else {
+      const isGrouped = !!(booking as any).partnerName;
       setAlertConfig({
         visible: true,
-        title: 'Cancel Booking',
-        message: `Are you sure you want to cancel this ${booking.type} booking on ${format(booking.startTime, 'MMM d, HH:mm')}?`,
+        title: isGrouped ? 'Cancel Paired Session' : 'Cancel Booking',
+        message: isGrouped 
+          ? `This will cancel the session for BOTH ${(booking as any).clientName} and ${(booking as any).partnerName} at ${format(booking.startTime, 'HH:mm')}. Are you sure?`
+          : `Are you sure you want to cancel this ${booking.type} booking on ${format(booking.startTime, 'MMM d, HH:mm')}?`,
         isDestructive: true,
         confirmText: 'Yes, Cancel',
         cancelText: 'No, Keep it',
-        onConfirm: () => confirmCancellation(booking.id!, booking.userId)
+        onConfirm: () => confirmCancellation(booking.id!, (booking as any).partnerBookingId, booking.userId)
       });
     }
   };
 
-  const confirmCancellation = async (id: string, bookingUserId?: string) => {
+  const confirmCancellation = async (id: string, partnerBookingId?: string, bookingUserId?: string) => {
     setCancellingId(id);
     const cancelledBy = bookingUserId === user?.uid ? 'client' : 'pt';
     try {
-      await cancelBooking(id, cancelledBy);
+      const promises = [cancelBooking(id, cancelledBy)];
+      if (partnerBookingId) {
+        promises.push(cancelBooking(partnerBookingId, cancelledBy));
+      }
+      await Promise.all(promises);
       fetchBookingsAndProfile();
     } catch (error) {
       setAlertConfig({
@@ -224,6 +271,9 @@ export default function DashboardScreen() {
       return 'PT Session Request (Pending)';
     }
     if (booking.type === 'pt' && booking.clientName) {
+      if (booking.partnerName) {
+        return `PT Session with ${booking.clientName} and ${booking.partnerName}`;
+      }
       return `PT Session with ${booking.clientName}`;
     }
     if (booking.type === 'group' && booking.clientName) {
@@ -236,6 +286,44 @@ export default function DashboardScreen() {
       case 'block': return booking.reason || 'Blocked Time';
       case 'pt_block': return 'Unavailable';
       default: return booking.type;
+    }
+  };
+
+  const handleAddPartner = async (client: UserProfile) => {
+    if (!selectedBookingForPartner || !user) return;
+    setAddingPartnerLoading(true);
+    try {
+      await createBooking({
+        userId: client.id,
+        ptId: user.uid,
+        startTime: selectedBookingForPartner.startTime,
+        endTime: selectedBookingForPartner.endTime,
+        type: 'pt',
+        status: 'confirmed'
+      });
+      setPartnerModalVisible(false);
+      setSelectedBookingForPartner(null);
+      
+      // Refresh immediately so the background reflects the change
+      fetchBookingsAndProfile();
+
+      setAlertConfig({
+        visible: true,
+        title: 'Partner Added!',
+        message: `${client.name} has been added to the session at ${format(selectedBookingForPartner.startTime, 'HH:mm')}.`,
+        confirmText: 'Great',
+        onConfirm: undefined // Refresh already triggered above
+      });
+    } catch (error) {
+      console.error('Error adding partner:', error);
+      setAlertConfig({
+        visible: true,
+        title: 'Error',
+        message: 'Failed to add partner. Please try again.',
+        isDestructive: true
+      });
+    } finally {
+      setAddingPartnerLoading(false);
     }
   };
 
@@ -297,27 +385,44 @@ export default function DashboardScreen() {
                     {getTypeLabel(nextBooking)}
                   </Text>
                   {nextBooking.type !== 'group' && (
-                  <TouchableOpacity
-                    style={styles.highlightCancelButton}
-                    onPress={() => handleCancel(nextBooking)}
-                    disabled={!!cancellingId}
-                  >
-                    {cancellingId === nextBooking.id ? (
-                      <ActivityIndicator size="small" color="#ffffff" />
-                    ) : (
-                      <>
-                        <Ionicons
-                          name={nextBooking.recurringTemplateId ? "settings-outline" : "close-circle-outline"}
-                          size={14}
-                          color="#ffffff"
-                          style={{ marginRight: 4 }}
-                        />
-                        <Text style={styles.highlightCancelText}>
-                          {nextBooking.status === 'pending' ? 'Withdraw' : nextBooking.recurringTemplateId ? 'Manage' : 'Cancel'}
-                        </Text>
-                      </>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {(userProfile?.role === 'pt' || userProfile?.role === 'admin') && 
+                     nextBooking.type === 'pt' && 
+                     nextBooking.status === 'confirmed' && 
+                     !nextBooking.partnerName && (
+                      <TouchableOpacity
+                        style={styles.highlightCancelButton}
+                        onPress={() => {
+                          setSelectedBookingForPartner(nextBooking);
+                          setPartnerModalVisible(true);
+                        }}
+                      >
+                        <Ionicons name="person-add-outline" size={14} color="#ffffff" style={{ marginRight: 4 }} />
+                        <Text style={styles.highlightCancelText}>Add Partner</Text>
+                      </TouchableOpacity>
                     )}
-                  </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.highlightCancelButton}
+                      onPress={() => handleCancel(nextBooking)}
+                      disabled={!!cancellingId}
+                    >
+                      {cancellingId === nextBooking.id ? (
+                        <ActivityIndicator size="small" color="#ffffff" />
+                      ) : (
+                        <>
+                          <Ionicons
+                            name={nextBooking.recurringTemplateId ? "settings-outline" : "close-circle-outline"}
+                            size={14}
+                            color="#ffffff"
+                            style={{ marginRight: 4 }}
+                          />
+                          <Text style={styles.highlightCancelText}>
+                            {nextBooking.status === 'pending' ? 'Withdraw' : nextBooking.recurringTemplateId ? 'Manage' : 'Cancel'}
+                          </Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
                   )}
                 </View>
                 <View style={styles.highlightDetailsRow}>
@@ -404,28 +509,46 @@ export default function DashboardScreen() {
                                   </View>
                                 )}
                               </View>
+
                               {booking.type !== 'group' && !isCancelled && (
-                              <TouchableOpacity
-                                style={styles.cancelButton}
-                                onPress={() => handleCancel(booking)}
-                                disabled={!!cancellingId}
-                              >
-                                {cancellingId === booking.id ? (
-                                  <ActivityIndicator size="small" color={theme.icon} />
-                                ) : (
-                                  <>
-                                    <Ionicons
-                                      name={booking.recurringTemplateId ? "settings-outline" : "close-circle-outline"}
-                                      size={14}
-                                      color={theme.icon}
-                                      style={{ marginRight: 4 }}
-                                    />
-                                    <Text style={[styles.cancelButtonText, { color: theme.text }]}>
-                                      {booking.status === 'pending' ? 'Withdraw' : booking.recurringTemplateId ? 'Manage' : 'Cancel'}
-                                    </Text>
-                                  </>
-                                )}
-                              </TouchableOpacity>
+                                <View style={{ flexDirection: 'row', gap: 6 }}>
+                                  {(userProfile?.role === 'pt' || userProfile?.role === 'admin') && 
+                                   booking.type === 'pt' && 
+                                   booking.status === 'confirmed' && 
+                                   !booking.partnerName && (
+                                    <TouchableOpacity
+                                      style={[styles.cancelButton, { backgroundColor: theme.tint + '15' }]}
+                                      onPress={() => {
+                                        setSelectedBookingForPartner(booking);
+                                        setPartnerModalVisible(true);
+                                      }}
+                                    >
+                                      <Ionicons name="person-add-outline" size={14} color={theme.tint} style={{ marginRight: 4 }} />
+                                      <Text style={[styles.cancelButtonText, { color: theme.tint }]}>Add Partner</Text>
+                                    </TouchableOpacity>
+                                  )}
+                                  <TouchableOpacity
+                                    style={styles.cancelButton}
+                                    onPress={() => handleCancel(booking)}
+                                    disabled={!!cancellingId}
+                                  >
+                                    {cancellingId === booking.id ? (
+                                      <ActivityIndicator size="small" color={theme.icon} />
+                                    ) : (
+                                      <>
+                                        <Ionicons
+                                          name={booking.recurringTemplateId ? "settings-outline" : "close-circle-outline"}
+                                          size={14}
+                                          color={theme.icon}
+                                          style={{ marginRight: 4 }}
+                                        />
+                                        <Text style={[styles.cancelButtonText, { color: theme.text }]}>
+                                          {booking.status === 'pending' ? 'Withdraw' : booking.recurringTemplateId ? 'Manage' : 'Cancel'}
+                                        </Text>
+                                      </>
+                                    )}
+                                  </TouchableOpacity>
+                                </View>
                               )}
                             </View>
                           </View>
@@ -454,6 +577,54 @@ export default function DashboardScreen() {
         onConfirm={alertConfig.onConfirm}
         onSecondaryConfirm={alertConfig.onSecondaryConfirm}
       />
+
+      {/* Partner Selection Modal */}
+      <Modal
+        visible={partnerModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setPartnerModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Add Partner</Text>
+              <TouchableOpacity onPress={() => setPartnerModalVisible(false)}>
+                <Ionicons name="close" size={24} color={theme.icon} />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={[styles.modalSubtitle, { color: theme.icon }]}>
+              Select a client to add to the {selectedBookingForPartner ? format(selectedBookingForPartner.startTime, 'HH:mm') : ''} session.
+            </Text>
+
+            {addingPartnerLoading ? (
+              <ActivityIndicator size="large" color={theme.tint} style={{ marginVertical: 40 }} />
+            ) : (
+              <FlatList
+                data={ptsClients.filter(c => c.id !== selectedBookingForPartner?.userId)}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[styles.clientOption, { borderBottomColor: theme.border }]}
+                    onPress={() => handleAddPartner(item)}
+                  >
+                    <View style={styles.clientInfo}>
+                      <Text style={[styles.clientNameOption, { color: theme.text }]}>{item.name}</Text>
+                      <Text style={[styles.clientEmailOption, { color: theme.icon }]}>{item.email}</Text>
+                    </View>
+                    <Ionicons name="add-circle-outline" size={24} color={theme.tint} />
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <Text style={[styles.emptyClientsText, { color: theme.icon }]}>No other clients found.</Text>
+                }
+                style={styles.modalList}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -647,4 +818,55 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 12,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: Radii.xl,
+    borderTopRightRadius: Radii.xl,
+    padding: 24,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  modalSubtitle: {
+    fontSize: 15,
+    marginBottom: 20,
+  },
+  modalList: {
+    marginTop: 10,
+  },
+  clientOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  clientInfo: {
+    flex: 1,
+  },
+  clientNameOption: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  clientEmailOption: {
+    fontSize: 14,
+    marginTop: 2,
+  },
+  emptyClientsText: {
+    textAlign: 'center',
+    paddingVertical: 32,
+    fontSize: 15,
+  }
 });
