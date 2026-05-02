@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-05-02
+
+### Added
+- **Extended PT Availability Window**: Personal Trainers can now manage their availability up to 6 months (180 days) in advance, up from the standard 6-week booking window.
+- **Admin Block Duration Selector**: Administrators can choose between 15-minute, 30-minute, and 1-hour durations when blocking out slots on the schedule.
+- **Full-Day PT Availability Blocking**: PTs can now block off their entire availability for a day with a single "All Day" button, with optional recurring support (weekly, bi-weekly, monthly).
+- **Dynamic Month Indicator**: All date selectors (Gym, PT, Groups, Admin) now display a dynamic month label that updates as the user scrolls through dates.
+- **App Update Banner**: Web users now see a notification banner when a new version is deployed, prompting them to refresh for the latest features.
+- **Firebase Version Sync**: Added `sync-version` script to push the current app version to Firestore, enabling the update banner to detect new releases.
+
+### Changed
+- **PT Availability Controls Redesign**: Replaced the old block duration row with a compact, two-row chip-based UI featuring separate Repeat and Duration controls for a cleaner experience.
+- **Recurring Frequency on Availability Blocks**: PTs can now apply recurring frequency (none, weekly, bi-weekly, monthly) directly when blocking availability slots.
+- **Date Selector Compaction**: Reduced padding and card sizes on the PT date selector for a more information-dense layout at longer time horizons.
+
+---
+
 ## [2.4.0] - 2026-04-10
 
 ### Added
