@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, Dimensions, FlatList } from 'react-native';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, Dimensions, FlatList, ViewToken } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, Booking, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession, getGymBookingsForDate, checkSlotAvailability, getPendingPTRequestsForPT, updateBookingStatus, getUserPendingBookings, cancelBooking, getPersonAllBookingsForDate } from '../../services/bookingService';
@@ -9,7 +9,7 @@ import CustomAlert from '../../components/CustomAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii } from '@/constants/theme';
-import { BOOKING_WINDOW_DAYS } from '@/constants/config';
+import { BOOKING_WINDOW_DAYS, PT_AVAILABILITY_WINDOW_DAYS } from '@/constants/config';
 import { useMouseDragScroll } from '@/hooks/useMouseDragScroll';
 import * as Clipboard from 'expo-clipboard';
 
@@ -55,7 +55,8 @@ export default function PTBookingScreen() {
     const [cancellingSessionId, setCancellingSessionId] = useState<string | null>(null);
     const flatListRef = useRef<FlatList>(null);
     const [hasInitialScrolled, setHasInitialScrolled] = useState(false);
-    const { onScroll, dragProps } = useMouseDragScroll(flatListRef);
+    const { onScroll: onMouseDragScroll, dragProps } = useMouseDragScroll(flatListRef);
+    const [visibleMonth, setVisibleMonth] = useState(format(new Date(), 'MMMM yyyy'));
 
     // Client's Assigned PT State
     const [assignedPtData, setAssignedPtData] = useState<UserProfile | null>(null);
@@ -72,8 +73,21 @@ export default function PTBookingScreen() {
 
     const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
-    // Generate the next BOOKING_WINDOW_DAYS days for the selector
-    const dates = Array.from({ length: BOOKING_WINDOW_DAYS }).map((_, i) => addDays(startOfDay(new Date()), i));
+    // Generate date array: 6 months for availability management, 6 weeks for booking
+    const dates = useMemo(() => {
+        const windowDays = isManagingAvailability ? PT_AVAILABILITY_WINDOW_DAYS : BOOKING_WINDOW_DAYS;
+        return Array.from({ length: windowDays }).map((_, i) => addDays(startOfDay(new Date()), i));
+    }, [isManagingAvailability]);
+
+    const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+        if (viewableItems.length > 0) {
+            const middleItem = viewableItems[Math.floor(viewableItems.length / 2)];
+            if (middleItem?.item) {
+                setVisibleMonth(format(middleItem.item as Date, 'MMMM yyyy'));
+            }
+        }
+    }, []);
+    const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
 
     useEffect(() => {
         if (user) {
@@ -940,10 +954,7 @@ export default function PTBookingScreen() {
                     </View>
                 ) : isManagingAvailability ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <View>
-                            <Text style={[styles.title, { color: theme.text }]}>Manage Availability</Text>
-                            <Text style={[styles.subtitle, { color: theme.icon }]}>Block out times</Text>
-                        </View>
+                        <Text style={[styles.titleCompact, { color: theme.text }]}>Availability</Text>
                         <TouchableOpacity onPress={() => setIsManagingAvailability(false)} style={[styles.backButton, { backgroundColor: theme.border }]}>
                             <Text style={[styles.backButtonText, { color: theme.text }]}>Back</Text>
                         </TouchableOpacity>
@@ -960,6 +971,7 @@ export default function PTBookingScreen() {
                 style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}
                 {...dragProps}
             >
+                <Text style={[styles.monthLabel, { color: theme.text }]}>{visibleMonth}</Text>
                 <FlatList
                     ref={flatListRef}
                     horizontal
@@ -967,8 +979,10 @@ export default function PTBookingScreen() {
                     contentContainerStyle={styles.dateSelector}
                     data={dates}
                     keyExtractor={(_, index) => index.toString()}
-                    onScroll={onScroll}
+                    onScroll={onMouseDragScroll}
                     scrollEventThrottle={16}
+                    onViewableItemsChanged={onViewableItemsChanged}
+                    viewabilityConfig={viewabilityConfig}
                     getItemLayout={(_, index) => ({
                         length: 62, // minWidth (54) + gap (8)
                         offset: 62 * index,
@@ -1008,7 +1022,7 @@ export default function PTBookingScreen() {
                 />
             </View>
 
-            {((userProfile?.role === 'pt' || userProfile?.role === 'admin') && (selectedClientForBooking || isManagingAvailability)) && (
+            {((userProfile?.role === 'pt' || userProfile?.role === 'admin') && selectedClientForBooking && !isManagingAvailability) && (
                 <View style={[styles.frequencyContainer, { borderBottomColor: theme.border }]}>
                     <Text style={[styles.frequencyLabel, { color: theme.text }]}>Repeat Session:</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.frequencyScroll}>
@@ -1035,28 +1049,68 @@ export default function PTBookingScreen() {
             )}
 
             {isManagingAvailability && (
-                <View style={[styles.frequencyContainer, { borderBottomColor: theme.border, borderTopWidth: 0 }]}>
-                    <Text style={[styles.frequencyLabel, { color: theme.text }]}>Block Duration:</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.frequencyScroll}>
-                        {[1, 2, 3, 4, 5, 6, 7, 8].map((hours) => (
+                <View style={[styles.availabilityControls, { borderBottomColor: theme.border }]}>
+                    <View style={styles.controlRow}>
+                        <Text style={[styles.controlLabel, { color: theme.icon }]}>Repeat:</Text>
+                        {['none', 'weekly', 'bi-weekly', 'monthly'].map((freq) => (
                             <TouchableOpacity
-                                key={hours}
+                                key={freq}
                                 style={[
-                                    styles.freqButton,
+                                    styles.controlChip,
                                     { borderColor: theme.border },
-                                    blockDuration === hours && { backgroundColor: theme.tint, borderColor: theme.tint }
+                                    recurringFrequency === freq && { backgroundColor: theme.tint, borderColor: theme.tint }
                                 ]}
-                                onPress={() => setBlockDuration(hours)}
+                                onPress={() => setRecurringFrequency(freq as any)}
                             >
                                 <Text style={[
-                                    styles.freqButtonText,
-                                    { color: blockDuration === hours ? '#fff' : theme.icon }
+                                    styles.controlChipText,
+                                    { color: recurringFrequency === freq ? '#fff' : theme.icon }
                                 ]}>
-                                    {hours} hr{hours > 1 ? 's' : ''}
+                                    {freq === 'none' ? 'None' : freq === 'bi-weekly' ? 'Bi-Wk' : freq.charAt(0).toUpperCase() + freq.slice(1)}
                                 </Text>
                             </TouchableOpacity>
                         ))}
-                    </ScrollView>
+                    </View>
+                    <View style={styles.controlRow}>
+                        <Text style={[styles.controlLabel, { color: theme.icon }]}>Duration:</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 4 }}>
+                            {[1, 2, 3, 4, 5, 6, 7, 8].map((hours) => (
+                                <TouchableOpacity
+                                    key={hours}
+                                    style={[
+                                        styles.controlChip,
+                                        { borderColor: theme.border },
+                                        blockDuration === hours && { backgroundColor: theme.tint, borderColor: theme.tint }
+                                    ]}
+                                    onPress={() => setBlockDuration(hours)}
+                                >
+                                    <Text style={[
+                                        styles.controlChipText,
+                                        { color: blockDuration === hours ? '#fff' : theme.icon }
+                                    ]}>
+                                        {hours}h
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                        <TouchableOpacity
+                            style={[styles.controlChip, { borderColor: theme.tint, backgroundColor: theme.tint + '15', marginLeft: 4 }]}
+                            onPress={() => {
+                                const dayStart = setMinutes(setHours(selectedDate, PT_OPEN_HOUR), 0);
+                                const dayEnd = setMinutes(setHours(selectedDate, PT_CLOSE_HOUR), 0);
+                                const durationHours = PT_CLOSE_HOUR - PT_OPEN_HOUR;
+                                setAlertConfig({
+                                    visible: true,
+                                    title: 'Block Entire Day',
+                                    message: `Block off the entire day (${format(dayStart, 'HH:mm')} \u2013 ${format(dayEnd, 'HH:mm')}) on ${format(selectedDate, 'EEE, MMM d')}${recurringFrequency !== 'none' ? ' (' + recurringFrequency + ')' : ''}?`,
+                                    onConfirm: () => confirmBooking(dayStart, user!.uid, 'pt_block', durationHours * 60)
+                                });
+                            }}
+                        >
+                            <Ionicons name="calendar" size={12} color={theme.tint} style={{ marginRight: 3 }} />
+                            <Text style={[styles.controlChipText, { color: theme.tint, fontWeight: '700' }]}>All Day</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
             )}
 
@@ -1196,17 +1250,24 @@ const styles = StyleSheet.create({
     dateSelectorContainer: {
         borderBottomWidth: StyleSheet.hairlineWidth,
     },
+    monthLabel: {
+        fontSize: 13,
+        fontWeight: '600',
+        paddingHorizontal: 20,
+        paddingTop: 8,
+        paddingBottom: 0,
+    },
     dateSelector: {
         paddingHorizontal: 15,
-        paddingVertical: 12,
-        gap: 8,
+        paddingVertical: 8,
+        gap: 6,
     },
     dateCard: {
-        paddingVertical: 10,
-        paddingHorizontal: 8,
+        paddingVertical: 8,
+        paddingHorizontal: 6,
         borderRadius: Radii.pill,
         alignItems: 'center',
-        minWidth: 54,
+        minWidth: 48,
     },
     dateCardSelected: {
         shadowColor: '#F26122',
@@ -1473,11 +1534,45 @@ const styles = StyleSheet.create({
         gap: 8,
     },
     freqButton: {
-        paddingVertical: 8,
-        paddingHorizontal: 16,
+        paddingVertical: 6,
+        paddingHorizontal: 14,
         borderRadius: Radii.pill,
         borderWidth: StyleSheet.hairlineWidth,
     },
+    availabilityControls: {
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        gap: 6,
+    },
+    controlRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    controlLabel: {
+        fontSize: 12,
+        fontWeight: '700',
+        width: 58,
+    },
+    controlChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 4,
+        paddingHorizontal: 8,
+        borderRadius: Radii.pill,
+        borderWidth: 1,
+    },
+    controlChipText: {
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    titleCompact: {
+        fontSize: 24,
+        fontWeight: '700',
+        letterSpacing: -0.3,
+    },
+
     freqButtonText: {
         fontSize: 14,
         fontWeight: '500',

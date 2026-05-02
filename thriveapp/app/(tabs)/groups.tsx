@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Modal, FlatList } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Modal, FlatList, ViewToken } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { createGroup, getPTGroups, Group, GroupInvite, inviteToGroup, getGroupMembers, getGroupInvites, getPendingInvitesForEmail, acceptGroupInvite, declineGroupInvite, getClientGroups, removeGroupMember, deleteGroup } from '../../services/groupService';
@@ -56,7 +56,18 @@ export default function GroupsScreen() {
     const [bookingLoading, setBookingLoading] = useState(false);
     const flatListRef = useRef<FlatList>(null);
     const [hasInitialScrolled, setHasInitialScrolled] = useState(false);
-    const { onScroll, dragProps } = useMouseDragScroll(flatListRef);
+    const { onScroll: onMouseDragScroll, dragProps } = useMouseDragScroll(flatListRef);
+    const [visibleMonth, setVisibleMonth] = useState(format(new Date(), 'MMMM yyyy'));
+
+    const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+        if (viewableItems.length > 0) {
+            const middleItem = viewableItems[Math.floor(viewableItems.length / 2)];
+            if (middleItem?.item) {
+                setVisibleMonth(format(middleItem.item as Date, 'MMMM yyyy'));
+            }
+        }
+    }, []);
+    const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
 
     // Custom Alert
     const [alertConfig, setAlertConfig] = useState<{
@@ -484,6 +495,7 @@ export default function GroupsScreen() {
                     style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}
                     {...dragProps}
                 >
+                <Text style={[styles.monthLabel, { color: theme.text }]}>{visibleMonth}</Text>
                     <FlatList
                         ref={flatListRef}
                         horizontal
@@ -491,8 +503,10 @@ export default function GroupsScreen() {
                         contentContainerStyle={styles.dateSelector}
                         data={dates}
                         keyExtractor={(_, index) => index.toString()}
-                        onScroll={onScroll}
+                        onScroll={onMouseDragScroll}
                         scrollEventThrottle={16}
+                        onViewableItemsChanged={onViewableItemsChanged}
+                        viewabilityConfig={viewabilityConfig}
                         getItemLayout={(_, index) => ({
                             length: 62, // minWidth (54) + gap (8)
                             offset: 62 * index,
@@ -858,6 +872,7 @@ const styles = StyleSheet.create({
 
     // Booking Slots
     dateSelectorContainer: { borderBottomWidth: StyleSheet.hairlineWidth },
+    monthLabel: { fontSize: 14, fontWeight: '600', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 2 },
     dateSelector: { paddingHorizontal: 15, paddingVertical: 12, gap: 8 },
     dateCard: { paddingVertical: 10, paddingHorizontal: 8, borderRadius: Radii.pill, alignItems: 'center', minWidth: 54 },
     dateCardSelected: { shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4, shadowColor: '#F26122' },

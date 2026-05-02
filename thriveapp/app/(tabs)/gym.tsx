@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, FlatList } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, FlatList, ViewToken } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { getGymBookingsForDate, getPTBookingsForDate, checkSlotAvailability, createBooking, getUserProfile, UserProfile, getPersonAllBookingsForDate, getClientsForPt, Booking } from '../../services/bookingService';
@@ -29,7 +29,18 @@ export default function GymBookingScreen() {
     const [bookingLoading, setBookingLoading] = useState(false);
     const flatListRef = useRef<FlatList>(null);
     const [hasInitialScrolled, setHasInitialScrolled] = useState(false);
-    const { onScroll, dragProps } = useMouseDragScroll(flatListRef);
+    const { onScroll: onMouseDragScroll, dragProps } = useMouseDragScroll(flatListRef);
+    const [visibleMonth, setVisibleMonth] = useState(format(new Date(), 'MMMM yyyy'));
+
+    const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+        if (viewableItems.length > 0) {
+            const middleItem = viewableItems[Math.floor(viewableItems.length / 2)];
+            if (middleItem?.item) {
+                setVisibleMonth(format(middleItem.item as Date, 'MMMM yyyy'));
+            }
+        }
+    }, []);
+    const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
 
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState<{
@@ -367,6 +378,7 @@ export default function GymBookingScreen() {
                 style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }, isGated && { display: 'none' }]}
                 {...dragProps}
             >
+                <Text style={[styles.monthLabel, { color: theme.text }]}>{visibleMonth}</Text>
                 <FlatList
                     ref={flatListRef}
                     horizontal
@@ -374,8 +386,10 @@ export default function GymBookingScreen() {
                     contentContainerStyle={styles.dateSelector}
                     data={dates}
                     keyExtractor={(_, index) => index.toString()}
-                    onScroll={onScroll}
+                    onScroll={onMouseDragScroll}
                     scrollEventThrottle={16}
+                    onViewableItemsChanged={onViewableItemsChanged}
+                    viewabilityConfig={viewabilityConfig}
                     getItemLayout={(_, index) => ({
                         length: 62, // minWidth (54) + gap (8)
                         offset: 62 * index,
@@ -568,6 +582,13 @@ const styles = StyleSheet.create({
     },
     dateSelectorContainer: {
         borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    monthLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        paddingHorizontal: 20,
+        paddingTop: 10,
+        paddingBottom: 2,
     },
     dateSelector: {
         paddingHorizontal: 15,

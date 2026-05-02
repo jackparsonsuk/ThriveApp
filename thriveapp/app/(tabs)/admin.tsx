@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, FlatList, Alert, Switch, Platform } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, FlatList, Alert, Switch, Platform, ViewToken } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile, getAllUsers, getUserProfile, updateUserProfile } from '../../services/bookingService';
@@ -34,7 +34,19 @@ export default function AdminScreen() {
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
     const [dailyBookings, setDailyBookings] = useState<(Booking & { user?: UserProfile })[]>([]);
     const [loading, setLoading] = useState(false);
-    const { onScroll, dragProps } = useMouseDragScroll(flatListRef);
+    const { onScroll: onMouseDragScroll, dragProps } = useMouseDragScroll(flatListRef);
+    const [visibleMonth, setVisibleMonth] = useState(format(new Date(), 'MMMM yyyy'));
+    const [adminBlockDuration, setAdminBlockDuration] = useState<15 | 30 | 60>(15);
+
+    const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+        if (viewableItems.length > 0) {
+            const middleItem = viewableItems[Math.floor(viewableItems.length / 2)];
+            if (middleItem?.item) {
+                setVisibleMonth(format(middleItem.item as Date, 'MMMM yyyy'));
+            }
+        }
+    }, []);
+    const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
 
     // Members State
     const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
@@ -280,17 +292,18 @@ export default function AdminScreen() {
     };
 
     const handleBlockSlot = (time: Date) => {
+        const durationLabel = adminBlockDuration === 60 ? '1 hour' : `${adminBlockDuration} minutes`;
         setAlertConfig({
             visible: true,
             title: 'Block Out Slot',
-            message: `Prevent clients from booking 15 minutes at ${format(time, 'HH:mm')}?`,
+            message: `Prevent clients from booking ${durationLabel} at ${format(time, 'HH:mm')}?`,
             isDestructive: true,
             confirmText: 'Block Slot',
             onConfirm: async () => {
                 if (!user) return;
                 setLoading(true);
                 try {
-                    await blockOutSlot(user.uid, time, addMinutes(time, 15), 'Admin block out');
+                    await blockOutSlot(user.uid, time, addMinutes(time, adminBlockDuration), 'Admin block out');
                     fetchSchedule();
                 } catch {
                     setAlertConfig({ visible: true, title: 'Error', message: 'Failed to block slot.' });
@@ -726,6 +739,7 @@ export default function AdminScreen() {
                     style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}
                     {...dragProps}
                 >
+                <Text style={[styles.monthLabel, { color: theme.text }]}>{visibleMonth}</Text>
                     <FlatList
                         ref={flatListRef}
                         horizontal
@@ -733,8 +747,10 @@ export default function AdminScreen() {
                         contentContainerStyle={styles.dateSelector}
                         data={dates}
                         keyExtractor={(_, i) => i.toString()}
-                        onScroll={onScroll}
+                        onScroll={onMouseDragScroll}
                         scrollEventThrottle={16}
+                        onViewableItemsChanged={onViewableItemsChanged}
+                        viewabilityConfig={viewabilityConfig}
                         initialNumToRender={15}
                         onScrollToIndexFailed={(info) => {
                             setTimeout(() => {
@@ -759,6 +775,22 @@ export default function AdminScreen() {
                             );
                         }}
                     />
+                    <View style={styles.durationPickerRow}>
+                        <Text style={[styles.durationPickerLabel, { color: theme.icon }]}>Block duration:</Text>
+                        {([15, 30, 60] as const).map((d) => {
+                            const isActive = adminBlockDuration === d;
+                            const label = d === 60 ? '1 hr' : `${d}m`;
+                            return (
+                                <TouchableOpacity
+                                    key={d}
+                                    style={[styles.durationChip, { borderColor: theme.border }, isActive && { backgroundColor: theme.tint, borderColor: theme.tint }]}
+                                    onPress={() => setAdminBlockDuration(d)}
+                                >
+                                    <Text style={[styles.durationChipText, { color: isActive ? '#fff' : theme.icon }]}>{label}</Text>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
                 </View>
             )}
 
@@ -791,6 +823,11 @@ const styles = StyleSheet.create({
     tab: { paddingVertical: 10, borderBottomWidth: 3, borderBottomColor: 'transparent' },
     tabText: { fontSize: 16, fontWeight: '700' },
     dateSelectorContainer: { borderBottomWidth: StyleSheet.hairlineWidth },
+    monthLabel: { fontSize: 14, fontWeight: '600', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 2 },
+    durationPickerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, paddingBottom: 10, paddingTop: 4, gap: 6 },
+    durationPickerLabel: { fontSize: 13, fontWeight: '600', marginRight: 4 },
+    durationChip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: Radii.pill, borderWidth: 1 },
+    durationChipText: { fontSize: 13, fontWeight: '600' },
     dateSelector: { paddingHorizontal: 15, paddingVertical: 12, gap: 8 },
     dateCard: { paddingVertical: 10, paddingHorizontal: 8, borderRadius: Radii.pill, alignItems: 'center', minWidth: 54 },
     dateCardSelected: { shadowColor: '#F26122', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
