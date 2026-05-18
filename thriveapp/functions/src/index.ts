@@ -1,6 +1,8 @@
 import * as functions from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 import { addMonths, isBefore, isEqual, addDays, addWeeks } from 'date-fns';
+import { Resend } from 'resend';
+import * as ics from 'ics';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -120,3 +122,110 @@ export const generateWeeklySessions = functions.scheduler.onSchedule('0 2 * * *'
 
     console.log(`Generated ${generatedCount} new recurring sessions.`);
 });
+
+/**
+ * Triggered when a booking is updated.
+ * Checks if the status changed from 'pending' to 'confirmed' for a PT session,
+ * and sends an email to the client with a calendar invite (.ics).
+ */
+export const onBookingConfirmed = functions.firestore.onDocumentUpdated(
+    `${BOOKINGS_COLLECTION}/{bookingId}`,
+    async (event) => {
+        const beforeData = event.data?.before.data();
+        const afterData = event.data?.after.data();
+
+        if (!beforeData || !afterData) return;
+
+        // Check if the status changed from pending to confirmed, and it is a PT booking
+        if (beforeData.status === 'pending' && afterData.status === 'confirmed' && afterData.type === 'pt') {
+            const resendApiKey = process.env.RESEND_API_KEY;
+            if (!resendApiKey) {
+                console.error('RESEND_API_KEY is not defined. Cannot send confirmation email.');
+                return;
+            }
+
+            const resend = new Resend(resendApiKey);
+
+            try {
+                // Fetch the client details
+                const clientDoc = await db.collection('users').doc(afterData.userId).get();
+                if (!clientDoc.exists) {
+                    console.error(`Client ${afterData.userId} not found`);
+                    return;
+                }
+                const clientData = clientDoc.data();
+                const clientEmail = clientData?.email;
+                const clientName = clientData?.name || 'Client';
+
+                // Fetch the PT details
+                const ptDoc = await db.collection('users').doc(afterData.ptId).get();
+                const ptName = ptDoc.exists ? ptDoc.data()?.name : 'Your Personal Trainer';
+
+                if (!clientEmail) {
+                    console.error(`Client ${afterData.userId} has no email address`);
+                    return;
+                }
+
+                // Generate ICS calendar event
+                const startTime = afterData.startTime.toDate();
+                const endTime = afterData.endTime.toDate();
+
+                const eventDetails: ics.EventAttributes = {
+                    start: [
+                        startTime.getFullYear(),
+                        startTime.getMonth() + 1,
+                        startTime.getDate(),
+                        startTime.getHours(),
+                        startTime.getMinutes()
+                    ],
+                    end: [
+                        endTime.getFullYear(),
+                        endTime.getMonth() + 1,
+                        endTime.getDate(),
+                        endTime.getHours(),
+                        endTime.getMinutes()
+                    ],
+                    title: `PT Session with ${ptName}`,
+                    description: `Your Personal Training session with ${ptName} is confirmed.`,
+                    status: 'CONFIRMED',
+                    organizer: { name: ptName, email: 'bookings@thriveapp.com' },
+                    attendees: [
+                        { name: clientName, email: clientEmail, rsvp: true, partstat: 'ACCEPTED', role: 'REQ-PARTICIPANT' }
+                    ]
+                };
+
+                const { error, value } = ics.createEvent(eventDetails);
+
+                if (error || !value) {
+                    console.error('Failed to generate ICS file', error);
+                    return;
+                }
+
+                const attachments = [{
+                    filename: 'invite.ics',
+                    content: Buffer.from(value).toString('base64'),
+                    type: 'text/calendar'
+                }];
+
+                const emailResponse = await resend.emails.send({
+                    from: 'Thrive Collective <bookings@thriveapp.com>',
+                    to: clientEmail,
+                    subject: `Booking Confirmed: PT Session with ${ptName}`,
+                    html: `
+                        <p>Hi ${clientName},</p>
+                        <p>Your Personal Training session with <strong>${ptName}</strong> is confirmed!</p>
+                        <p>Please find the calendar invite attached.</p>
+                        <br/>
+                        <p>Best regards,</p>
+                        <p>Thrive Collective</p>
+                    `,
+                    attachments: attachments
+                });
+
+                console.log(`Confirmation email sent to ${clientEmail}`, emailResponse);
+            } catch (error) {
+                console.error('Error sending confirmation email:', error);
+            }
+        }
+    }
+);
