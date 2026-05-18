@@ -39,6 +39,8 @@ const admin = __importStar(require("firebase-admin"));
 const date_fns_1 = require("date-fns");
 const resend_1 = require("resend");
 const ics = __importStar(require("ics"));
+const v2_1 = require("firebase-functions/v2");
+(0, v2_1.setGlobalOptions)({ region: 'europe-west2' });
 admin.initializeApp();
 const db = admin.firestore();
 const BOOKINGS_COLLECTION = 'bookings';

@@ -3,6 +3,9 @@ import * as admin from 'firebase-admin';
 import { addMonths, isBefore, isEqual, addDays, addWeeks } from 'date-fns';
 import { Resend } from 'resend';
 import * as ics from 'ics';
+import { setGlobalOptions } from 'firebase-functions/v2';
+
+setGlobalOptions({ region: 'europe-west2' });
 
 admin.initializeApp();
 const db = admin.firestore();
