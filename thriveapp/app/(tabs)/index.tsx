@@ -29,7 +29,6 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'today' | 'upcoming'>('today');
   const [showCancelled, setShowCancelled] = useState(false);
   const [ptsClients, setPtsClients] = useState<UserProfile[]>([]);
   const [partnerModalVisible, setPartnerModalVisible] = useState(false);
@@ -334,9 +333,6 @@ export default function DashboardScreen() {
   
   const displayedBookings = remainingBookings.filter(b => {
     if (!showCancelled && b.status === 'cancelled') return false;
-    if (filter === 'today') {
-      return isSameDay(b.startTime, now);
-    }
     return true;
   });
 
@@ -444,24 +440,10 @@ export default function DashboardScreen() {
             </View>
             )}
 
-            {(remainingBookings.length > 0 || filter === 'upcoming') && (
+            {remainingBookings.length > 0 && (
               <View style={styles.section}>
-                <View style={styles.filterContainer}>
-                  <View style={{ flexDirection: 'row' }}>
-                    <TouchableOpacity 
-                      style={[styles.filterTab, filter === 'today' && { backgroundColor: theme.tint, borderColor: theme.tint }]} 
-                      onPress={() => setFilter('today')}
-                    >
-                      <Text style={[styles.filterText, filter === 'today' ? { color: '#ffffff' } : { color: theme.icon }]}>Later Today</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={[styles.filterTab, filter === 'upcoming' && { backgroundColor: theme.tint, borderColor: theme.tint }]} 
-                      onPress={() => setFilter('upcoming')}
-                    >
-                      <Text style={[styles.filterText, filter === 'upcoming' ? { color: '#ffffff' } : { color: theme.icon }]}>Following Schedule</Text>
-                    </TouchableOpacity>
-                  </View>
-                  {bookings.some(b => b.status === 'cancelled') && (
+                {bookings.some(b => b.status === 'cancelled') && (
+                  <View style={[styles.filterContainer, { justifyContent: 'flex-end' }]}>
                     <TouchableOpacity 
                       style={{ flexDirection: 'row', alignItems: 'center', opacity: 0.8 }} 
                       onPress={() => setShowCancelled(!showCancelled)}
@@ -469,14 +451,14 @@ export default function DashboardScreen() {
                       <Ionicons name={showCancelled ? "checkbox" : "square-outline"} size={20} color={theme.icon} style={{ marginRight: 6 }} />
                       <Text style={{ fontSize: 13, color: theme.icon, fontWeight: '500' }}>Show Cancelled</Text>
                     </TouchableOpacity>
-                  )}
-                </View>
+                  </View>
+                )}
 
                 {displayedBookings.length === 0 ? (
                   <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border, padding: 30, marginTop: 10 }]}>
                     <Ionicons name="calendar-clear-outline" size={32} color={theme.icon} />
                     <Text style={[styles.emptyText, { color: theme.icon, fontSize: 14 }]}>
-                      No more sessions {filter === 'today' ? 'today' : 'scheduled'}.
+                      No more sessions scheduled.
                     </Text>
                   </View>
                 ) : (
