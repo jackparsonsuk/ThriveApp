@@ -211,6 +211,16 @@ export const onBookingConfirmed = functions.firestore.onDocumentUpdated(
                     type: 'text/calendar'
                 }];
 
+                const formattedDateTime = new Intl.DateTimeFormat('en-GB', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    timeZone: 'Europe/London'
+                }).format(startTime);
+
                 const emailResponse = await resend.emails.send({
                     from: fromEmail === 'onboarding@resend.dev' ? 'onboarding@resend.dev' : `Thrive Collective <${fromEmail}>`,
                     to: clientEmail,
@@ -218,6 +228,7 @@ export const onBookingConfirmed = functions.firestore.onDocumentUpdated(
                     html: `
                         <p>Hi ${clientName},</p>
                         <p>Your Personal Training session with <strong>${ptName}</strong> is confirmed!</p>
+                        <p><strong>Date &amp; Time:</strong> ${formattedDateTime}</p>
                         <p>Please find the calendar invite attached.</p>
                         <br/>
                         <p>Best regards,</p>
