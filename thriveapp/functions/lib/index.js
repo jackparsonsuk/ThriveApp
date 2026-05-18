@@ -165,6 +165,7 @@ exports.onBookingConfirmed = functions.firestore.onDocumentUpdated(`${BOOKINGS_C
             console.error('RESEND_API_KEY is not defined. Cannot send confirmation email.');
             return;
         }
+        const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
         const resend = new resend_1.Resend(resendApiKey);
         try {
             // Fetch the client details
@@ -204,7 +205,7 @@ exports.onBookingConfirmed = functions.firestore.onDocumentUpdated(`${BOOKINGS_C
                 title: `PT Session with ${ptName}`,
                 description: `Your Personal Training session with ${ptName} is confirmed.`,
                 status: 'CONFIRMED',
-                organizer: { name: ptName, email: 'bookings@thriveapp.com' },
+                organizer: { name: ptName, email: fromEmail },
                 attendees: [
                     { name: clientName, email: clientEmail, rsvp: true, partstat: 'ACCEPTED', role: 'REQ-PARTICIPANT' }
                 ]
@@ -220,7 +221,7 @@ exports.onBookingConfirmed = functions.firestore.onDocumentUpdated(`${BOOKINGS_C
                     type: 'text/calendar'
                 }];
             const emailResponse = await resend.emails.send({
-                from: 'Thrive Collective <bookings@thriveapp.com>',
+                from: fromEmail === 'onboarding@resend.dev' ? 'onboarding@resend.dev' : `Thrive Collective <${fromEmail}>`,
                 to: clientEmail,
                 subject: `Booking Confirmed: PT Session with ${ptName}`,
                 html: `

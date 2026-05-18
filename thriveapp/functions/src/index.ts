@@ -147,6 +147,7 @@ export const onBookingConfirmed = functions.firestore.onDocumentUpdated(
                 return;
             }
 
+            const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
             const resend = new Resend(resendApiKey);
 
             try {
@@ -191,7 +192,7 @@ export const onBookingConfirmed = functions.firestore.onDocumentUpdated(
                     title: `PT Session with ${ptName}`,
                     description: `Your Personal Training session with ${ptName} is confirmed.`,
                     status: 'CONFIRMED',
-                    organizer: { name: ptName, email: 'bookings@thriveapp.com' },
+                    organizer: { name: ptName, email: fromEmail },
                     attendees: [
                         { name: clientName, email: clientEmail, rsvp: true, partstat: 'ACCEPTED', role: 'REQ-PARTICIPANT' }
                     ]
@@ -211,7 +212,7 @@ export const onBookingConfirmed = functions.firestore.onDocumentUpdated(
                 }];
 
                 const emailResponse = await resend.emails.send({
-                    from: 'Thrive Collective <bookings@thriveapp.com>',
+                    from: fromEmail === 'onboarding@resend.dev' ? 'onboarding@resend.dev' : `Thrive Collective <${fromEmail}>`,
                     to: clientEmail,
                     subject: `Booking Confirmed: PT Session with ${ptName}`,
                     html: `
