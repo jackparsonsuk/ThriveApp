@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.7.0] - 2026-06-03
+
+### Added
+- **Past Bookings History**: Added a dedicated "History" tab in the Admin panel visible to both PTs and Admins. PTs can filter and see their own sessions and billing breakdown. Admins can view global history and filter by PTs.
+- **Interactive Analytics**: Added day-by-day date navigation to the Analytics dashboard and implemented click-through details modals to explore the sessions list of each category.
+- **Member Activity & Engagement Reports**: Admins can now drill down on any member in the "Members" list to view lifetime stats (completed counts, next booking highlights, past booking checklists/trainer reports).
+- **Client Profile Stats**: Display completed session counts (PT, Gym, Group) and the next upcoming booking on the client's profile page.
+
+### Fixed
+- **Analytics Compilation/ReferenceError**: Fixed a block-scoping transpilation TDZ issue with `monthGroupSnapshot` by avoiding direct destructuring from `Promise.all` in `getAnalyticsData`.
+- **Service Typo**: Cleaned up the trailing `};ats;` syntax error in `bookingService.ts`.
+
 ## [2.6.0] - 2026-05-18
 
 ### Added

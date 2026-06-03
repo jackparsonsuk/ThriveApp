@@ -672,7 +672,6 @@ export const createRecurringSession = async (
 
 
 // --- ANALYTICS ---
-
 export interface AnalyticsData {
     bookingsToday: number;
     bookingsThisWeek: number;
@@ -699,18 +698,18 @@ export interface AnalyticsData {
         countWeek: number;
         countMonth: number;
     }[];
+    bookingsForDay: (Booking & { user?: UserProfile; instructorName?: string })[];
 }
 
-export const getAnalyticsData = async (): Promise<AnalyticsData> => {
-    const now = new Date();
-    const startOfToday = startOfDay(now);
-    const endOfToday = endOfDay(now);
-    const startOfWeek = addDays(startOfToday, -now.getDay()); // Sunday
+export const getAnalyticsData = async (targetDate: Date = new Date()): Promise<AnalyticsData> => {
+    const startOfToday = startOfDay(targetDate);
+    const endOfToday = endOfDay(targetDate);
+    const startOfWeek = addDays(startOfToday, -targetDate.getDay()); // Sunday
     const endOfWeek = addDays(startOfWeek, 6);
     endOfWeek.setHours(23, 59, 59, 999);
 
-    const startOfCurrentMonth = startOfMonth(now);
-    const endOfCurrentMonth = endOfMonth(now);
+    const startOfCurrentMonth = startOfMonth(targetDate);
+    const endOfCurrentMonth = endOfMonth(targetDate);
 
     // Fetch all bookings for the week
     const weekQuery = query(
@@ -761,7 +760,7 @@ export const getAnalyticsData = async (): Promise<AnalyticsData> => {
         groupsSnapshot.docs.map(d => [d.id, { name: d.data().name, memberCount: (d.data().memberIds || []).length }])
     );
 
-    const [weekSnapshot, monthPtSnapshot, monthGroupSnapshot, recurringSnapshot, pendingSnapshot, clientsSnapshot, pts] = await Promise.all([
+    const results = await Promise.all([
         getDocs(weekQuery),
         getDocs(monthPtQuery),
         getDocs(monthGroupQuery),
@@ -770,6 +769,14 @@ export const getAnalyticsData = async (): Promise<AnalyticsData> => {
         getDocs(clientsQuery),
         getAllPTs(),
     ]);
+
+    const weekSnapshot = results[0];
+    const monthPtSnapshot = results[1];
+    const monthGroupSnapshot = results[2];
+    const recurringSnapshot = results[3];
+    const pendingSnapshot = results[4];
+    const clientsSnapshot = results[5];
+    const pts = results[6] as UserProfile[];
 
     const allBookings = weekSnapshot.docs.map(doc => ({
         id: doc.id,
@@ -798,11 +805,17 @@ export const getAnalyticsData = async (): Promise<AnalyticsData> => {
             monthGroupSessions.set(key, groupId);
         }
     });
+
     // Count sessions per group this month
     const monthGroupCounts = new Map<string, number>();
     monthGroupSessions.forEach(gId => {
         monthGroupCounts.set(gId, (monthGroupCounts.get(gId) ?? 0) + 1);
     });
+
+    // Build user map for fast hydration of daily bookings
+    const userMap = new Map<string, UserProfile>();
+    clientDocs.forEach(c => userMap.set(c.id, c));
+    pts.forEach(p => userMap.set(p.id, p));
 
     const stats: AnalyticsData = {
         bookingsToday: 0,
@@ -834,18 +847,30 @@ export const getAnalyticsData = async (): Promise<AnalyticsData> => {
             countToday: 0,
             countWeek: 0,
             countMonth: monthlyPtCounts.get(p.id) ?? 0,
-        }))
+        })),
+        bookingsForDay: []
     };
 
     // Tally week bookings
     const hourCounts = new Map<number, number>();
     const weekGroupSessions = new Set<string>();
     let weekConfirmedOrCancelled = 0;
+    const dayBookings: (Booking & { user?: UserProfile; instructorName?: string })[] = [];
 
     allBookings.forEach(b => {
         if (b.type === 'block' || b.type === 'pt_block') return;
 
         const isToday = b.startTime >= startOfToday && b.startTime <= endOfToday;
+
+        if (isToday) {
+            const clientUser = userMap.get(b.userId);
+            const ptUser = b.ptId ? userMap.get(b.ptId) : undefined;
+            dayBookings.push({
+                ...b,
+                user: clientUser,
+                instructorName: ptUser?.name
+            });
+        }
 
         if (b.status === 'confirmed') {
             stats.bookingsThisWeek++;
@@ -886,6 +911,7 @@ export const getAnalyticsData = async (): Promise<AnalyticsData> => {
         }
     });
 
+    stats.bookingsForDay = dayBookings.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
     stats.groupSessionsThisWeek = weekGroupSessions.size;
     stats.cancellationRate = weekConfirmedOrCancelled > 0
         ? Math.round((stats.cancelledThisWeek / weekConfirmedOrCancelled) * 100)
@@ -903,3 +929,21 @@ export const getAnalyticsData = async (): Promise<AnalyticsData> => {
 
     return stats;
 };
+
+// Fetch bookings within a date range across the whole app
+export const getBookingsForDateRange = async (startDate: Date, endDate: Date): Promise<Booking[]> => {
+    const q = query(
+        collection(db, BOOKINGS_COLLECTION),
+        where('startTime', '>=', Timestamp.fromDate(startDate)),
+        where('startTime', '<=', Timestamp.fromDate(endDate))
+    );
+
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        startTime: doc.data().startTime.toDate(),
+        endTime: doc.data().endTime.toDate(),
+    })) as Booking[];
+};
+

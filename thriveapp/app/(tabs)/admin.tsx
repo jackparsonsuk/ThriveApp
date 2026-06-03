@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, FlatList, Alert, Switch, Platform, ViewToken } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, FlatList, Alert, Switch, ViewToken } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile, getAllUsers, getUserProfile, updateUserProfile } from '../../services/bookingService';
+import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile, getAllUsers, getUserProfile, updateUserProfile, getBookingsForDateRange, getPTBookingsForInstructor, getUserBookings, getAllPTs } from '../../services/bookingService';
 import { getGlobalSettings, updateGlobalSettings, GlobalSettings } from '../../services/settingsService';
-import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isToday, isBefore } from 'date-fns';
+import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isToday, isBefore, startOfMonth, endOfMonth, subMonths, addMonths } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
 import { useRouter } from 'expo-router';
@@ -17,7 +17,7 @@ import { useMouseDragScroll } from '@/hooks/useMouseDragScroll';
 const OPEN_HOUR = 7;
 const CLOSE_HOUR = 20;
 
-type AdminTab = 'schedule' | 'members' | 'settings';
+type AdminTab = 'schedule' | 'history' | 'members' | 'settings';
 
 export default function AdminScreen() {
     const router = useRouter();
@@ -29,6 +29,18 @@ export default function AdminScreen() {
     const scheduleRef = useRef<FlatList>(null);
     const [hasScrolledToToday, setHasScrolledToToday] = useState(false);
     const [userRole, setUserRole] = useState<string>('');
+    
+    // History Tab State
+    const [historyDate, setHistoryDate] = useState<Date>(startOfMonth(new Date()));
+    const [historyBookings, setHistoryBookings] = useState<Booking[]>([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [historyPtFilter, setHistoryPtFilter] = useState<string>('all');
+    const [historySearchQuery, setHistorySearchQuery] = useState<string>('');
+    const [ptsList, setPtsList] = useState<UserProfile[]>([]);
+
+    // Member Detail Engagement State
+    const [memberBookings, setMemberBookings] = useState<Booking[]>([]);
+    const [memberHistoryLoading, setMemberHistoryLoading] = useState(false);
     
     // Schedule State
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
@@ -83,13 +95,15 @@ export default function AdminScreen() {
     useEffect(() => {
         if (activeTab === 'schedule') {
             fetchSchedule();
+        } else if (activeTab === 'history') {
+            fetchHistory();
         } else if (activeTab === 'members') {
             fetchMembers();
         } else if (activeTab === 'settings') {
             fetchSettings();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedDate, activeTab]);
+    }, [selectedDate, activeTab, historyDate]);
 
     useEffect(() => {
         if (activeTab === 'schedule' && !hasScrolledToToday) {
@@ -162,6 +176,57 @@ export default function AdminScreen() {
             setLoading(false);
         }
     };
+
+    const fetchHistory = async () => {
+        setHistoryLoading(true);
+        try {
+            const start = startOfMonth(historyDate);
+            const end = endOfMonth(historyDate);
+            const bookings = await getBookingsForDateRange(start, end);
+            setHistoryBookings(bookings);
+
+            // Fetch PT list and all users in parallel
+            const [pts, users] = await Promise.all([
+                getAllPTs(),
+                getAllUsers()
+            ]);
+            setPtsList(pts);
+            setAllUsers(users);
+        } catch (error) {
+            console.error('Error fetching history:', error);
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to load booking history.',
+            });
+        } finally {
+            setHistoryLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (selectedMember) {
+            setMemberHistoryLoading(true);
+            const fetchMemberBookings = async () => {
+                try {
+                    let bookings: Booking[] = [];
+                    if (selectedMember.role === 'client') {
+                        bookings = await getUserBookings(selectedMember.id);
+                    } else if (selectedMember.role === 'pt' || selectedMember.role === 'admin') {
+                        bookings = await getPTBookingsForInstructor(selectedMember.id);
+                    }
+                    setMemberBookings(bookings.sort((a, b) => b.startTime.getTime() - a.startTime.getTime()));
+                } catch (error) {
+                    console.error('Error fetching member bookings:', error);
+                } finally {
+                    setMemberHistoryLoading(false);
+                }
+            };
+            fetchMemberBookings();
+        } else {
+            setMemberBookings([]);
+        }
+    }, [selectedMember]);
 
     const fetchMembers = async () => {
         setMembersLoading(true);
@@ -465,14 +530,40 @@ export default function AdminScreen() {
 
     const renderMemberDetail = () => {
         if (!selectedMember) return null;
+
+        const now = new Date();
+        
+        // Calculate completed bookings (startTime < now)
+        const completed = memberBookings.filter(b => b.status === 'confirmed' && b.startTime < now);
+        const upcoming = memberBookings.filter(b => b.status === 'confirmed' && b.startTime >= now).sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+
+        // Stats calculations
+        const ptCount = completed.filter(b => b.type === 'pt').length;
+        const gymCount = completed.filter(b => b.type === 'gym').length;
+        const groupCount = completed.filter(b => b.type === 'group').length;
+
+        // PT client breakdown
+        const clientBreakdown = new Map<string, number>();
+        if (selectedMember.role === 'pt' || selectedMember.role === 'admin') {
+            completed.forEach(b => {
+                const clientProfile = allUsers.find(u => u.id === b.userId);
+                const clientName = clientProfile?.name || clientProfile?.email || 'Unknown Client';
+                clientBreakdown.set(clientName, (clientBreakdown.get(clientName) ?? 0) + 1);
+            });
+        }
+        const ptClientBreakdownList = Array.from(clientBreakdown.entries())
+            .sort((a, b) => b[1] - a[1]);
+
         return (
-            <View style={styles.membersContainer}>
+            <ScrollView style={styles.membersContainer} contentContainerStyle={{ paddingBottom: 40 }}>
                 <TouchableOpacity onPress={() => setSelectedMember(null)} style={styles.backRow}>
                     <Ionicons name="chevron-back" size={20} color={theme.tint} />
                     <Text style={[styles.backText, { color: theme.tint }]}>Members</Text>
                 </TouchableOpacity>
+                
+                {/* Profile Detail Card */}
                 <View style={[styles.memberDetailCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                    <View style={[styles.avatar, { backgroundColor: theme.tint + '20', width: 60, height: 60, borderRadius: 30, marginBottom: 12 }]}>
+                    <View style={[styles.avatar, { backgroundColor: theme.tint + '20', width: 60, height: 60, borderRadius: 30, marginBottom: 12, marginRight: 0 }]}>
                         <Text style={[styles.avatarText, { color: theme.tint, fontSize: 24 }]}>{(selectedMember.name || selectedMember.email).charAt(0).toUpperCase()}</Text>
                     </View>
                     <Text style={[styles.memberName, { color: theme.text, fontSize: 20, marginBottom: 4 }]}>{selectedMember.name || 'No Name'}</Text>
@@ -482,6 +573,7 @@ export default function AdminScreen() {
                     </View>
                 </View>
 
+                {/* Client settings (Gym Access) */}
                 {selectedMember.role === 'client' && (
                     <View style={[styles.settingsCard, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 16 }]}>
                         <View style={styles.settingRow}>
@@ -497,7 +589,132 @@ export default function AdminScreen() {
                         </View>
                     </View>
                 )}
-            </View>
+
+                {/* Engagement Report Header */}
+                <Text style={[styles.reportHeading, { color: theme.text, marginTop: 24, marginBottom: 12 }]}>
+                    Activity & Engagement
+                </Text>
+
+                {memberHistoryLoading ? (
+                    <ActivityIndicator size="small" color={theme.tint} style={{ marginTop: 10 }} />
+                ) : (
+                    <View style={{ gap: 16 }}>
+                        {/* Clients stats grid */}
+                        {selectedMember.role === 'client' && (
+                            <View style={styles.statsReportGrid}>
+                                <View style={[styles.statsReportCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                    <Text style={[styles.statsReportValue, { color: theme.text }]}>{ptCount}</Text>
+                                    <Text style={[styles.statsReportLabel, { color: theme.icon }]}>PT Sessions</Text>
+                                </View>
+                                <View style={[styles.statsReportCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                    <Text style={[styles.statsReportValue, { color: theme.text }]}>{groupCount}</Text>
+                                    <Text style={[styles.statsReportLabel, { color: theme.icon }]}>Group Classes</Text>
+                                </View>
+                                <View style={[styles.statsReportCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                    <Text style={[styles.statsReportValue, { color: theme.text }]}>{gymCount}</Text>
+                                    <Text style={[styles.statsReportLabel, { color: theme.icon }]}>Gym Bookings</Text>
+                                </View>
+                            </View>
+                        )}
+
+                        {/* PT stats card */}
+                        {(selectedMember.role === 'pt' || selectedMember.role === 'admin') && (
+                            <View style={[styles.summaryCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                <Text style={[styles.summaryTitle, { color: theme.icon }]}>Total Sessions Conducted</Text>
+                                <Text style={[styles.summaryValue, { color: theme.text, fontSize: 28, marginTop: 4 }]}>
+                                    {completed.length}
+                                </Text>
+
+                                {ptClientBreakdownList.length > 0 && (
+                                    <>
+                                        <View style={[styles.summaryDivider, { backgroundColor: theme.border, marginVertical: 12 }]} />
+                                        <Text style={[styles.breakdownHeadingText, { color: theme.text }]}>Breakdown by Client:</Text>
+                                        <View style={{ marginTop: 8, gap: 6 }}>
+                                            {ptClientBreakdownList.map(([clientName, count]) => (
+                                                <View key={clientName} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <Text style={{ fontSize: 13, fontWeight: '500', color: theme.text }}>{clientName}</Text>
+                                                    <View style={{ backgroundColor: theme.tint + '15', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 }}>
+                                                        <Text style={{ fontSize: 12, fontWeight: '700', color: theme.tint }}>{count} session{count !== 1 ? 's' : ''}</Text>
+                                                    </View>
+                                                </View>
+                                            ))}
+                                        </View>
+                                    </>
+                                )}
+                            </View>
+                        )}
+
+                        {/* Next upcoming session for Client */}
+                        {selectedMember.role === 'client' && upcoming.length > 0 && (
+                            <View style={[styles.nextSessionReportCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                <Ionicons name="calendar" size={20} color={theme.tint} />
+                                <View style={{ flex: 1, marginLeft: 12 }}>
+                                    <Text style={{ fontSize: 10, fontWeight: '700', color: theme.icon, textTransform: 'uppercase' }}>Next Booking</Text>
+                                    <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text, marginTop: 2 }}>
+                                        {format(upcoming[0].startTime, 'EEEE, d MMMM')}
+                                    </Text>
+                                    <Text style={{ fontSize: 13, color: theme.icon, marginTop: 2 }}>
+                                        {format(upcoming[0].startTime, 'HH:mm')} - {format(upcoming[0].endTime, 'HH:mm')}
+                                    </Text>
+                                </View>
+                            </View>
+                        )}
+
+                        {/* Recent Session History List */}
+                        <View>
+                            <Text style={[styles.subReportHeading, { color: theme.text, marginBottom: 8 }]}>
+                                Past Sessions
+                            </Text>
+                            {completed.length === 0 ? (
+                                <Text style={{ color: theme.icon, fontStyle: 'italic', fontSize: 14 }}>
+                                    No completed sessions recorded.
+                                </Text>
+                            ) : (
+                                <View style={{ gap: 8 }}>
+                                    {completed.slice(0, 10).map((b) => {
+                                        let nameLabel = '';
+                                        if (selectedMember.role === 'client') {
+                                            const ptProfile = b.ptId ? allUsers.find(u => u.id === b.ptId) : undefined;
+                                            nameLabel = ptProfile ? `with ${ptProfile.name}` : 'Gym Booking';
+                                        } else {
+                                            const clientProfile = allUsers.find(u => u.id === b.userId);
+                                            nameLabel = clientProfile ? `with ${clientProfile.name}` : 'Unknown Client';
+                                        }
+
+                                        return (
+                                            <View key={b.id} style={[styles.historyRowCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={[styles.historyClientName, { color: theme.text }]}>
+                                                        {nameLabel}
+                                                    </Text>
+                                                    <Text style={[styles.historyTime, { color: theme.icon }]}>
+                                                        {format(b.startTime, 'EEEE, d MMM')} · {format(b.startTime, 'HH:mm')}
+                                                    </Text>
+                                                </View>
+                                                <View style={[
+                                                    styles.typeBadge,
+                                                    b.type === 'pt' ? { backgroundColor: theme.tint } :
+                                                    b.type === 'group' ? { backgroundColor: '#3b82f6' } :
+                                                    { backgroundColor: '#a3a3a3' }
+                                                ]}>
+                                                    <Text style={styles.typeBadgeText}>
+                                                        {b.type.toUpperCase()}
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                        );
+                                    })}
+                                    {completed.length > 10 && (
+                                        <Text style={{ textAlign: 'center', fontSize: 13, color: theme.icon, marginTop: 8 }}>
+                                            Showing last 10 sessions.
+                                        </Text>
+                                    )}
+                                </View>
+                            )}
+                        </View>
+                    </View>
+                )}
+            </ScrollView>
         );
     };
 
@@ -654,7 +871,7 @@ export default function AdminScreen() {
                             <View style={styles.settingInfo}>
                                 <Text style={[styles.settingLabel, { color: theme.text }]}>App Announcement</Text>
                                 <Text style={[styles.settingDescription, { color: theme.icon }]}>
-                                    A global message displayed as a banner on every user's dashboard.
+                                    A global message displayed as a banner on every user&apos;s dashboard.
                                 </Text>
                             </View>
                             <Switch
@@ -692,6 +909,212 @@ export default function AdminScreen() {
         </ScrollView>
     );
 
+    const renderHistory = () => {
+        const now = new Date();
+        
+        // 1. First layer of filtering: lock to PT if current user is a PT
+        let activeBookings = historyBookings.filter(b => b.status === 'confirmed' && b.startTime < now);
+        
+        if (userRole === 'pt') {
+            activeBookings = activeBookings.filter(b => b.ptId === user?.uid);
+        } else if (userRole === 'admin' && historyPtFilter !== 'all') {
+            activeBookings = activeBookings.filter(b => b.ptId === historyPtFilter);
+        }
+
+        // 2. Second layer of filtering: search query
+        const mappedBookings = activeBookings.map(b => {
+            const clientProfile = allUsers.find(u => u.id === b.userId);
+            const ptProfile = b.ptId ? allUsers.find(u => u.id === b.ptId) : undefined;
+            return {
+                ...b,
+                clientName: clientProfile?.name || clientProfile?.email || 'Unknown Client',
+                clientEmail: clientProfile?.email,
+                instructorName: ptProfile?.name || 'Unknown Trainer'
+            };
+        });
+
+        const filtered = mappedBookings.filter(b => {
+            const query = historySearchQuery.toLowerCase();
+            return b.clientName.toLowerCase().includes(query) || 
+                   (b.clientEmail && b.clientEmail.toLowerCase().includes(query));
+        }).sort((a, b) => b.startTime.getTime() - a.startTime.getTime()); // Descending (most recent first)
+
+        // 3. Compute stats
+        const totalCount = filtered.length;
+        const ptCount = filtered.filter(b => b.type === 'pt').length;
+        const groupCount = filtered.filter(b => b.type === 'group').length;
+        const gymCount = filtered.filter(b => b.type === 'gym').length;
+
+        // Breakdown by client
+        const clientCounts = new Map<string, { count: number; email?: string }>();
+        filtered.forEach(b => {
+            const current = clientCounts.get(b.clientName) ?? { count: 0, email: b.clientEmail };
+            clientCounts.set(b.clientName, { count: current.count + 1, email: b.clientEmail });
+        });
+        const clientBreakdownList = Array.from(clientCounts.entries())
+            .sort((a, b) => b[1].count - a[1].count);
+
+        return (
+            <View style={{ flex: 1, padding: 16 }}>
+                {/* Date Navigator */}
+                <View style={[styles.historyMonthSelector, { borderColor: theme.border, backgroundColor: theme.card }]}>
+                    <TouchableOpacity 
+                        style={styles.monthArrow} 
+                        onPress={() => setHistoryDate(prev => subMonths(prev, 1))}
+                    >
+                        <Ionicons name="chevron-back" size={20} color={theme.text} />
+                    </TouchableOpacity>
+                    <Text style={[styles.historyMonthText, { color: theme.text }]}>
+                        {format(historyDate, 'MMMM yyyy')}
+                    </Text>
+                    <TouchableOpacity 
+                        style={styles.monthArrow} 
+                        onPress={() => setHistoryDate(prev => addMonths(prev, 1))}
+                    >
+                        <Ionicons name="chevron-forward" size={20} color={theme.text} />
+                    </TouchableOpacity>
+                </View>
+
+                {/* PT Filter (Admin only) */}
+                {userRole === 'admin' && (
+                    <View style={{ marginBottom: 12 }}>
+                        <ScrollView 
+                            horizontal 
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+                        >
+                            <TouchableOpacity
+                                style={[
+                                    styles.ptChip,
+                                    { borderColor: theme.border, backgroundColor: theme.card },
+                                    historyPtFilter === 'all' && { backgroundColor: theme.tint, borderColor: theme.tint }
+                                ]}
+                                onPress={() => setHistoryPtFilter('all')}
+                            >
+                                <Text style={[styles.ptChipText, { color: historyPtFilter === 'all' ? '#fff' : theme.icon }]}>
+                                    All Trainers
+                                </Text>
+                            </TouchableOpacity>
+                            {ptsList.map(pt => (
+                                <TouchableOpacity
+                                    key={pt.id}
+                                    style={[
+                                        styles.ptChip,
+                                        { borderColor: theme.border, backgroundColor: theme.card },
+                                        historyPtFilter === pt.id && { backgroundColor: theme.tint, borderColor: theme.tint }
+                                    ]}
+                                    onPress={() => setHistoryPtFilter(pt.id)}
+                                >
+                                    <Text style={[styles.ptChipText, { color: historyPtFilter === pt.id ? '#fff' : theme.icon }]}>
+                                        {pt.name || pt.email}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
+                )}
+
+                {/* Client Search */}
+                <View style={styles.searchBarContainer}>
+                    <Ionicons name="search" size={18} color={theme.icon} style={styles.searchIcon} />
+                    <TextInput
+                        style={[styles.searchInput, { color: theme.text, backgroundColor: theme.card, borderColor: theme.border }]}
+                        placeholder="Filter by client..."
+                        placeholderTextColor={theme.icon}
+                        value={historySearchQuery}
+                        onChangeText={setHistorySearchQuery}
+                    />
+                </View>
+
+                {historyLoading ? (
+                    <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 30 }} />
+                ) : (
+                    <FlatList
+                        data={filtered}
+                        keyExtractor={(item) => item.id || Math.random().toString()}
+                        ListHeaderComponent={
+                            <View style={{ marginBottom: 16 }}>
+                                {/* Summary Card */}
+                                <View style={[styles.summaryCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                    <View style={styles.summaryHeader}>
+                                        <Text style={[styles.summaryTitle, { color: theme.icon }]}>Completed Sessions</Text>
+                                        <Text style={[styles.summaryValue, { color: theme.text }]}>{totalCount}</Text>
+                                    </View>
+                                    <View style={[styles.summaryDivider, { backgroundColor: theme.border }]} />
+                                    <View style={styles.summaryBreakdown}>
+                                        <Text style={[styles.summaryBreakdownText, { color: theme.icon }]}>
+                                            PT: <Text style={{ color: theme.text, fontWeight: '700' }}>{ptCount}</Text>
+                                        </Text>
+                                        <Text style={[styles.summaryBreakdownText, { color: theme.icon }]}>
+                                            Group: <Text style={{ color: theme.text, fontWeight: '700' }}>{groupCount}</Text>
+                                        </Text>
+                                        <Text style={[styles.summaryBreakdownText, { color: theme.icon }]}>
+                                            Gym: <Text style={{ color: theme.text, fontWeight: '700' }}>{gymCount}</Text>
+                                        </Text>
+                                    </View>
+
+                                    {/* Client breakdown inside summary */}
+                                    {clientBreakdownList.length > 0 && (
+                                        <>
+                                            <View style={[styles.summaryDivider, { backgroundColor: theme.border, marginVertical: 10 }]} />
+                                            <Text style={[styles.breakdownHeadingText, { color: theme.text }]}>Breakdown by Client:</Text>
+                                            <View style={{ marginTop: 6, gap: 4 }}>
+                                                {clientBreakdownList.map(([clientName, breakdownData]) => (
+                                                    <View key={clientName} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <Text style={{ fontSize: 13, fontWeight: '500', color: theme.text }}>{clientName}</Text>
+                                                        <View style={{ backgroundColor: theme.tint + '15', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 }}>
+                                                            <Text style={{ fontSize: 12, fontWeight: '700', color: theme.tint }}>{breakdownData.count} session{breakdownData.count !== 1 ? 's' : ''}</Text>
+                                                        </View>
+                                                    </View>
+                                                ))}
+                                            </View>
+                                        </>
+                                    )}
+                                </View>
+                            </View>
+                        }
+                        renderItem={({ item }) => (
+                            <View style={[styles.historyRowCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={[styles.historyClientName, { color: theme.text }]}>
+                                        {item.clientName}
+                                    </Text>
+                                    <Text style={[styles.historyTime, { color: theme.icon }]}>
+                                        {format(item.startTime, 'EEEE, d MMM')} · {format(item.startTime, 'HH:mm')} - {format(item.endTime, 'HH:mm')}
+                                    </Text>
+                                    {userRole === 'admin' && (
+                                        <Text style={[styles.historyInstructor, { color: theme.icon }]}>
+                                            Trainer: {item.instructorName}
+                                        </Text>
+                                    )}
+                                </View>
+                                <View style={[
+                                    styles.typeBadge, 
+                                    item.type === 'pt' ? { backgroundColor: theme.tint } : 
+                                    item.type === 'group' ? { backgroundColor: '#3b82f6' } : 
+                                    { backgroundColor: '#a3a3a3' }
+                                ]}>
+                                    <Text style={styles.typeBadgeText}>
+                                        {item.type.toUpperCase()}
+                                    </Text>
+                                </View>
+                            </View>
+                        )}
+                        ListEmptyComponent={
+                            <View style={{ alignItems: 'center', marginTop: 40 }}>
+                                <Ionicons name="calendar-outline" size={48} color={theme.icon} style={{ opacity: 0.3, marginBottom: 12 }} />
+                                <Text style={{ color: theme.icon, fontStyle: 'italic', textAlign: 'center' }}>
+                                    No completed bookings found.
+                                </Text>
+                            </View>
+                        }
+                        contentContainerStyle={{ paddingBottom: 40 }}
+                    />
+                )}
+            </View>
+        );
+    };
+
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
             <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
@@ -714,6 +1137,12 @@ export default function AdminScreen() {
                         style={[styles.tab, activeTab === 'schedule' && { borderBottomColor: theme.tint }]}
                     >
                         <Text style={[styles.tabText, { color: activeTab === 'schedule' ? theme.text : theme.icon }]}>Schedule</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                        onPress={() => setActiveTab('history')}
+                        style={[styles.tab, activeTab === 'history' && { borderBottomColor: theme.tint }]}
+                    >
+                        <Text style={[styles.tabText, { color: activeTab === 'history' ? theme.text : theme.icon }]}>History</Text>
                     </TouchableOpacity>
                     {userRole === 'admin' && (
                         <>
@@ -795,6 +1224,7 @@ export default function AdminScreen() {
             )}
 
             {activeTab === 'schedule' && renderSchedule()}
+            {activeTab === 'history' && renderHistory()}
             {activeTab === 'members' && renderMembers()}
             {activeTab === 'settings' && renderSettings()}
 
@@ -888,4 +1318,129 @@ const styles = StyleSheet.create({
     backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 4 },
     backText: { fontSize: 16, fontWeight: '600' },
     memberDetailCard: { borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, padding: 20, alignItems: 'center' },
+    
+    // HISTORY TAB & REPORT STYLES
+    historyMonthSelector: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderRadius: Radii.lg,
+        borderWidth: StyleSheet.hairlineWidth,
+        marginBottom: 12,
+    },
+    monthArrow: {
+        padding: 4,
+    },
+    historyMonthText: {
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    ptChip: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: Radii.pill,
+        borderWidth: 1,
+        justifyContent: 'center',
+    },
+    ptChipText: {
+        fontSize: 13,
+        fontWeight: '700',
+    },
+    summaryCard: {
+        borderRadius: Radii.lg,
+        borderWidth: StyleSheet.hairlineWidth,
+        padding: 16,
+    },
+    summaryHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    summaryTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        textTransform: 'uppercase',
+    },
+    summaryValue: {
+        fontSize: 24,
+        fontWeight: '700',
+    },
+    summaryDivider: {
+        height: StyleSheet.hairlineWidth,
+        marginVertical: 8,
+    },
+    summaryBreakdown: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+    },
+    summaryBreakdownText: {
+        fontSize: 13,
+        fontWeight: '500',
+    },
+    breakdownHeadingText: {
+        fontSize: 14,
+        fontWeight: '700',
+        marginTop: 6,
+    },
+    historyRowCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 12,
+        borderRadius: Radii.lg,
+        borderWidth: StyleSheet.hairlineWidth,
+        marginBottom: 8,
+    },
+    historyClientName: {
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    historyTime: {
+        fontSize: 13,
+        marginTop: 2,
+    },
+    historyInstructor: {
+        fontSize: 12,
+        marginTop: 2,
+        fontStyle: 'italic',
+    },
+    reportHeading: {
+        fontSize: 18,
+        fontWeight: '700',
+    },
+    statsReportGrid: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    statsReportCard: {
+        flex: 1,
+        paddingVertical: 12,
+        alignItems: 'center',
+        borderRadius: Radii.md,
+        borderWidth: StyleSheet.hairlineWidth,
+    },
+    statsReportValue: {
+        fontSize: 20,
+        fontWeight: '700',
+    },
+    statsReportLabel: {
+        fontSize: 10,
+        fontWeight: '600',
+        marginTop: 2,
+        textAlign: 'center',
+    },
+    nextSessionReportCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        borderRadius: Radii.md,
+        borderWidth: StyleSheet.hairlineWidth,
+    },
+    subReportHeading: {
+        fontSize: 15,
+        fontWeight: '700',
+        marginTop: 8,
+    },
 });

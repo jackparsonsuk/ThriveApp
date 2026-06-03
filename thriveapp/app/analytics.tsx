@@ -1,23 +1,31 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Modal, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { getAnalyticsData, AnalyticsData } from '../services/bookingService';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii } from '@/constants/theme';
+import { format, addDays, subDays, isToday } from 'date-fns';
 
 export default function AnalyticsScreen() {
     const router = useRouter();
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
+    
+    const [targetDate, setTargetDate] = useState<Date>(new Date());
     const [data, setData] = useState<AnalyticsData | null>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    const fetchData = useCallback(async () => {
+    // Detail Modal State
+    const [detailModalVisible, setDetailModalVisible] = useState(false);
+    const [selectedCardType, setSelectedCardType] = useState<'all' | 'gym' | 'pt' | 'cancelled'>('all');
+    const [selectedCardTitle, setSelectedCardTitle] = useState('');
+
+    const fetchData = useCallback(async (date: Date) => {
         try {
-            const result = await getAnalyticsData();
+            const result = await getAnalyticsData(date);
             setData(result);
         } catch (error) {
             console.error('Error fetching analytics:', error);
@@ -28,13 +36,67 @@ export default function AnalyticsScreen() {
     }, []);
 
     useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+        fetchData(targetDate);
+    }, [targetDate, fetchData]);
 
     const onRefresh = () => {
         setRefreshing(true);
-        fetchData();
+        fetchData(targetDate);
     };
+
+    const StatCard = ({ title, value, icon, color, subValue, onPress }: { title: string; value: number; icon: any; color: string; subValue?: string; onPress?: () => void }) => {
+        const CardComponent = onPress ? TouchableOpacity : View;
+        return (
+            <CardComponent 
+                style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}
+                onPress={onPress}
+                activeOpacity={0.7}
+            >
+                <View style={[styles.iconContainer, { backgroundColor: color + '20' }]}>
+                    <Ionicons name={icon} size={22} color={color} />
+                </View>
+                <View style={styles.statInfo}>
+                    <Text style={[styles.statTitle, { color: theme.icon }]}>{title}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Text style={[styles.statValue, { color: theme.text }]}>{value}</Text>
+                        {onPress && (
+                            <Ionicons name="chevron-forward" size={14} color={theme.icon} style={{ opacity: 0.5 }} />
+                        )}
+                    </View>
+                    {subValue ? <Text style={[styles.statSubValue, { color: theme.icon }]}>{subValue}</Text> : null}
+                </View>
+            </CardComponent>
+        );
+    };
+
+    const handleCardPress = (type: 'all' | 'gym' | 'pt' | 'cancelled', title: string) => {
+        setSelectedCardType(type);
+        setSelectedCardTitle(title);
+        setDetailModalVisible(true);
+    };
+
+    const filteredBookings = useMemo(() => {
+        if (!data || !data.bookingsForDay) return [];
+        const bookings = data.bookingsForDay;
+        
+        switch (selectedCardType) {
+            case 'gym':
+                return bookings.filter(b => b.type === 'gym' && b.status === 'confirmed');
+            case 'pt':
+                return bookings.filter(b => b.type === 'pt' && b.status === 'confirmed');
+            case 'cancelled':
+                return bookings.filter(b => b.status === 'cancelled');
+            case 'all':
+            default:
+                return bookings.filter(b => b.status === 'confirmed');
+        }
+    }, [data, selectedCardType]);
+
+    const gymAccessPercent = data && data.clientsTotal > 0
+        ? Math.round((data.clientsWithGymAccess / data.clientsTotal) * 100)
+        : 0;
+
+    const noGymAccess = (data?.clientsTotal ?? 0) - (data?.clientsWithGymAccess ?? 0);
 
     if (loading && !refreshing) {
         return (
@@ -43,25 +105,6 @@ export default function AnalyticsScreen() {
             </SafeAreaView>
         );
     }
-
-    const StatCard = ({ title, value, icon, color, subValue }: { title: string; value: number; icon: any; color: string; subValue?: string }) => (
-        <View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <View style={[styles.iconContainer, { backgroundColor: color + '20' }]}>
-                <Ionicons name={icon} size={22} color={color} />
-            </View>
-            <View style={styles.statInfo}>
-                <Text style={[styles.statTitle, { color: theme.icon }]}>{title}</Text>
-                <Text style={[styles.statValue, { color: theme.text }]}>{value}</Text>
-                {subValue ? <Text style={[styles.statSubValue, { color: theme.icon }]}>{subValue}</Text> : null}
-            </View>
-        </View>
-    );
-
-    const gymAccessPercent = data && data.clientsTotal > 0
-        ? Math.round((data.clientsWithGymAccess / data.clientsTotal) * 100)
-        : 0;
-
-    const noGymAccess = (data?.clientsTotal ?? 0) - (data?.clientsWithGymAccess ?? 0);
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
@@ -73,17 +116,78 @@ export default function AnalyticsScreen() {
                 <View style={{ width: 28 }} />
             </View>
 
+            {/* DATE SELECTOR HEADER */}
+            <View style={[styles.dateSelectorContainer, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
+                <TouchableOpacity 
+                    style={styles.dateArrowBtn} 
+                    onPress={() => setTargetDate(prev => subDays(prev, 1))}
+                >
+                    <Ionicons name="chevron-back" size={22} color={theme.text} />
+                </TouchableOpacity>
+                
+                <View style={styles.dateLabelContainer}>
+                    <Text style={[styles.dateLabelText, { color: theme.text }]}>
+                        {format(targetDate, 'EEEE, d MMMM yyyy')}
+                    </Text>
+                    {isToday(targetDate) ? (
+                        <View style={[styles.todayBadge, { backgroundColor: theme.tint + '15' }]}>
+                            <Text style={[styles.todayBadgeText, { color: theme.tint }]}>TODAY</Text>
+                        </View>
+                    ) : (
+                        <TouchableOpacity 
+                            style={styles.todayShortcut} 
+                            onPress={() => setTargetDate(new Date())}
+                        >
+                            <Text style={[styles.todayShortcutText, { color: theme.tint }]}>Go to Today</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+
+                <TouchableOpacity 
+                    style={styles.dateArrowBtn} 
+                    onPress={() => setTargetDate(prev => addDays(prev, 1))}
+                >
+                    <Ionicons name="chevron-forward" size={22} color={theme.text} />
+                </TouchableOpacity>
+            </View>
+
             <ScrollView
                 contentContainerStyle={styles.scrollContent}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.tint} />}
             >
-                {/* TODAY */}
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>Today's Snapshot</Text>
+                {/* DAILY SNAPSHOT */}
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                    {isToday(targetDate) ? "Today's Snapshot" : `${format(targetDate, 'EEEE')}'s Snapshot`}
+                </Text>
                 <View style={styles.statsGrid}>
-                    <StatCard title="Total Bookings" value={data?.bookingsToday ?? 0} icon="calendar" color="#3b82f6" />
-                    <StatCard title="Gym Sessions" value={data?.gymBookingsToday ?? 0} icon="barbell" color={theme.tint} />
-                    <StatCard title="PT Sessions" value={data?.ptSessionsToday ?? 0} icon="body" color="#10b981" />
-                    <StatCard title="Cancellations" value={data?.cancelledToday ?? 0} icon="close-circle" color="#ef4444" />
+                    <StatCard 
+                        title="Total Bookings" 
+                        value={data?.bookingsToday ?? 0} 
+                        icon="calendar" 
+                        color="#3b82f6" 
+                        onPress={() => handleCardPress('all', 'Total Bookings')}
+                    />
+                    <StatCard 
+                        title="Gym Sessions" 
+                        value={data?.gymBookingsToday ?? 0} 
+                        icon="barbell" 
+                        color={theme.tint} 
+                        onPress={() => handleCardPress('gym', 'Gym Sessions')}
+                    />
+                    <StatCard 
+                        title="PT Sessions" 
+                        value={data?.ptSessionsToday ?? 0} 
+                        icon="body" 
+                        color="#10b981" 
+                        onPress={() => handleCardPress('pt', 'PT Sessions')}
+                    />
+                    <StatCard 
+                        title="Cancellations" 
+                        value={data?.cancelledToday ?? 0} 
+                        icon="close-circle" 
+                        color="#ef4444" 
+                        onPress={() => handleCardPress('cancelled', 'Cancellations')}
+                    />
                 </View>
 
                 {/* WEEKLY */}
@@ -249,6 +353,84 @@ export default function AnalyticsScreen() {
                     </Text>
                 )}
             </ScrollView>
+
+            {/* CLICK-THROUGH DRILL-DOWN MODAL */}
+            <Modal
+                visible={detailModalVisible}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setDetailModalVisible(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                        <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+                            <View>
+                                <Text style={[styles.modalTitle, { color: theme.text }]}>{selectedCardTitle}</Text>
+                                <Text style={[styles.modalSubtitle, { color: theme.icon }]}>
+                                    {format(targetDate, 'EEEE, d MMMM yyyy')}
+                                </Text>
+                            </View>
+                            <TouchableOpacity 
+                                style={[styles.modalCloseBtn, { backgroundColor: theme.border }]} 
+                                onPress={() => setDetailModalVisible(false)}
+                            >
+                                <Ionicons name="close" size={20} color={theme.text} />
+                            </TouchableOpacity>
+                        </View>
+                        
+                        <FlatList
+                            data={filteredBookings}
+                            keyExtractor={(item) => item.id || Math.random().toString()}
+                            contentContainerStyle={styles.modalListContent}
+                            renderItem={({ item }) => {
+                                const userName = item.user?.name || item.user?.email || 'Unknown Client';
+                                return (
+                                    <View style={[styles.bookingItem, { borderBottomColor: theme.border }]}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.bookingClientName, { color: theme.text }]}>
+                                                {userName}
+                                            </Text>
+                                            {item.type === 'pt' && item.instructorName ? (
+                                                <Text style={[styles.bookingSubText, { color: theme.icon }]}>
+                                                    Trainer: {item.instructorName}
+                                                </Text>
+                                            ) : null}
+                                            <Text style={[styles.bookingTimeText, { color: theme.tint }]}>
+                                                {format(item.startTime, 'HH:mm')} - {format(item.endTime, 'HH:mm')}
+                                            </Text>
+                                        </View>
+                                        <View style={{ alignItems: 'flex-end' }}>
+                                            <View style={[
+                                                styles.typeBadge, 
+                                                item.type === 'pt' ? { backgroundColor: theme.tint } : 
+                                                item.type === 'group' ? { backgroundColor: '#3b82f6' } : 
+                                                { backgroundColor: '#a3a3a3' }
+                                            ]}>
+                                                <Text style={styles.typeBadgeText}>
+                                                    {item.type.toUpperCase()}
+                                                </Text>
+                                            </View>
+                                            {item.status === 'cancelled' && (
+                                                <Text style={{ color: '#ef4444', fontSize: 11, fontWeight: '700', marginTop: 4 }}>
+                                                    CANCELLED
+                                                </Text>
+                                            )}
+                                        </View>
+                                    </View>
+                                );
+                            }}
+                            ListEmptyComponent={
+                                <View style={styles.emptyContainer}>
+                                    <Ionicons name="calendar-outline" size={48} color={theme.icon} style={{ opacity: 0.3, marginBottom: 12 }} />
+                                    <Text style={[styles.emptyModalText, { color: theme.icon }]}>
+                                        No bookings found for this category.
+                                    </Text>
+                                </View>
+                            }
+                        />
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -324,4 +506,126 @@ const styles = StyleSheet.create({
     peakBarTrack: { height: 8, borderRadius: 4, overflow: 'hidden' },
     peakBarFill: { height: '100%', borderRadius: 4 },
     peakCount: { fontSize: 15, fontWeight: '700', width: 32, textAlign: 'right' },
+
+    // DATE SELECTOR STYLES
+    dateSelectorContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    dateArrowBtn: {
+        padding: 6,
+    },
+    dateLabelContainer: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: 8,
+    },
+    dateLabelText: {
+        fontSize: 15,
+        fontWeight: '700',
+    },
+    todayBadge: {
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+    },
+    todayBadgeText: {
+        fontSize: 10,
+        fontWeight: '700',
+    },
+    todayShortcut: {
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+    },
+    todayShortcutText: {
+        fontSize: 12,
+        fontWeight: '700',
+    },
+
+    // MODAL STYLES
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        borderTopLeftRadius: Radii.xl,
+        borderTopRightRadius: Radii.xl,
+        borderTopWidth: 1,
+        borderLeftWidth: 1,
+        borderRightWidth: 1,
+        maxHeight: '80%',
+        minHeight: '40%',
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+    },
+    modalSubtitle: {
+        fontSize: 12,
+        marginTop: 2,
+    },
+    modalCloseBtn: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalListContent: {
+        padding: 20,
+        paddingBottom: 40,
+    },
+    bookingItem: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 12,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    bookingClientName: {
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    bookingSubText: {
+        fontSize: 13,
+        marginTop: 2,
+    },
+    bookingTimeText: {
+        fontSize: 13,
+        fontWeight: '600',
+        marginTop: 2,
+    },
+    typeBadgeText: {
+        color: '#fff',
+        fontSize: 10,
+        fontWeight: '700',
+    },
+    typeBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 4,
+    },
+    emptyContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 40,
+    },
+    emptyModalText: {
+        fontSize: 14,
+        fontStyle: 'italic',
+        textAlign: 'center',
+    },
 });

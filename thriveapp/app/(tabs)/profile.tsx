@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '../../config/firebaseConfig';
 import { signOut } from 'firebase/auth';
 import { useAuth } from '../../context/auth';
-import { getUserProfile, UserProfile } from '../../services/bookingService';
+import { getUserProfile, UserProfile, getUserBookings, Booking } from '../../services/bookingService';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii } from '@/constants/theme';
 import Constants from 'expo-constants';
+import { format } from 'date-fns';
 
 export default function ProfileScreen() {
     const router = useRouter();
@@ -19,6 +20,13 @@ export default function ProfileScreen() {
     const [loading, setLoading] = useState(true);
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
+
+    // Stats State
+    const [ptCount, setPtCount] = useState(0);
+    const [gymCount, setGymCount] = useState(0);
+    const [groupCount, setGroupCount] = useState(0);
+    const [nextSession, setNextSession] = useState<Booking | null>(null);
+    const [statsLoading, setStatsLoading] = useState(true);
 
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState<{
@@ -37,10 +45,38 @@ export default function ProfileScreen() {
         try {
             const p = await getUserProfile(user.uid);
             setProfile(p);
+            
+            if (p) {
+                setStatsLoading(true);
+                const bookings = await getUserBookings(user.uid);
+                const now = new Date();
+                
+                // Completed sessions (confirmed and in the past)
+                const completed = bookings.filter(b => b.startTime < now);
+                const pts = completed.filter(b => b.type === 'pt').length;
+                const gyms = completed.filter(b => b.type === 'gym').length;
+                const groups = completed.filter(b => b.type === 'group').length;
+                
+                setPtCount(pts);
+                setGymCount(gyms);
+                setGroupCount(groups);
+                
+                // Next upcoming confirmed session
+                const upcoming = bookings
+                    .filter(b => b.startTime >= now)
+                    .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+                
+                if (upcoming.length > 0) {
+                    setNextSession(upcoming[0]);
+                } else {
+                    setNextSession(null);
+                }
+            }
         } catch (error) {
             console.error('Error fetching profile data:', error);
         } finally {
             setLoading(false);
+            setStatsLoading(false);
         }
     };
 
@@ -78,6 +114,57 @@ export default function ProfileScreen() {
                                 <Text style={[styles.badgeText, { color: theme.text }]}>{profile?.role?.toUpperCase()}</Text>
                             </View>
                         </View>
+
+                        {profile?.role === 'client' && (
+                            <View style={styles.statsSection}>
+                                <Text style={[styles.sectionHeading, { color: theme.text }]}>Your Stats</Text>
+                                {statsLoading ? (
+                                    <ActivityIndicator size="small" color={theme.tint} style={{ marginVertical: 20 }} />
+                                ) : (
+                                    <>
+                                        <View style={styles.statsGrid}>
+                                            <View style={[styles.statBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                                <Ionicons name="body" size={20} color="#10b981" />
+                                                <Text style={[styles.statNumber, { color: theme.text }]}>{ptCount}</Text>
+                                                <Text style={[styles.statLabel, { color: theme.icon }]}>PT Sessions</Text>
+                                            </View>
+                                            <View style={[styles.statBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                                <Ionicons name="barbell" size={20} color={theme.tint} />
+                                                <Text style={[styles.statNumber, { color: theme.text }]}>{gymCount}</Text>
+                                                <Text style={[styles.statLabel, { color: theme.icon }]}>Gym Bookings</Text>
+                                            </View>
+                                            <View style={[styles.statBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                                <Ionicons name="people" size={20} color="#3b82f6" />
+                                                <Text style={[styles.statNumber, { color: theme.text }]}>{groupCount}</Text>
+                                                <Text style={[styles.statLabel, { color: theme.icon }]}>Group Classes</Text>
+                                            </View>
+                                        </View>
+
+                                        {nextSession && (
+                                            <View style={[styles.nextSessionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                                <View style={[styles.nextSessionIcon, { backgroundColor: theme.tint + '15' }]}>
+                                                    <Ionicons name="calendar" size={20} color={theme.tint} />
+                                                </View>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={[styles.nextSessionTitle, { color: theme.icon }]}>NEXT SESSION</Text>
+                                                    <Text style={[styles.nextSessionDate, { color: theme.text }]}>
+                                                        {format(nextSession.startTime, 'EEEE, d MMMM')}
+                                                    </Text>
+                                                    <Text style={[styles.nextSessionTime, { color: theme.text }]}>
+                                                        {format(nextSession.startTime, 'HH:mm')} - {format(nextSession.endTime, 'HH:mm')}
+                                                    </Text>
+                                                    <View style={{ alignSelf: 'flex-start', marginTop: 4 }}>
+                                                        <Text style={[styles.nextSessionType, { color: theme.tint }]}>
+                                                            {nextSession.type === 'pt' ? 'PT Session' : nextSession.type === 'group' ? 'Group Class' : 'Gym Session'}
+                                                        </Text>
+                                                    </View>
+                                                </View>
+                                            </View>
+                                        )}
+                                    </>
+                                )}
+                            </View>
+                        )}
 
                         <View style={styles.actionSection}>
                             <TouchableOpacity style={[styles.logoutButton, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]} onPress={handleLogout}>
@@ -188,5 +275,83 @@ const styles = StyleSheet.create({
         marginTop: 20,
         marginBottom: 10,
         fontWeight: '500',
+    },
+    statsSection: {
+        marginBottom: 30,
+    },
+    sectionHeading: {
+        fontSize: 20,
+        fontWeight: '700',
+        marginBottom: 16,
+        letterSpacing: -0.4,
+    },
+    statsGrid: {
+        flexDirection: 'row',
+        gap: 10,
+        marginBottom: 20,
+    },
+    statBox: {
+        flex: 1,
+        alignItems: 'center',
+        paddingVertical: 16,
+        paddingHorizontal: 8,
+        borderRadius: Radii.lg,
+        borderWidth: StyleSheet.hairlineWidth,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.02,
+        shadowRadius: 4,
+        elevation: 1,
+    },
+    statNumber: {
+        fontSize: 22,
+        fontWeight: '700',
+        marginVertical: 6,
+    },
+    statLabel: {
+        fontSize: 11,
+        fontWeight: '600',
+        textAlign: 'center',
+    },
+    nextSessionCard: {
+        flexDirection: 'row',
+        padding: 16,
+        borderRadius: Radii.xl,
+        borderWidth: StyleSheet.hairlineWidth,
+        alignItems: 'center',
+        gap: 16,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.03,
+        shadowRadius: 6,
+        elevation: 2,
+    },
+    nextSessionIcon: {
+        width: 44,
+        height: 44,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    nextSessionTitle: {
+        fontSize: 11,
+        fontWeight: '700',
+        letterSpacing: 1,
+        marginBottom: 2,
+    },
+    nextSessionDate: {
+        fontSize: 18,
+        fontWeight: '700',
+        letterSpacing: -0.3,
+    },
+    nextSessionTime: {
+        fontSize: 14,
+        marginTop: 2,
+        fontWeight: '500',
+    },
+    nextSessionType: {
+        fontSize: 12,
+        fontWeight: '700',
+        textTransform: 'uppercase',
     },
 });
