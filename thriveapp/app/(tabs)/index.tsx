@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator
 import { useAuth } from '../../context/auth';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getUserBookings, getPTBookingsForInstructor, getUserCancelledUpcomingBookings, getPTCancelledBookingsForInstructor, cancelBooking, cancelRecurringSeries, Booking, getUserProfile, UserProfile, getClientsForPt, createBooking } from '../../services/bookingService';
+import { getUserBookings, getPTBookingsForInstructor, getUserCancelledUpcomingBookings, getPTCancelledBookingsForInstructor, cancelBooking, cancelRecurringSeries, Booking, getUserProfile, UserProfile, getClientsForPt, createBooking, getPendingPTRequestsForPT } from '../../services/bookingService';
 import { getGroupById } from '../../services/groupService';
 import { getGlobalSettings, GlobalSettings } from '../../services/settingsService';
 import { format, isSameDay, isToday, isTomorrow } from 'date-fns';
@@ -54,6 +54,7 @@ export default function DashboardScreen() {
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [showCancelled, setShowCancelled] = useState(false);
   const [ptsClients, setPtsClients] = useState<UserProfile[]>([]);
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
   const [partnerModalVisible, setPartnerModalVisible] = useState(false);
   const [selectedBookingForPartner, setSelectedBookingForPartner] = useState<ExtendedBooking | null>(null);
   const [addingPartnerLoading, setAddingPartnerLoading] = useState(false);
@@ -86,6 +87,8 @@ export default function DashboardScreen() {
       if (profile?.role === 'pt' || profile?.role === 'admin') {
         const clients = await getClientsForPt(user.uid);
         setPtsClients(clients);
+        const pendingRequests = await getPendingPTRequestsForPT(user.uid);
+        setPendingRequestCount(pendingRequests.length);
       }
 
       const userBookings = await getUserBookings(user.uid);
@@ -414,6 +417,11 @@ export default function DashboardScreen() {
           >
             <View style={[styles.quickActionIcon, { backgroundColor: theme.tintMuted }]}>
               <Ionicons name="body-outline" size={20} color={theme.tint} />
+              {isPtOrAdmin && pendingRequestCount > 0 && (
+                <View style={[styles.quickActionBadge, { backgroundColor: theme.danger, borderColor: theme.card }]}>
+                  <Text style={styles.quickActionBadgeText}>{pendingRequestCount > 9 ? '9+' : pendingRequestCount}</Text>
+                </View>
+              )}
             </View>
             <Text style={[styles.quickActionLabel, { color: theme.text }]}>PT</Text>
           </TouchableOpacity>
@@ -736,6 +744,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.sm,
+  },
+  quickActionBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: Radii.pill,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  quickActionBadgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '700',
   },
   quickActionLabel: {
     ...Typography.footnote,

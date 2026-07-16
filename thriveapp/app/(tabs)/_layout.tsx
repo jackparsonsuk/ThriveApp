@@ -68,6 +68,7 @@ export default function TabLayout() {
           options={{
             title: 'Gym',
             tabBarIcon: ({ color }) => <Ionicons size={24} name="barbell" color={color} />,
+            href: null, // Reached via the dashboard's quick actions instead of a tab
           }}
         />
         <Tabs.Screen
@@ -76,6 +77,7 @@ export default function TabLayout() {
             title: 'PT',
             tabBarIcon: ({ color }) => <Ionicons size={24} name="body" color={color} />,
             tabBarBadge: (isAdminOrPt && pendingRequestCount > 0) ? pendingRequestCount : undefined,
+            href: null, // Reached via the dashboard's quick actions instead of a tab
           }}
         />
         <Tabs.Screen
@@ -83,6 +85,7 @@ export default function TabLayout() {
           options={{
             title: 'Groups',
             tabBarIcon: ({ color }) => <Ionicons size={24} name="people" color={color} />,
+            href: null, // Reached via the dashboard's quick actions instead of a tab
           }}
         />
 
