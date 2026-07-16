@@ -27,8 +27,13 @@ service cloud.firestore {
     match /users/{userId} {
       // Users can read their own profile; PTs and Admins can read all profiles; anyone can read PT or Admin profiles
       // (needed for PT code lookup which queries role in ['pt', 'admin']); clients can read their assigned PT's profile
-      allow read: if (resource.data.role in ['pt', 'admin']) ||
-                    (isSignedIn() && (request.auth.uid == userId || isPT() || isAdmin() || getUserData().get('assignedPtId', '') == userId));
+      allow read: if isSignedIn() && (
+        resource.data.role in ['pt', 'admin'] ||
+        request.auth.uid == userId ||
+        isPT() ||
+        isAdmin() ||
+        getUserData().get('assignedPtId', '') == userId
+      );
       
       // Users can create their own profile during signup (default role is 'client')
       allow create: if isSignedIn() && request.auth.uid == userId && request.resource.data.role == 'client';
@@ -126,11 +131,18 @@ service cloud.firestore {
       // PTs can create groups they own
       allow create: if isPT() && request.resource.data.ptId == request.auth.uid;
       
-      // PTs can update/delete their own groups. Users can update to join (add to memberIds).
+      // PTs can update/delete their own groups. Any user can update memberIds, but only
+      // to add or remove *themselves* - not to add/remove other users.
       allow update: if isSignedIn() && (
         (isPT() && resource.data.ptId == request.auth.uid) ||
         isAdmin() ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds'])
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds']) &&
+          (
+            request.resource.data.memberIds.toSet() == resource.data.memberIds.toSet().union([request.auth.uid].toSet()) ||
+            request.resource.data.memberIds.toSet() == resource.data.memberIds.toSet().difference([request.auth.uid].toSet())
+          )
+        )
       );
       
       allow delete: if (isPT() && resource.data.ptId == request.auth.uid) || isAdmin();
@@ -138,16 +150,31 @@ service cloud.firestore {
 
     // --- GROUP INVITES COLLECTION ---
     match /group_invites/{inviteId} {
-      // Anyone signed in can read invites
-      allow read: if isSignedIn();
-      
-      // PTs can create invites
-      allow create: if isPT();
-      
-      // Anyone can update (to accept/decline)
-      allow update: if isSignedIn();
-      
-      allow delete: if isPT() || isAdmin();
+      // The invited user (matched by email) can read their own invite;
+      // the owning PT and admins can read invites for their group
+      allow read: if isSignedIn() && (
+        resource.data.email == request.auth.token.email.lower() ||
+        isAdmin() ||
+        (isPT() && get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.ptId == request.auth.uid)
+      );
+
+      // PTs can create invites, but only for groups they own
+      allow create: if isPT() &&
+        get(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.ptId == request.auth.uid;
+
+      // Only the invited user (matched by email) can accept/decline their own invite
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (
+          resource.data.email == request.auth.token.email.lower() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+          request.resource.data.status in ['accepted', 'declined']
+        )
+      );
+
+      // Only the owning PT or an admin can delete/revoke an invite
+      allow delete: if isAdmin() ||
+        (isPT() && get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.ptId == request.auth.uid);
     }
 
     // --- SETTINGS COLLECTION ---
