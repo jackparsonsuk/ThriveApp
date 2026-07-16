@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import Head from 'expo-router/head';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../config/firebaseConfig';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii } from '@/constants/theme';
+import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
+import { Button } from '@/components/ui';
 
 export default function LoginScreen() {
     const [email, setEmail] = useState('');
@@ -70,7 +71,7 @@ export default function LoginScreen() {
                 <TextInput
                     style={[styles.input, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
                     placeholder="Email"
-                    placeholderTextColor={theme.icon}
+                    placeholderTextColor={theme.textTertiary}
                     value={email}
                     onChangeText={(v) => { setEmail(v); setErrorMessage(null); }}
                     autoCapitalize="none"
@@ -80,42 +81,32 @@ export default function LoginScreen() {
                 <TextInput
                     style={[styles.input, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
                     placeholder="Password"
-                    placeholderTextColor={theme.icon}
+                    placeholderTextColor={theme.textTertiary}
                     value={password}
                     onChangeText={(v) => { setPassword(v); setErrorMessage(null); }}
                     secureTextEntry
                 />
 
                 {errorMessage ? (
-                    <View style={styles.errorBox}>
-                        <Text style={styles.errorText}>{errorMessage}</Text>
+                    <View style={[styles.errorBox, { backgroundColor: theme.dangerMuted, borderColor: theme.danger }]}>
+                        <Text style={[styles.errorText, { color: theme.danger }]}>{errorMessage}</Text>
                     </View>
                 ) : null}
 
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: theme.tint }]}
-                    onPress={handleLogin}
-                    disabled={loading}
-                >
-                    {loading ? (
-                        <ActivityIndicator color="#fff" />
-                    ) : (
-                        <Text style={styles.buttonText}>Log In</Text>
-                    )}
-                </TouchableOpacity>
+                <Button variant="primary" label="Log In" onPress={handleLogin} loading={loading} style={{ marginTop: Spacing.sm }} />
 
                 <TouchableOpacity
                     style={styles.linkButton}
                     onPress={() => router.push('/signup')}
                 >
-                    <Text style={[styles.linkText, { color: theme.icon }]}>Don't have an account? Sign Up</Text>
+                    <Text style={[styles.linkText, { color: theme.textSecondary }]}>Don't have an account? Sign Up</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                     style={[styles.linkButton, { marginTop: 5 }]}
                     onPress={() => router.push('/forgot-password')}
                 >
-                    <Text style={[styles.linkText, { color: theme.icon }]}>Forgot your password?</Text>
+                    <Text style={[styles.linkText, { color: theme.textSecondary }]}>Forgot your password?</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -126,59 +117,42 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         justifyContent: 'center',
-        padding: 20,
+        padding: Spacing.xl,
     },
     logo: {
         width: 80,
         height: 80,
         alignSelf: 'center',
-        marginBottom: 20,
+        marginBottom: Spacing.xl,
     },
     title: {
-        fontSize: 34,
-        fontWeight: '700', // matches website typography
-        marginBottom: 40,
+        ...Typography.largeTitle,
+        marginBottom: Spacing.huge,
         textAlign: 'center',
-        letterSpacing: -0.5,
     },
     form: {
         gap: 15,
     },
     input: {
         borderWidth: StyleSheet.hairlineWidth,
-        padding: 16,
+        padding: Spacing.lg,
         borderRadius: Radii.md,
         fontSize: 16,
     },
-    button: {
-        padding: 16,
-        borderRadius: Radii.pill,
-        alignItems: 'center',
-        marginTop: 10,
-    },
-    buttonText: {
-        color: '#ffffff',
-        fontSize: 16,
-        fontWeight: '600',
-    },
     linkButton: {
-        marginTop: 15,
+        marginTop: Spacing.lg,
         alignItems: 'center',
     },
     linkText: {
-        fontSize: 14,
-        fontWeight: '500',
+        ...Typography.footnote,
     },
     errorBox: {
-        backgroundColor: 'rgba(220, 38, 38, 0.1)',
         borderWidth: 1,
-        borderColor: 'rgba(220, 38, 38, 0.4)',
         borderRadius: Radii.md,
-        padding: 12,
+        padding: Spacing.md,
     },
     errorText: {
-        color: '#dc2626',
-        fontSize: 14,
+        ...Typography.footnote,
         textAlign: 'center',
     },
 });

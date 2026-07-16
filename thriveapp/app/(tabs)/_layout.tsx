@@ -45,9 +45,10 @@ export default function TabLayout() {
           title: 'Thrive Collective',
           tabBarStyle: Platform.select({
             ios: {
-              // Use absolute position and transparent background on iOS for native blur effect
+              // Use absolute position and a theme-aware translucent background on iOS for a native blur look
               position: 'absolute',
-              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              backgroundColor: colorScheme === 'dark' ? 'rgba(28, 28, 30, 0.85)' : 'rgba(255, 255, 255, 0.85)',
+              borderTopColor: Colors[colorScheme].border,
             },
             default: {
               backgroundColor: Colors[colorScheme].card,

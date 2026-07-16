@@ -9,9 +9,17 @@ import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
 import { useRouter } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii } from '@/constants/theme';
+import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import { BOOKING_WINDOW_DAYS } from '@/constants/config';
 import { useMouseDragScroll } from '@/hooks/useMouseDragScroll';
+import { ScreenHeader, EmptyState, Badge, Button } from '@/components/ui';
+
+type BookingTypeBadgeProps = { type: string };
+const BookingTypeBadge = ({ type }: BookingTypeBadgeProps) => {
+    if (type === 'pt') return <Badge label="PT" tone="tint" />;
+    if (type === 'group') return <Badge label="GROUP" tone="info" />;
+    return <Badge label={type.toUpperCase()} tone="neutral" />;
+};
 
 // Operating hours
 const OPEN_HOUR = 7;
@@ -420,7 +428,7 @@ export default function AdminScreen() {
                                             <Text style={[styles.timeText, { color: theme.text }]}>{format(block.time, 'HH:mm')}</Text>
                                             {viewingToday && block.time <= now && blockEnd > now && (
                                                 <View style={{ backgroundColor: theme.tint, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                                    <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>NOW</Text>
+                                                    <Text style={{ color: theme.onTint, fontSize: 10, fontWeight: '700' }}>NOW</Text>
                                                 </View>
                                             )}
                                         </View>
@@ -433,7 +441,7 @@ export default function AdminScreen() {
                                             )
                                         ) : (
                                             <TouchableOpacity
-                                                style={[styles.blockedBadge, isPastSlot && { opacity: 0.7 }]}
+                                                style={[styles.blockedBadge, { backgroundColor: theme.dangerMuted, borderColor: theme.danger }, isPastSlot && { opacity: 0.7 }]}
                                                 onPress={() => {
                                                     if (isPastSlot) return;
                                                     const blockBooking = block.bookings.find((b: Booking) => b.type === 'block');
@@ -442,14 +450,14 @@ export default function AdminScreen() {
                                                     }
                                                 }}
                                             >
-                                                <Ionicons name="lock-open" size={14} color="#fff" />
-                                                <Text style={styles.blockedText}>{isPastSlot ? 'BLOCKED' : 'UNBLOCK'}</Text>
+                                                <Ionicons name="lock-open" size={14} color={theme.danger} />
+                                                <Text style={[styles.blockedText, { color: theme.danger }]}>{isPastSlot ? 'BLOCKED' : 'UNBLOCK'}</Text>
                                             </TouchableOpacity>
                                         )}
                                     </View>
                                     <View style={styles.attendeesList}>
                                         {block.bookings.length === 0 && !hasBlock && (
-                                            <Text style={[styles.emptyText, { color: theme.icon }]}>No one booked.</Text>
+                                            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No one booked.</Text>
                                         )}
                                         {(() => {
                                             const groupBlock = block.bookings.find((b: Booking) => b.type === 'block' && b.reason?.includes('Group Session'));
@@ -464,7 +472,7 @@ export default function AdminScreen() {
                                                         </View>
                                                         {!isPastSlot && (
                                                             <TouchableOpacity onPress={() => handleCancelBooking(groupBlock.id!, groupName)}>
-                                                                <Ionicons name="close-circle" size={24} color={theme.icon} />
+                                                                <Ionicons name="close-circle" size={24} color={theme.textSecondary} />
                                                             </TouchableOpacity>
                                                         )}
                                                     </View>
@@ -481,24 +489,21 @@ export default function AdminScreen() {
                                                             <View style={styles.badgeContainer}>
                                                                 {b.type === 'pt' ? (
                                                                     <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                                                                        <Text style={[styles.ptBadge, { backgroundColor: theme.tint }]}>PT Session</Text>
+                                                                        <Badge label="PT Session" tone="tint" />
                                                                         {(b as any).instructorName && (
-                                                                            <Text style={{ fontSize: 13, fontWeight: '500', color: theme.icon }}>
+                                                                            <Text style={{ fontSize: 13, fontWeight: '500', color: theme.textSecondary }}>
                                                                                 with {(b as any).instructorName}
                                                                             </Text>
                                                                         )}
                                                                     </View>
                                                                 ) : (
-                                                                    <>
-                                                                        <Text style={styles.typeBadge}>{b.type.toUpperCase()}</Text>
-                                                                        {b.type === 'group' && <Text style={styles.groupBadge}>Group</Text>}
-                                                                    </>
+                                                                    <BookingTypeBadge type={b.type} />
                                                                 )}
                                                             </View>
                                                         </View>
                                                         {!isPastSlot && (
                                                             <TouchableOpacity onPress={() => handleCancelBooking(b.id!, userName)}>
-                                                                <Ionicons name="close-circle" size={24} color={theme.icon} />
+                                                                <Ionicons name="close-circle" size={24} color={theme.textSecondary} />
                                                             </TouchableOpacity>
                                                         )}
                                                     </View>
@@ -563,13 +568,13 @@ export default function AdminScreen() {
                 
                 {/* Profile Detail Card */}
                 <View style={[styles.memberDetailCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                    <View style={[styles.avatar, { backgroundColor: theme.tint + '20', width: 60, height: 60, borderRadius: 30, marginBottom: 12, marginRight: 0 }]}>
+                    <View style={[styles.avatar, { backgroundColor: theme.tintMuted, width: 60, height: 60, borderRadius: 30, marginBottom: 12, marginRight: 0 }]}>
                         <Text style={[styles.avatarText, { color: theme.tint, fontSize: 24 }]}>{(selectedMember.name || selectedMember.email).charAt(0).toUpperCase()}</Text>
                     </View>
                     <Text style={[styles.memberName, { color: theme.text, fontSize: 20, marginBottom: 4 }]}>{selectedMember.name || 'No Name'}</Text>
-                    <Text style={[styles.memberEmail, { color: theme.icon, marginBottom: 12 }]}>{selectedMember.email}</Text>
-                    <View style={[styles.roleBadge, { backgroundColor: selectedMember.role === 'admin' ? '#ef4444' : selectedMember.role === 'pt' ? theme.tint : '#a3a3a3', marginBottom: 20 }]}>
-                        <Text style={styles.roleBadgeText}>{selectedMember.role.toUpperCase()}</Text>
+                    <Text style={[styles.memberEmail, { color: theme.textSecondary, marginBottom: 12 }]}>{selectedMember.email}</Text>
+                    <View style={[styles.roleBadge, { backgroundColor: selectedMember.role === 'admin' ? theme.danger : selectedMember.role === 'pt' ? theme.tint : theme.textTertiary, marginBottom: 20 }]}>
+                        <Text style={[styles.roleBadgeText, { color: theme.onTint }]}>{selectedMember.role.toUpperCase()}</Text>
                     </View>
                 </View>
 
@@ -579,7 +584,7 @@ export default function AdminScreen() {
                         <View style={styles.settingRow}>
                             <View style={styles.settingInfo}>
                                 <Text style={[styles.settingLabel, { color: theme.text }]}>Gym Access</Text>
-                                <Text style={[styles.settingDescription, { color: theme.icon }]}>Allow this client to independently book gym sessions.</Text>
+                                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>Allow this client to independently book gym sessions.</Text>
                             </View>
                             <Switch
                                 value={selectedMember.canBookGym ?? true}
@@ -604,15 +609,15 @@ export default function AdminScreen() {
                             <View style={styles.statsReportGrid}>
                                 <View style={[styles.statsReportCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                                     <Text style={[styles.statsReportValue, { color: theme.text }]}>{ptCount}</Text>
-                                    <Text style={[styles.statsReportLabel, { color: theme.icon }]}>PT Sessions</Text>
+                                    <Text style={[styles.statsReportLabel, { color: theme.textSecondary }]}>PT Sessions</Text>
                                 </View>
                                 <View style={[styles.statsReportCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                                     <Text style={[styles.statsReportValue, { color: theme.text }]}>{groupCount}</Text>
-                                    <Text style={[styles.statsReportLabel, { color: theme.icon }]}>Group Classes</Text>
+                                    <Text style={[styles.statsReportLabel, { color: theme.textSecondary }]}>Group Classes</Text>
                                 </View>
                                 <View style={[styles.statsReportCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                                     <Text style={[styles.statsReportValue, { color: theme.text }]}>{gymCount}</Text>
-                                    <Text style={[styles.statsReportLabel, { color: theme.icon }]}>Gym Bookings</Text>
+                                    <Text style={[styles.statsReportLabel, { color: theme.textSecondary }]}>Gym Bookings</Text>
                                 </View>
                             </View>
                         )}
@@ -620,7 +625,7 @@ export default function AdminScreen() {
                         {/* PT stats card */}
                         {(selectedMember.role === 'pt' || selectedMember.role === 'admin') && (
                             <View style={[styles.summaryCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                                <Text style={[styles.summaryTitle, { color: theme.icon }]}>Total Sessions Conducted</Text>
+                                <Text style={[styles.summaryTitle, { color: theme.textSecondary }]}>Total Sessions Conducted</Text>
                                 <Text style={[styles.summaryValue, { color: theme.text, fontSize: 28, marginTop: 4 }]}>
                                     {completed.length}
                                 </Text>
@@ -633,7 +638,7 @@ export default function AdminScreen() {
                                             {ptClientBreakdownList.map(([clientName, count]) => (
                                                 <View key={clientName} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                                     <Text style={{ fontSize: 13, fontWeight: '500', color: theme.text }}>{clientName}</Text>
-                                                    <View style={{ backgroundColor: theme.tint + '15', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 }}>
+                                                    <View style={{ backgroundColor: theme.tintMuted, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 }}>
                                                         <Text style={{ fontSize: 12, fontWeight: '700', color: theme.tint }}>{count} session{count !== 1 ? 's' : ''}</Text>
                                                     </View>
                                                 </View>
@@ -649,11 +654,11 @@ export default function AdminScreen() {
                             <View style={[styles.nextSessionReportCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                                 <Ionicons name="calendar" size={20} color={theme.tint} />
                                 <View style={{ flex: 1, marginLeft: 12 }}>
-                                    <Text style={{ fontSize: 10, fontWeight: '700', color: theme.icon, textTransform: 'uppercase' }}>Next Booking</Text>
+                                    <Text style={{ fontSize: 10, fontWeight: '700', color: theme.textSecondary, textTransform: 'uppercase' }}>Next Booking</Text>
                                     <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text, marginTop: 2 }}>
                                         {format(upcoming[0].startTime, 'EEEE, d MMMM')}
                                     </Text>
-                                    <Text style={{ fontSize: 13, color: theme.icon, marginTop: 2 }}>
+                                    <Text style={{ fontSize: 13, color: theme.textSecondary, marginTop: 2 }}>
                                         {format(upcoming[0].startTime, 'HH:mm')} - {format(upcoming[0].endTime, 'HH:mm')}
                                     </Text>
                                 </View>
@@ -666,9 +671,7 @@ export default function AdminScreen() {
                                 Past Sessions
                             </Text>
                             {completed.length === 0 ? (
-                                <Text style={{ color: theme.icon, fontStyle: 'italic', fontSize: 14 }}>
-                                    No completed sessions recorded.
-                                </Text>
+                                <EmptyState icon="time-outline" title="No completed sessions recorded." compact />
                             ) : (
                                 <View style={{ gap: 8 }}>
                                     {completed.slice(0, 10).map((b) => {
@@ -687,25 +690,16 @@ export default function AdminScreen() {
                                                     <Text style={[styles.historyClientName, { color: theme.text }]}>
                                                         {nameLabel}
                                                     </Text>
-                                                    <Text style={[styles.historyTime, { color: theme.icon }]}>
+                                                    <Text style={[styles.historyTime, { color: theme.textSecondary }]}>
                                                         {format(b.startTime, 'EEEE, d MMM')} · {format(b.startTime, 'HH:mm')}
                                                     </Text>
                                                 </View>
-                                                <View style={[
-                                                    styles.typeBadge,
-                                                    b.type === 'pt' ? { backgroundColor: theme.tint } :
-                                                    b.type === 'group' ? { backgroundColor: '#3b82f6' } :
-                                                    { backgroundColor: '#a3a3a3' }
-                                                ]}>
-                                                    <Text style={styles.typeBadgeText}>
-                                                        {b.type.toUpperCase()}
-                                                    </Text>
-                                                </View>
+                                                <BookingTypeBadge type={b.type} />
                                             </View>
                                         );
                                     })}
                                     {completed.length > 10 && (
-                                        <Text style={{ textAlign: 'center', fontSize: 13, color: theme.icon, marginTop: 8 }}>
+                                        <Text style={{ textAlign: 'center', fontSize: 13, color: theme.textSecondary, marginTop: 8 }}>
                                             Showing last 10 sessions.
                                         </Text>
                                     )}
@@ -723,11 +717,11 @@ export default function AdminScreen() {
         return (
         <View style={styles.membersContainer}>
             <View style={styles.searchBarContainer}>
-                <Ionicons name="search" size={20} color={theme.icon} style={styles.searchIcon} />
+                <Ionicons name="search" size={20} color={theme.textSecondary} style={styles.searchIcon} />
                 <TextInput
                     style={[styles.searchInput, { color: theme.text, backgroundColor: theme.card, borderColor: theme.border }]}
                     placeholder="Search members..."
-                    placeholderTextColor={theme.icon}
+                    placeholderTextColor={theme.textTertiary}
                     value={searchQuery}
                     onChangeText={setSearchQuery}
                 />
@@ -749,7 +743,7 @@ export default function AdminScreen() {
                             roleFilter === role && { backgroundColor: theme.tint, borderColor: theme.tint }
                         ]}
                     >
-                        <Text style={[styles.roleFilterText, { color: roleFilter === role ? '#fff' : theme.icon }]}>
+                        <Text style={[styles.roleFilterText, { color: roleFilter === role ? theme.onTint : theme.textSecondary }]}>
                             {role.charAt(0).toUpperCase() + role.slice(1)}s
                         </Text>
                     </TouchableOpacity>
@@ -769,22 +763,22 @@ export default function AdminScreen() {
                             style={[styles.memberCard, { backgroundColor: theme.card, borderColor: theme.border }]}
                             onPress={() => setSelectedMember(item)}
                         >
-                            <View style={[styles.avatar, { backgroundColor: theme.tint + '20' }]}>
+                            <View style={[styles.avatar, { backgroundColor: theme.tintMuted }]}>
                                 <Text style={[styles.avatarText, { color: theme.tint }]}>{(item.name || item.email).charAt(0).toUpperCase()}</Text>
                             </View>
                             <View style={styles.memberInfo}>
                                 <Text style={[styles.memberName, { color: theme.text }]}>{item.name || 'No Name'}</Text>
-                                <Text style={[styles.memberEmail, { color: theme.icon }]}>{item.email}</Text>
+                                <Text style={[styles.memberEmail, { color: theme.textSecondary }]}>{item.email}</Text>
                                 <View style={styles.memberBadgeContainer}>
-                                    <View style={[styles.roleBadge, { backgroundColor: item.role === 'admin' ? '#ef4444' : item.role === 'pt' ? theme.tint : '#a3a3a3' }]}>
-                                        <Text style={styles.roleBadgeText}>{item.role.toUpperCase()}</Text>
+                                    <View style={[styles.roleBadge, { backgroundColor: item.role === 'admin' ? theme.danger : item.role === 'pt' ? theme.tint : theme.textTertiary }]}>
+                                        <Text style={[styles.roleBadgeText, { color: theme.onTint }]}>{item.role.toUpperCase()}</Text>
                                     </View>
                                 </View>
                             </View>
-                            <Ionicons name="chevron-forward" size={20} color={theme.icon} />
+                            <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
                         </TouchableOpacity>
                     )}
-                    ListEmptyComponent={<Text style={[styles.emptyText, { textAlign: 'center', marginTop: 20 }]}>No members found.</Text>}
+                    ListEmptyComponent={<EmptyState icon="people-outline" title="No members found." compact />}
                     contentContainerStyle={{ paddingBottom: 20 }}
                     style={{ flex: 1 }}
                 />
@@ -804,21 +798,15 @@ export default function AdminScreen() {
                         <View style={styles.settingRow}>
                             <View style={styles.settingInfo}>
                                 <Text style={[styles.settingLabel, { color: theme.text }]}>Signup Code</Text>
-                                <Text style={[styles.settingDescription, { color: theme.icon }]}>
+                                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
                                     Required for new client registrations. Give this code to clients so they can sign up.
                                 </Text>
                             </View>
                             {!isEditingSignupCode && (
-                                <TouchableOpacity 
-                                    style={[styles.editButton, { borderColor: theme.border }]}
-                                    onPress={() => setIsEditingSignupCode(true)}
-                                >
-                                    <Ionicons name="pencil" size={14} color={theme.text} />
-                                    <Text style={[styles.editButtonText, { color: theme.text }]}>Edit</Text>
-                                </TouchableOpacity>
+                                <Button variant="secondary" size="sm" icon="pencil" label="Edit" onPress={() => setIsEditingSignupCode(true)} />
                             )}
                         </View>
-                        
+
                         {isEditingSignupCode ? (
                             <View style={styles.inputContainer}>
                                 <TextInput
@@ -826,38 +814,33 @@ export default function AdminScreen() {
                                     value={signupCode}
                                     onChangeText={setSignupCode}
                                     placeholder="Enter signup code"
-                                    placeholderTextColor={theme.icon}
+                                    placeholderTextColor={theme.textTertiary}
                                     autoCapitalize="none"
                                 />
-                                
-                                <TouchableOpacity 
-                                    style={[styles.cancelButton, { backgroundColor: theme.border }]}
+
+                                <Button
+                                    variant="secondary"
+                                    label="Cancel"
                                     onPress={() => {
                                         setIsEditingSignupCode(false);
                                         setSignupCode(globalSettings?.signupCode || '');
                                     }}
                                     disabled={savingCode}
-                                >
-                                    <Text style={[styles.cancelButtonText, { color: theme.text }]}>Cancel</Text>
-                                </TouchableOpacity>
+                                />
 
-                                <TouchableOpacity 
-                                    style={[styles.saveButton, { backgroundColor: theme.tint }]}
+                                <Button
+                                    variant="primary"
+                                    label="Save"
                                     onPress={async () => {
                                         await handleSaveSignupCode();
                                         setIsEditingSignupCode(false);
                                     }}
                                     disabled={savingCode || signupCode === globalSettings?.signupCode}
-                                >
-                                    {savingCode ? (
-                                        <ActivityIndicator size="small" color="#fff" />
-                                    ) : (
-                                        <Text style={styles.saveButtonText}>Save</Text>
-                                    )}
-                                </TouchableOpacity>
+                                    loading={savingCode}
+                                />
                             </View>
                         ) : (
-                            <View style={[styles.codeDisplayBox, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                            <View style={[styles.codeDisplayBox, { backgroundColor: theme.cardAlt, borderColor: theme.border }]}>
                                 <Text style={[styles.codeText, { color: theme.text }]}>
                                     {globalSettings?.signupCode || 'No code set'}
                                 </Text>
@@ -870,7 +853,7 @@ export default function AdminScreen() {
                         <View style={styles.settingRow}>
                             <View style={styles.settingInfo}>
                                 <Text style={[styles.settingLabel, { color: theme.text }]}>App Announcement</Text>
-                                <Text style={[styles.settingDescription, { color: theme.icon }]}>
+                                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
                                     A global message displayed as a banner on every user&apos;s dashboard.
                                 </Text>
                             </View>
@@ -880,29 +863,26 @@ export default function AdminScreen() {
                                 trackColor={{ false: theme.border, true: theme.tint }}
                             />
                         </View>
-                        
+
                         <View style={[styles.inputContainer, { marginTop: 10 }]}>
                             <TextInput
                                 style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text, minHeight: 80, textAlignVertical: 'top' }]}
                                 value={announcementText}
                                 onChangeText={setAnnouncementText}
                                 placeholder="E.g., Gym closed for maintenance this Friday."
-                                placeholderTextColor={theme.icon}
+                                placeholderTextColor={theme.textTertiary}
                                 multiline
                             />
                         </View>
-                        
-                        <TouchableOpacity 
-                            style={[styles.saveButton, { backgroundColor: theme.tint, marginTop: 15, alignSelf: 'flex-start' }]}
+
+                        <Button
+                            variant="primary"
+                            label="Save Announcement"
                             onPress={handleSaveAnnouncement}
                             disabled={savingAnnouncement || announcementText === (globalSettings?.announcementText || '')}
-                        >
-                            {savingAnnouncement ? (
-                                <ActivityIndicator size="small" color="#fff" />
-                            ) : (
-                                <Text style={styles.saveButtonText}>Save Announcement</Text>
-                            )}
-                        </TouchableOpacity>
+                            loading={savingAnnouncement}
+                            style={{ marginTop: 15, alignSelf: 'flex-start' }}
+                        />
                     </View>
                 </View>
             )}
@@ -991,7 +971,7 @@ export default function AdminScreen() {
                                 ]}
                                 onPress={() => setHistoryPtFilter('all')}
                             >
-                                <Text style={[styles.ptChipText, { color: historyPtFilter === 'all' ? '#fff' : theme.icon }]}>
+                                <Text style={[styles.ptChipText, { color: historyPtFilter === 'all' ? theme.onTint : theme.textSecondary }]}>
                                     All Trainers
                                 </Text>
                             </TouchableOpacity>
@@ -1005,7 +985,7 @@ export default function AdminScreen() {
                                     ]}
                                     onPress={() => setHistoryPtFilter(pt.id)}
                                 >
-                                    <Text style={[styles.ptChipText, { color: historyPtFilter === pt.id ? '#fff' : theme.icon }]}>
+                                    <Text style={[styles.ptChipText, { color: historyPtFilter === pt.id ? theme.onTint : theme.textSecondary }]}>
                                         {pt.name || pt.email}
                                     </Text>
                                 </TouchableOpacity>
@@ -1016,11 +996,11 @@ export default function AdminScreen() {
 
                 {/* Client Search */}
                 <View style={styles.searchBarContainer}>
-                    <Ionicons name="search" size={18} color={theme.icon} style={styles.searchIcon} />
+                    <Ionicons name="search" size={18} color={theme.textSecondary} style={styles.searchIcon} />
                     <TextInput
                         style={[styles.searchInput, { color: theme.text, backgroundColor: theme.card, borderColor: theme.border }]}
                         placeholder="Filter by client..."
-                        placeholderTextColor={theme.icon}
+                        placeholderTextColor={theme.textTertiary}
                         value={historySearchQuery}
                         onChangeText={setHistorySearchQuery}
                     />
@@ -1037,18 +1017,18 @@ export default function AdminScreen() {
                                 {/* Summary Card */}
                                 <View style={[styles.summaryCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                                     <View style={styles.summaryHeader}>
-                                        <Text style={[styles.summaryTitle, { color: theme.icon }]}>Completed Sessions</Text>
+                                        <Text style={[styles.summaryTitle, { color: theme.textSecondary }]}>Completed Sessions</Text>
                                         <Text style={[styles.summaryValue, { color: theme.text }]}>{totalCount}</Text>
                                     </View>
                                     <View style={[styles.summaryDivider, { backgroundColor: theme.border }]} />
                                     <View style={styles.summaryBreakdown}>
-                                        <Text style={[styles.summaryBreakdownText, { color: theme.icon }]}>
+                                        <Text style={[styles.summaryBreakdownText, { color: theme.textSecondary }]}>
                                             PT: <Text style={{ color: theme.text, fontWeight: '700' }}>{ptCount}</Text>
                                         </Text>
-                                        <Text style={[styles.summaryBreakdownText, { color: theme.icon }]}>
+                                        <Text style={[styles.summaryBreakdownText, { color: theme.textSecondary }]}>
                                             Group: <Text style={{ color: theme.text, fontWeight: '700' }}>{groupCount}</Text>
                                         </Text>
-                                        <Text style={[styles.summaryBreakdownText, { color: theme.icon }]}>
+                                        <Text style={[styles.summaryBreakdownText, { color: theme.textSecondary }]}>
                                             Gym: <Text style={{ color: theme.text, fontWeight: '700' }}>{gymCount}</Text>
                                         </Text>
                                     </View>
@@ -1062,7 +1042,7 @@ export default function AdminScreen() {
                                                 {clientBreakdownList.map(([clientName, breakdownData]) => (
                                                     <View key={clientName} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                                         <Text style={{ fontSize: 13, fontWeight: '500', color: theme.text }}>{clientName}</Text>
-                                                        <View style={{ backgroundColor: theme.tint + '15', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 }}>
+                                                        <View style={{ backgroundColor: theme.tintMuted, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 }}>
                                                             <Text style={{ fontSize: 12, fontWeight: '700', color: theme.tint }}>{breakdownData.count} session{breakdownData.count !== 1 ? 's' : ''}</Text>
                                                         </View>
                                                     </View>
@@ -1079,35 +1059,19 @@ export default function AdminScreen() {
                                     <Text style={[styles.historyClientName, { color: theme.text }]}>
                                         {item.clientName}
                                     </Text>
-                                    <Text style={[styles.historyTime, { color: theme.icon }]}>
+                                    <Text style={[styles.historyTime, { color: theme.textSecondary }]}>
                                         {format(item.startTime, 'EEEE, d MMM')} · {format(item.startTime, 'HH:mm')} - {format(item.endTime, 'HH:mm')}
                                     </Text>
                                     {userRole === 'admin' && (
-                                        <Text style={[styles.historyInstructor, { color: theme.icon }]}>
+                                        <Text style={[styles.historyInstructor, { color: theme.textSecondary }]}>
                                             Trainer: {item.instructorName}
                                         </Text>
                                     )}
                                 </View>
-                                <View style={[
-                                    styles.typeBadge, 
-                                    item.type === 'pt' ? { backgroundColor: theme.tint } : 
-                                    item.type === 'group' ? { backgroundColor: '#3b82f6' } : 
-                                    { backgroundColor: '#a3a3a3' }
-                                ]}>
-                                    <Text style={styles.typeBadgeText}>
-                                        {item.type.toUpperCase()}
-                                    </Text>
-                                </View>
+                                <BookingTypeBadge type={item.type} />
                             </View>
                         )}
-                        ListEmptyComponent={
-                            <View style={{ alignItems: 'center', marginTop: 40 }}>
-                                <Ionicons name="calendar-outline" size={48} color={theme.icon} style={{ opacity: 0.3, marginBottom: 12 }} />
-                                <Text style={{ color: theme.icon, fontStyle: 'italic', textAlign: 'center' }}>
-                                    No completed bookings found.
-                                </Text>
-                            </View>
-                        }
+                        ListEmptyComponent={<EmptyState icon="calendar-outline" title="No completed bookings found." />}
                         contentContainerStyle={{ paddingBottom: 40 }}
                     />
                 )}
@@ -1121,42 +1085,36 @@ export default function AdminScreen() {
                 <View style={styles.headerTop}>
                     <Text style={[styles.title, { color: theme.text }]}>Admin Panel</Text>
                     {userRole === 'admin' && (
-                        <TouchableOpacity 
-                            style={[styles.analyticsBtn, { backgroundColor: theme.tint }]}
-                            onPress={() => router.push('/analytics')}
-                        >
-                            <Ionicons name="stats-chart" size={18} color="#fff" />
-                            <Text style={styles.analyticsBtnText}>Analytics</Text>
-                        </TouchableOpacity>
+                        <Button variant="primary" size="sm" icon="stats-chart" label="Analytics" onPress={() => router.push('/analytics')} />
                     )}
                 </View>
-                
+
                 <View style={styles.tabContainer}>
-                    <TouchableOpacity 
+                    <TouchableOpacity
                         onPress={() => setActiveTab('schedule')}
                         style={[styles.tab, activeTab === 'schedule' && { borderBottomColor: theme.tint }]}
                     >
-                        <Text style={[styles.tabText, { color: activeTab === 'schedule' ? theme.text : theme.icon }]}>Schedule</Text>
+                        <Text style={[styles.tabText, { color: activeTab === 'schedule' ? theme.text : theme.textSecondary }]}>Schedule</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity 
+                    <TouchableOpacity
                         onPress={() => setActiveTab('history')}
                         style={[styles.tab, activeTab === 'history' && { borderBottomColor: theme.tint }]}
                     >
-                        <Text style={[styles.tabText, { color: activeTab === 'history' ? theme.text : theme.icon }]}>History</Text>
+                        <Text style={[styles.tabText, { color: activeTab === 'history' ? theme.text : theme.textSecondary }]}>History</Text>
                     </TouchableOpacity>
                     {userRole === 'admin' && (
                         <>
-                            <TouchableOpacity 
+                            <TouchableOpacity
                                 onPress={() => setActiveTab('members')}
                                 style={[styles.tab, activeTab === 'members' && { borderBottomColor: theme.tint }]}
                             >
-                                <Text style={[styles.tabText, { color: activeTab === 'members' ? theme.text : theme.icon }]}>Members</Text>
+                                <Text style={[styles.tabText, { color: activeTab === 'members' ? theme.text : theme.textSecondary }]}>Members</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity 
+                            <TouchableOpacity
                                 onPress={() => setActiveTab('settings')}
                                 style={[styles.tab, activeTab === 'settings' && { borderBottomColor: theme.tint }]}
                             >
-                                <Text style={[styles.tabText, { color: activeTab === 'settings' ? theme.text : theme.icon }]}>Settings</Text>
+                                <Text style={[styles.tabText, { color: activeTab === 'settings' ? theme.text : theme.textSecondary }]}>Settings</Text>
                             </TouchableOpacity>
                         </>
                     )}
@@ -1195,17 +1153,17 @@ export default function AdminScreen() {
                             const isSelected = selectedDate.getTime() === date.getTime();
                             return (
                                 <TouchableOpacity
-                                    style={[styles.dateCard, { backgroundColor: isSelected ? theme.tint : 'transparent' }, isSelected && styles.dateCardSelected]}
+                                    style={[styles.dateCard, { backgroundColor: isSelected ? theme.tint : 'transparent' }, isSelected && { ...styles.dateCardSelected, shadowColor: theme.tint }]}
                                     onPress={() => setSelectedDate(date)}
                                 >
-                                    <Text style={[styles.dayText, { color: isSelected ? '#fff' : theme.icon }]}>{format(date, 'EEE')}</Text>
-                                    <Text style={[styles.dateText, { color: isSelected ? '#fff' : theme.text }]}>{format(date, 'd')}</Text>
+                                    <Text style={[styles.dayText, { color: isSelected ? theme.onTint : theme.textSecondary }]}>{format(date, 'EEE')}</Text>
+                                    <Text style={[styles.dateText, { color: isSelected ? theme.onTint : theme.text }]}>{format(date, 'd')}</Text>
                                 </TouchableOpacity>
                             );
                         }}
                     />
                     <View style={styles.durationPickerRow}>
-                        <Text style={[styles.durationPickerLabel, { color: theme.icon }]}>Block duration:</Text>
+                        <Text style={[styles.durationPickerLabel, { color: theme.textSecondary }]}>Block duration:</Text>
                         {([15, 30, 60] as const).map((d) => {
                             const isActive = adminBlockDuration === d;
                             const label = d === 60 ? '1 hr' : `${d}m`;
@@ -1215,7 +1173,7 @@ export default function AdminScreen() {
                                     style={[styles.durationChip, { borderColor: theme.border }, isActive && { backgroundColor: theme.tint, borderColor: theme.tint }]}
                                     onPress={() => setAdminBlockDuration(d)}
                                 >
-                                    <Text style={[styles.durationChipText, { color: isActive ? '#fff' : theme.icon }]}>{label}</Text>
+                                    <Text style={[styles.durationChipText, { color: isActive ? theme.onTint : theme.textSecondary }]}>{label}</Text>
                                 </TouchableOpacity>
                             );
                         })}
@@ -1246,9 +1204,7 @@ const styles = StyleSheet.create({
     container: { flex: 1 },
     header: { paddingHorizontal: 20, paddingTop: 10, borderBottomWidth: StyleSheet.hairlineWidth },
     headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-    title: { fontSize: 34, fontWeight: '700', letterSpacing: -0.5 },
-    analyticsBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: Radii.pill, gap: 6 },
-    analyticsBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+    title: { ...Typography.largeTitle },
     tabContainer: { flexDirection: 'row', gap: 20 },
     tab: { paddingVertical: 10, borderBottomWidth: 3, borderBottomColor: 'transparent' },
     tabText: { fontSize: 16, fontWeight: '700' },
@@ -1260,7 +1216,7 @@ const styles = StyleSheet.create({
     durationChipText: { fontSize: 13, fontWeight: '600' },
     dateSelector: { paddingHorizontal: 15, paddingVertical: 12, gap: 8 },
     dateCard: { paddingVertical: 10, paddingHorizontal: 8, borderRadius: Radii.pill, alignItems: 'center', minWidth: 54 },
-    dateCardSelected: { shadowColor: '#F26122', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+    dateCardSelected: { shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
     dayText: { fontSize: 11, textTransform: 'uppercase', fontWeight: '600', marginBottom: 4 },
     dateText: { fontSize: 20, fontWeight: '500' },
     scheduleContainer: { padding: 16, paddingBottom: 40 },
@@ -1269,17 +1225,14 @@ const styles = StyleSheet.create({
     timeText: { fontSize: 18, fontWeight: '700', letterSpacing: -0.4 },
     blockBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radii.pill, borderWidth: 1 },
     blockBtnText: { fontSize: 13, fontWeight: '700', marginLeft: 6, textTransform: 'uppercase' },
-    blockedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(239, 68, 68, 0.2)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999, borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.5)' },
-    blockedText: { color: '#ef4444', fontSize: 12, fontWeight: '700', marginLeft: 4 },
+    blockedBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999, borderWidth: 1 },
+    blockedText: { fontSize: 12, fontWeight: '700', marginLeft: 4 },
     attendeesList: { padding: 10 },
     emptyText: { fontStyle: 'italic', padding: 10 },
     attendeeCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderBottomWidth: StyleSheet.hairlineWidth },
     attendeeInfo: { flex: 1 },
     attendeeName: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
     badgeContainer: { flexDirection: 'row', gap: 6 },
-    typeBadge: { fontSize: 10, fontWeight: '700', color: '#1a1a1a', backgroundColor: '#a3a3a3', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-    ptBadge: { fontSize: 10, fontWeight: '700', color: '#ffffff', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-    groupBadge: { fontSize: 10, fontWeight: '700', color: '#ffffff', backgroundColor: '#3b82f6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
     membersContainer: { flex: 1, padding: 16 },
     searchBarContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
     searchIcon: { position: 'absolute', left: 12, zIndex: 1 },
@@ -1296,7 +1249,7 @@ const styles = StyleSheet.create({
     memberEmail: { fontSize: 14, marginBottom: 4 },
     memberBadgeContainer: { flexDirection: 'row' },
     roleBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
-    roleBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+    roleBadgeText: { fontSize: 10, fontWeight: '700' },
     settingsContainer: { flex: 1, padding: 16 },
     settingsSection: { marginBottom: 30 },
     sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12, marginLeft: 4 },
@@ -1307,13 +1260,7 @@ const styles = StyleSheet.create({
     settingDescription: { fontSize: 13 },
     inputContainer: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     input: { flex: 1, borderWidth: StyleSheet.hairlineWidth, borderRadius: Radii.md, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16 },
-    saveButton: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: Radii.md, justifyContent: 'center', alignItems: 'center', minWidth: 80 },
-    saveButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
-    editButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radii.pill, borderWidth: StyleSheet.hairlineWidth },
-    editButtonText: { fontSize: 13, fontWeight: '600' },
-    cancelButton: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: Radii.md, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent', borderWidth: StyleSheet.hairlineWidth },
-    cancelButtonText: { fontSize: 14, fontWeight: '600' },
-    codeDisplayBox: { padding: 16, borderRadius: Radii.md, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.02)' },
+    codeDisplayBox: { padding: 16, borderRadius: Radii.md, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
     codeText: { fontSize: 24, fontWeight: '700', letterSpacing: 2 },
     backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 4 },
     backText: { fontSize: 16, fontWeight: '600' },

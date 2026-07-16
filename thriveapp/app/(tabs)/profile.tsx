@@ -9,9 +9,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii } from '@/constants/theme';
+import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import Constants from 'expo-constants';
 import { format } from 'date-fns';
+import { ScreenHeader, Card, SectionHeader, Badge, Button, StatBox } from '@/components/ui';
 
 export default function ProfileScreen() {
     const router = useRouter();
@@ -45,27 +46,27 @@ export default function ProfileScreen() {
         try {
             const p = await getUserProfile(user.uid);
             setProfile(p);
-            
+
             if (p) {
                 setStatsLoading(true);
                 const bookings = await getUserBookings(user.uid);
                 const now = new Date();
-                
+
                 // Completed sessions (confirmed and in the past)
                 const completed = bookings.filter(b => b.startTime < now);
                 const pts = completed.filter(b => b.type === 'pt').length;
                 const gyms = completed.filter(b => b.type === 'gym').length;
                 const groups = completed.filter(b => b.type === 'group').length;
-                
+
                 setPtCount(pts);
                 setGymCount(gyms);
                 setGroupCount(groups);
-                
+
                 // Next upcoming confirmed session
                 const upcoming = bookings
                     .filter(b => b.startTime >= now)
                     .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
-                
+
                 if (upcoming.length > 0) {
                     setNextSession(upcoming[0]);
                 } else {
@@ -95,58 +96,42 @@ export default function ProfileScreen() {
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-            <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-                <Text style={[styles.title, { color: theme.text }]}>Profile</Text>
-            </View>
-
             <ScrollView contentContainerStyle={styles.content}>
+                <ScreenHeader title="Profile" />
+
                 {loading ? (
                     <ActivityIndicator size="large" color={theme.tint} />
                 ) : (
                     <>
-                        <View style={[styles.infoCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                            <View style={styles.avatarCircle}>
-                                <Ionicons name="person" size={40} color="#fff" />
+                        <Card elevated style={styles.infoCard}>
+                            <View style={[styles.avatarCircle, { backgroundColor: theme.tint }]}>
+                                <Ionicons name="person" size={40} color={theme.onTint} />
                             </View>
                             <Text style={[styles.nameText, { color: theme.text }]}>{profile?.name}</Text>
-                            <Text style={[styles.emailText, { color: theme.icon }]}>{profile?.email}</Text>
-                            <View style={[styles.badge, { backgroundColor: theme.border }]}>
-                                <Text style={[styles.badgeText, { color: theme.text }]}>{profile?.role?.toUpperCase()}</Text>
-                            </View>
-                        </View>
+                            <Text style={[styles.emailText, { color: theme.textSecondary }]}>{profile?.email}</Text>
+                            <Badge label={profile?.role?.toUpperCase() ?? ''} tone="tint" uppercase />
+                        </Card>
 
                         {profile?.role === 'client' && (
                             <View style={styles.statsSection}>
-                                <Text style={[styles.sectionHeading, { color: theme.text }]}>Your Stats</Text>
+                                <SectionHeader title="Your Stats" />
                                 {statsLoading ? (
                                     <ActivityIndicator size="small" color={theme.tint} style={{ marginVertical: 20 }} />
                                 ) : (
                                     <>
                                         <View style={styles.statsGrid}>
-                                            <View style={[styles.statBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                                                <Ionicons name="body" size={20} color="#10b981" />
-                                                <Text style={[styles.statNumber, { color: theme.text }]}>{ptCount}</Text>
-                                                <Text style={[styles.statLabel, { color: theme.icon }]}>PT Sessions</Text>
-                                            </View>
-                                            <View style={[styles.statBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                                                <Ionicons name="barbell" size={20} color={theme.tint} />
-                                                <Text style={[styles.statNumber, { color: theme.text }]}>{gymCount}</Text>
-                                                <Text style={[styles.statLabel, { color: theme.icon }]}>Gym Bookings</Text>
-                                            </View>
-                                            <View style={[styles.statBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                                                <Ionicons name="people" size={20} color="#3b82f6" />
-                                                <Text style={[styles.statNumber, { color: theme.text }]}>{groupCount}</Text>
-                                                <Text style={[styles.statLabel, { color: theme.icon }]}>Group Classes</Text>
-                                            </View>
+                                            <StatBox icon="body" iconColor={theme.success} value={ptCount} label="PT Sessions" />
+                                            <StatBox icon="barbell" iconColor={theme.tint} value={gymCount} label="Gym Bookings" />
+                                            <StatBox icon="people" iconColor={theme.info} value={groupCount} label="Group Classes" />
                                         </View>
 
                                         {nextSession && (
-                                            <View style={[styles.nextSessionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                                                <View style={[styles.nextSessionIcon, { backgroundColor: theme.tint + '15' }]}>
+                                            <Card style={styles.nextSessionCard}>
+                                                <View style={[styles.nextSessionIcon, { backgroundColor: theme.tintMuted }]}>
                                                     <Ionicons name="calendar" size={20} color={theme.tint} />
                                                 </View>
                                                 <View style={{ flex: 1 }}>
-                                                    <Text style={[styles.nextSessionTitle, { color: theme.icon }]}>NEXT SESSION</Text>
+                                                    <Text style={[styles.nextSessionTitle, { color: theme.textSecondary }]}>NEXT SESSION</Text>
                                                     <Text style={[styles.nextSessionDate, { color: theme.text }]}>
                                                         {format(nextSession.startTime, 'EEEE, d MMMM')}
                                                     </Text>
@@ -159,7 +144,7 @@ export default function ProfileScreen() {
                                                         </Text>
                                                     </View>
                                                 </View>
-                                            </View>
+                                            </Card>
                                         )}
                                     </>
                                 )}
@@ -167,15 +152,12 @@ export default function ProfileScreen() {
                         )}
 
                         <View style={styles.actionSection}>
-                            <TouchableOpacity style={[styles.logoutButton, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]} onPress={handleLogout}>
-                                <Ionicons name="log-out-outline" size={20} color="#ef4444" style={{ marginRight: 8 }} />
-                                <Text style={styles.logoutButtonText}>Log Out</Text>
-                            </TouchableOpacity>
+                            <Button variant="destructive" icon="log-out-outline" label="Log Out" onPress={handleLogout} />
                         </View>
 
                         <View style={{ flex: 1, justifyContent: 'flex-end', marginTop: 40 }}>
                             <TouchableOpacity onPress={() => router.push('/changelog')}>
-                                <Text style={[styles.versionText, { color: theme.icon }]}>Version {Constants.expoConfig?.version} · Made by Jack · https://www.jackweb.design/</Text>
+                                <Text style={[styles.versionText, { color: theme.textTertiary }]}>Version {Constants.expoConfig?.version} · Made by Jack · https://www.jackweb.design/</Text>
                             </TouchableOpacity>
                         </View>
                     </>
@@ -197,161 +179,75 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    header: {
-        paddingHorizontal: 20,
-        paddingTop: 10,
-        paddingBottom: 20,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-    },
-    title: {
-        fontSize: 34,
-        fontWeight: '700',
-        letterSpacing: -0.5,
-    },
     content: {
         flexGrow: 1,
-        padding: 20,
+        padding: Spacing.xl,
     },
     infoCard: {
         alignItems: 'center',
-        padding: 30,
-        borderRadius: Radii.xl,
-        borderWidth: StyleSheet.hairlineWidth,
-        marginBottom: 30,
-        // Optional subtle shadow
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.05,
-        shadowRadius: 10,
-        elevation: 2,
+        paddingVertical: Spacing.xxl + 6,
+        marginBottom: Spacing.xxl,
     },
     avatarCircle: {
         width: 80,
         height: 80,
         borderRadius: Radii.pill,
-        backgroundColor: '#F26122', // True Thrive Orange
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 15,
+        marginBottom: Spacing.lg,
     },
     nameText: {
-        fontSize: 24,
-        fontWeight: '700',
-        marginBottom: 6,
-        letterSpacing: -0.5,
+        ...Typography.title1,
+        marginBottom: Spacing.xs + 2,
     },
     emailText: {
-        fontSize: 16,
-        marginBottom: 16,
-    },
-    badge: {
-        paddingHorizontal: 16,
-        paddingVertical: 6,
-        borderRadius: Radii.pill,
-    },
-    badgeText: {
-        fontSize: 13,
-        fontWeight: '600',
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
+        ...Typography.body,
+        marginBottom: Spacing.lg,
     },
     actionSection: {
-        marginTop: 10,
-    },
-    logoutButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 16,
-        borderRadius: Radii.pill,
-    },
-    logoutButtonText: {
-        color: '#ef4444',
-        fontWeight: '600',
-        fontSize: 16,
+        marginTop: Spacing.sm,
     },
     versionText: {
         textAlign: 'center',
-        fontSize: 13,
-        marginTop: 20,
-        marginBottom: 10,
-        fontWeight: '500',
+        ...Typography.footnote,
+        marginTop: Spacing.xl,
+        marginBottom: Spacing.md,
     },
     statsSection: {
-        marginBottom: 30,
-    },
-    sectionHeading: {
-        fontSize: 20,
-        fontWeight: '700',
-        marginBottom: 16,
-        letterSpacing: -0.4,
+        marginBottom: Spacing.xxl,
     },
     statsGrid: {
         flexDirection: 'row',
-        gap: 10,
-        marginBottom: 20,
-    },
-    statBox: {
-        flex: 1,
-        alignItems: 'center',
-        paddingVertical: 16,
-        paddingHorizontal: 8,
-        borderRadius: Radii.lg,
-        borderWidth: StyleSheet.hairlineWidth,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.02,
-        shadowRadius: 4,
-        elevation: 1,
-    },
-    statNumber: {
-        fontSize: 22,
-        fontWeight: '700',
-        marginVertical: 6,
-    },
-    statLabel: {
-        fontSize: 11,
-        fontWeight: '600',
-        textAlign: 'center',
+        gap: Spacing.sm,
+        marginBottom: Spacing.xl,
     },
     nextSessionCard: {
         flexDirection: 'row',
-        padding: 16,
-        borderRadius: Radii.xl,
-        borderWidth: StyleSheet.hairlineWidth,
         alignItems: 'center',
-        gap: 16,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.03,
-        shadowRadius: 6,
-        elevation: 2,
+        gap: Spacing.lg,
     },
     nextSessionIcon: {
         width: 44,
         height: 44,
-        borderRadius: 12,
+        borderRadius: Radii.md,
         justifyContent: 'center',
         alignItems: 'center',
     },
     nextSessionTitle: {
-        fontSize: 11,
-        fontWeight: '700',
+        ...Typography.caption2,
         letterSpacing: 1,
         marginBottom: 2,
     },
     nextSessionDate: {
+        ...Typography.headline,
         fontSize: 18,
-        fontWeight: '700',
-        letterSpacing: -0.3,
     },
     nextSessionTime: {
-        fontSize: 14,
+        ...Typography.subhead,
         marginTop: 2,
-        fontWeight: '500',
     },
     nextSessionType: {
-        fontSize: 12,
-        fontWeight: '700',
+        ...Typography.caption,
         textTransform: 'uppercase',
     },
 });

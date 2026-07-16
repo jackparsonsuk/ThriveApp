@@ -1,9 +1,10 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import Head from 'expo-router/head';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii } from '@/constants/theme';
+import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
+import { Button } from '@/components/ui';
 
 export default function ForgotPasswordSuccessScreen() {
     const router = useRouter();
@@ -27,19 +28,14 @@ export default function ForgotPasswordSuccessScreen() {
                     We've sent a password reset link to your email address.
                 </Text>
 
-                <View style={[styles.alertBox, { backgroundColor: 'rgba(242, 97, 34, 0.1)', borderColor: 'rgba(242, 97, 34, 0.3)' }]}>
+                <View style={[styles.alertBox, { backgroundColor: theme.tintMuted, borderColor: theme.tint }]}>
                     <Text style={[styles.alertTitle, { color: theme.tint }]}>Didn't receive it?</Text>
                     <Text style={[styles.alertText, { color: theme.tint }]}>
                         Please check your spam folder or promotions tab. It may take a few minutes to arrive.
                     </Text>
                 </View>
 
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: theme.tint }]}
-                    onPress={() => router.push('/(auth)/login')}
-                >
-                    <Text style={styles.buttonText}>Return to Log In</Text>
-                </TouchableOpacity>
+                <Button variant="primary" label="Return to Log In" onPress={() => router.push('/(auth)/login')} />
             </View>
         </View>
     );
@@ -49,55 +45,42 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         justifyContent: 'center',
-        padding: 20,
+        padding: Spacing.xl,
     },
     logo: {
         width: 80,
         height: 80,
         alignSelf: 'center',
-        marginBottom: 20,
+        marginBottom: Spacing.xl,
     },
     title: {
-        fontSize: 34,
-        fontWeight: '700',
-        marginBottom: 30,
+        ...Typography.largeTitle,
+        marginBottom: Spacing.xxl + 6,
         textAlign: 'center',
-        letterSpacing: -0.5,
     },
     content: {
-        gap: 20,
+        gap: Spacing.xl,
     },
     message: {
-        fontSize: 16,
+        ...Typography.body,
         textAlign: 'center',
         lineHeight: 24,
     },
     alertBox: {
         borderWidth: StyleSheet.hairlineWidth,
         borderRadius: Radii.lg,
-        padding: 20,
-        marginTop: 10,
-        marginBottom: 10,
+        padding: Spacing.xl,
+        marginTop: Spacing.sm,
+        marginBottom: Spacing.sm,
     },
     alertTitle: {
-        fontSize: 16,
+        ...Typography.bodyMedium,
         fontWeight: '700',
-        marginBottom: 8,
+        marginBottom: Spacing.sm,
     },
     alertText: {
-        fontSize: 14,
+        ...Typography.footnote,
         lineHeight: 20,
         opacity: 0.9,
-    },
-    button: {
-        padding: 16,
-        borderRadius: Radii.pill,
-        alignItems: 'center',
-        marginTop: 10,
-    },
-    buttonText: {
-        color: '#ffffff',
-        fontSize: 16,
-        fontWeight: '600',
     },
 });

@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import Head from 'expo-router/head';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../../config/firebaseConfig';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii } from '@/constants/theme';
+import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
+import { Button } from '@/components/ui';
 
 export default function ForgotPasswordScreen() {
     const [email, setEmail] = useState('');
@@ -44,7 +45,7 @@ export default function ForgotPasswordScreen() {
             />
             <Text style={[styles.title, { color: theme.text }]}>Reset Password</Text>
 
-            <Text style={[styles.subtitle, { color: theme.text }]}>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
                 Enter your email address and we'll send you a link to reset your password.
             </Text>
 
@@ -52,30 +53,20 @@ export default function ForgotPasswordScreen() {
                 <TextInput
                     style={[styles.input, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
                     placeholder="Email"
-                    placeholderTextColor={theme.icon}
+                    placeholderTextColor={theme.textTertiary}
                     value={email}
                     onChangeText={setEmail}
                     autoCapitalize="none"
                     keyboardType="email-address"
                 />
 
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: theme.tint }]}
-                    onPress={handleResetPassword}
-                    disabled={loading}
-                >
-                    {loading ? (
-                        <ActivityIndicator color="#fff" />
-                    ) : (
-                        <Text style={styles.buttonText}>Send Reset Link</Text>
-                    )}
-                </TouchableOpacity>
+                <Button variant="primary" label="Send Reset Link" onPress={handleResetPassword} loading={loading} style={{ marginTop: Spacing.sm }} />
 
                 <TouchableOpacity
                     style={styles.linkButton}
                     onPress={() => router.back()}
                 >
-                    <Text style={[styles.linkText, { color: theme.icon }]}>Back to Log In</Text>
+                    <Text style={[styles.linkText, { color: theme.textSecondary }]}>Back to Log In</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -86,53 +77,39 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         justifyContent: 'center',
-        padding: 20,
+        padding: Spacing.xl,
     },
     logo: {
         width: 80,
         height: 80,
         alignSelf: 'center',
-        marginBottom: 20,
+        marginBottom: Spacing.xl,
     },
     title: {
-        fontSize: 34,
-        fontWeight: '700',
-        marginBottom: 10,
+        ...Typography.largeTitle,
+        marginBottom: Spacing.md,
         textAlign: 'center',
-        letterSpacing: -0.5,
     },
     subtitle: {
-        fontSize: 16,
+        ...Typography.body,
         textAlign: 'center',
-        marginBottom: 40,
-        paddingHorizontal: 20,
+        marginBottom: Spacing.huge,
+        paddingHorizontal: Spacing.xl,
     },
     form: {
         gap: 15,
     },
     input: {
         borderWidth: StyleSheet.hairlineWidth,
-        padding: 16,
+        padding: Spacing.lg,
         borderRadius: Radii.md,
         fontSize: 16,
     },
-    button: {
-        padding: 16,
-        borderRadius: Radii.pill,
-        alignItems: 'center',
-        marginTop: 10,
-    },
-    buttonText: {
-        color: '#ffffff',
-        fontSize: 16,
-        fontWeight: '600',
-    },
     linkButton: {
-        marginTop: 15,
+        marginTop: Spacing.lg,
         alignItems: 'center',
     },
     linkText: {
-        fontSize: 14,
-        fontWeight: '500',
+        ...Typography.footnote,
     },
 });

@@ -34,18 +34,18 @@ export default function UpdateBanner({ latestVersion }: UpdateBannerProps) {
     };
 
     return (
-        <View style={[styles.banner, { backgroundColor: '#F26122', borderColor: '#D95217' }]}>
+        <View style={[styles.banner, { backgroundColor: theme.tint, borderColor: 'rgba(0,0,0,0.15)' }]}>
             <View style={styles.content}>
-                <Ionicons name="refresh-circle-outline" size={24} color="#ffffff" style={styles.icon} />
+                <Ionicons name="refresh-circle-outline" size={24} color={theme.onTint} style={styles.icon} />
                 <View style={styles.textContainer}>
                     <Text style={styles.title}>New Update Available</Text>
                     <Text style={styles.subtitle}>Version {latestVersion} is now live with new features.</Text>
                 </View>
-                <TouchableOpacity 
-                    style={styles.button}
+                <TouchableOpacity
+                    style={[styles.button, { backgroundColor: theme.onTint }]}
                     onPress={handleRefresh}
                 >
-                    <Text style={[styles.buttonText, { color: '#F26122' }]}>
+                    <Text style={[styles.buttonText, { color: theme.tint }]}>
                         {Platform.OS === 'web' ? 'Refresh Now' : 'Got it'}
                     </Text>
                 </TouchableOpacity>
@@ -89,7 +89,6 @@ const styles = StyleSheet.create({
         marginTop: 1,
     },
     button: {
-        backgroundColor: '#ffffff',
         paddingHorizontal: 14,
         paddingVertical: 8,
         borderRadius: Radii.pill,

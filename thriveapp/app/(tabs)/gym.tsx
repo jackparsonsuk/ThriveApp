@@ -8,9 +8,10 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii } from '@/constants/theme';
+import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import { BOOKING_WINDOW_DAYS } from '@/constants/config';
 import { useMouseDragScroll } from '@/hooks/useMouseDragScroll';
+import { ScreenHeader, EmptyState } from '@/components/ui';
 
 const GYM_OPEN_HOUR = 7;
 const GYM_CLOSE_HOUR = 20;
@@ -84,10 +85,10 @@ export default function GymBookingScreen() {
         const index = dates.findIndex(d => d.getTime() === selectedDate.getTime());
         if (index !== -1 && (index > 0 || hasInitialScrolled)) {
             const timer = setTimeout(() => {
-                flatListRef.current?.scrollToIndex({ 
-                    index, 
-                    animated: true, 
-                    viewPosition: 0.5 
+                flatListRef.current?.scrollToIndex({
+                    index,
+                    animated: true,
+                    viewPosition: 0.5
                 });
                 setHasInitialScrolled(true);
             }, 100);
@@ -130,10 +131,10 @@ export default function GymBookingScreen() {
                         } else if (names.length > 1) {
                             baseName = `PT Session with ${names[0]} and ${names[1]}`;
                         }
-                        
+
                         const isPending = sessions.some(s => s.status === 'pending');
                         const reason = isPending ? `${baseName} (Pending)` : baseName;
-                        
+
                         // Push one block representing the group
                         bookingsForDay.push({ ...sessions[0], type: 'block', reason });
                     });
@@ -191,7 +192,7 @@ export default function GymBookingScreen() {
                 const ptSessionEnd = addMinutes(currentTime, 60);
                 const ptConflict = ptBookingsForDay.some(b => b.startTime < ptSessionEnd && b.endTime > currentTime);
                 const ptAvailable = !ptConflict;
-                
+
                 // PT is occupied exactly at this 15 minute slot (to distinguish from simply not having a full 60min window)
                 const targetSlotEnd = addMinutes(currentTime, 15);
                 const ptOccupied = ptBookingsForDay.some(b => b.startTime < targetSlotEnd && b.endTime > currentTime);
@@ -369,12 +370,11 @@ export default function GymBookingScreen() {
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-            <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-                <Text style={[styles.title, { color: theme.text }]}>Gym Session</Text>
-                <Text style={styles.subtitle}>Select a date and time to train</Text>
+            <View style={styles.headerContainer}>
+                <ScreenHeader title="Gym Session" subtitle="Select a date and time to train" />
             </View>
 
-            <View 
+            <View
                 style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }, isGated && { display: 'none' }]}
                 {...dragProps}
             >
@@ -407,14 +407,14 @@ export default function GymBookingScreen() {
                                 style={[
                                     styles.dateCard,
                                     { backgroundColor: isSelected ? theme.tint : 'transparent' },
-                                    isSelected && styles.dateCardSelected,
+                                    isSelected && { ...styles.dateCardSelected, shadowColor: theme.tint },
                                 ]}
                                 onPress={() => setSelectedDate(date)}
                             >
-                                <Text style={[styles.dayText, { color: isSelected ? '#fff' : theme.icon }]}>
+                                <Text style={[styles.dayText, { color: isSelected ? theme.onTint : theme.textSecondary }]}>
                                     {format(date, 'EEE')}
                                 </Text>
-                                <Text style={[styles.dateText, { color: isSelected ? '#fff' : theme.text }]}>
+                                <Text style={[styles.dateText, { color: isSelected ? theme.onTint : theme.text }]}>
                                     {format(date, 'd')}
                                 </Text>
                             </TouchableOpacity>
@@ -425,9 +425,11 @@ export default function GymBookingScreen() {
 
             {isGated ? (
                 <View style={styles.gatedContainer}>
-                    <Ionicons name="lock-closed-outline" size={48} color={theme.icon} />
-                    <Text style={[styles.gatedText, { color: theme.text }]}>Gym Access Required</Text>
-                    <Text style={[styles.gatedSubText, { color: theme.icon }]}>Contact your PT to gain access or book a session.</Text>
+                    <EmptyState
+                        icon="lock-closed-outline"
+                        title="Gym Access Required"
+                        subtitle="Contact your PT to gain access or book a session."
+                    />
                 </View>
             ) : null}
 
@@ -435,7 +437,7 @@ export default function GymBookingScreen() {
                 {loading || profileLoading ? (
                     <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
                 ) : availableSlots.length === 0 ? (
-                    <Text style={[styles.noSlotsText, { color: theme.icon }]}>No more slots available for this day.</Text>
+                    <Text style={[styles.noSlotsText, { color: theme.textSecondary }]}>No more slots available for this day.</Text>
                 ) : (
                     <View style={[styles.slotsList, { backgroundColor: theme.card, borderColor: theme.border }]}>
                         {availableSlots.map((slot, index) => {
@@ -452,12 +454,12 @@ export default function GymBookingScreen() {
 
                             let outlineStyle: any = {};
                             if (hasGroup) {
-                                const bookingColors: Record<string, string> = { 
-                                    pt_block: theme.tint, 
-                                    pt: '#10B981', 
-                                    gym: '#3B82F6', 
-                                    group: '#8B5CF6', 
-                                    block: '#64748B' 
+                                const bookingColors: Record<string, string> = {
+                                    pt_block: theme.tint,
+                                    pt: theme.success,
+                                    gym: theme.info,
+                                    group: '#8B5CF6',
+                                    block: theme.textTertiary
                                 };
                                 const groupColor = bookingColors[slot.conflictBookingType ?? ''] || theme.tint;
 
@@ -468,14 +470,14 @@ export default function GymBookingScreen() {
                                 };
                                 if (isFirstInBlock) {
                                     outlineStyle.borderTopWidth = 2;
-                                    outlineStyle.borderTopLeftRadius = 8;
-                                    outlineStyle.borderTopRightRadius = 8;
+                                    outlineStyle.borderTopLeftRadius = Radii.sm;
+                                    outlineStyle.borderTopRightRadius = Radii.sm;
                                     outlineStyle.marginTop = 4;
                                 }
                                 if (isLastInBlock) {
                                     outlineStyle.borderBottomWidth = 2;
-                                    outlineStyle.borderBottomLeftRadius = 8;
-                                    outlineStyle.borderBottomRightRadius = 8;
+                                    outlineStyle.borderBottomLeftRadius = Radii.sm;
+                                    outlineStyle.borderBottomRightRadius = Radii.sm;
                                     outlineStyle.marginBottom = 4;
                                 }
                             }
@@ -485,7 +487,7 @@ export default function GymBookingScreen() {
                                     <TouchableOpacity
                                         style={[
                                             styles.slotRow,
-                                            !slot.available && styles.slotRowUnavailable,
+                                            !slot.available && { backgroundColor: theme.cardAlt, opacity: 0.7 },
                                             outlineStyle
                                         ]}
                                         disabled={!slot.available || bookingLoading}
@@ -494,7 +496,7 @@ export default function GymBookingScreen() {
                                         <View style={styles.slotTimeContainer}>
                                             <Text style={[
                                                 styles.slotTime,
-                                                { color: slot.available ? theme.text : theme.icon },
+                                                { color: slot.available ? theme.text : theme.textSecondary },
                                                 !slot.available && styles.slotTextUnavailable
                                             ]}>
                                                 {format(slot.time, 'HH:mm')}
@@ -509,18 +511,18 @@ export default function GymBookingScreen() {
                                                     </Text>
                                                     <View style={styles.slotRightInfo}>
                                                         {!slot.ptAvailable && hasPt && (
-                                                            <Text style={[styles.ptBusyBadge, { color: theme.icon }]}>
+                                                            <Text style={[styles.ptBusyBadge, { color: theme.textSecondary }]}>
                                                                 {slot.ptOccupied ? 'PT Busy' : 'PT < 1hr Free'}
                                                             </Text>
                                                         )}
-                                                        <Text style={[styles.slotAttendees, { color: theme.icon }]}>
+                                                        <Text style={[styles.slotAttendees, { color: theme.textSecondary }]}>
                                                             {slot.attendees} / 4 Booked
                                                         </Text>
                                                     </View>
                                                 </>
                                             ) : (
                                                 <>
-                                                    <Text style={[styles.slotFullText, { color: slot.conflictType === 'Full' ? '#FF3B30' : theme.icon }]}>
+                                                    <Text style={[styles.slotFullText, { color: slot.conflictType === 'Full' ? theme.danger : theme.textSecondary }]}>
                                                         {slot.conflictType || 'Full'}
                                                     </Text>
                                                 </>
@@ -529,7 +531,7 @@ export default function GymBookingScreen() {
 
                                         <View style={styles.slotChevron}>
                                             {slot.available && (
-                                                <Ionicons name="chevron-forward" size={20} color={theme.icon} opacity={0.5} />
+                                                <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} opacity={0.5} />
                                             )}
                                         </View>
                                     </TouchableOpacity>
@@ -564,56 +566,41 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    header: {
-        paddingHorizontal: 20,
-        paddingTop: 10,
-        paddingBottom: 20,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-    },
-    title: {
-        fontSize: 34,
-        fontWeight: '700', // iOS large title weight
-        letterSpacing: -0.5,
-    },
-    subtitle: {
-        fontSize: 15,
-        color: '#8E8E93',
-        marginTop: 4,
+    headerContainer: {
+        paddingHorizontal: Spacing.xl,
+        paddingTop: Spacing.sm,
     },
     dateSelectorContainer: {
         borderBottomWidth: StyleSheet.hairlineWidth,
     },
     monthLabel: {
-        fontSize: 14,
+        ...Typography.footnote,
         fontWeight: '600',
-        paddingHorizontal: 20,
-        paddingTop: 10,
+        paddingHorizontal: Spacing.xl,
+        paddingTop: Spacing.sm,
         paddingBottom: 2,
     },
     dateSelector: {
         paddingHorizontal: 15,
-        paddingVertical: 12,
-        gap: 8,
+        paddingVertical: Spacing.md,
+        gap: Spacing.sm,
     },
     dateCard: {
-        paddingVertical: 10,
-        paddingHorizontal: 8,
+        paddingVertical: Spacing.sm + 2,
+        paddingHorizontal: Spacing.sm,
         borderRadius: Radii.pill,
         alignItems: 'center',
         minWidth: 54,
     },
     dateCardSelected: {
-        // Shadow for the selected pill
-        shadowColor: '#F26122',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,
         elevation: 4,
     },
     dayText: {
-        fontSize: 11,
+        ...Typography.caption2,
         textTransform: 'uppercase',
-        fontWeight: '600',
         marginBottom: 4,
     },
     dateText: {
@@ -621,7 +608,7 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     slotsContainer: {
-        padding: 16,
+        padding: Spacing.lg,
         paddingBottom: 40,
     },
     slotsList: {
@@ -633,19 +620,13 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         paddingVertical: 14,
-        paddingHorizontal: 16,
-    },
-    slotRowUnavailable: {
-        opacity: 0.6,
-        backgroundColor: 'rgba(0,0,0,0.02)', // Subtle highlight for disabled inside light card
+        paddingHorizontal: Spacing.lg,
     },
     slotTimeContainer: {
         width: 70,
     },
     slotTime: {
-        fontSize: 17,
-        fontWeight: '600',
-        letterSpacing: -0.4,
+        ...Typography.headline,
     },
     slotTextUnavailable: {
         textDecorationLine: 'line-through',
@@ -655,20 +636,20 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingRight: 10,
+        paddingRight: Spacing.sm,
     },
     slotDuration: {
-        fontSize: 15,
+        ...Typography.subhead,
         fontWeight: '600',
     },
     slotAttendees: {
-        fontSize: 14,
+        ...Typography.footnote,
         fontWeight: '400',
     },
     slotRightInfo: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
+        gap: Spacing.sm,
     },
     ptBusyBadge: {
         fontSize: 12,
@@ -676,8 +657,7 @@ const styles = StyleSheet.create({
         opacity: 0.6,
     },
     slotFullText: {
-        fontSize: 15,
-        fontWeight: '500',
+        ...Typography.subhead,
     },
     slotChevron: {
         width: 20,
@@ -685,30 +665,17 @@ const styles = StyleSheet.create({
     },
     separator: {
         height: StyleSheet.hairlineWidth,
-        marginLeft: 16, // iOS style inset separator
+        marginLeft: Spacing.lg,
     },
     noSlotsText: {
         textAlign: 'center',
-        fontSize: 16,
+        ...Typography.body,
         marginTop: 50,
     },
     gatedContainer: {
         flex: 1,
-        alignItems: 'center',
         justifyContent: 'center',
-        padding: 40,
-        marginTop: 60,
-    },
-    gatedText: {
-        fontSize: 20,
-        fontWeight: '700',
-        marginTop: 16,
-        marginBottom: 8,
-        textAlign: 'center',
-    },
-    gatedSubText: {
-        fontSize: 15,
-        textAlign: 'center',
-        lineHeight: 22,
+        padding: Spacing.xl,
+        marginTop: 20,
     },
 });

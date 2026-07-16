@@ -1,5 +1,7 @@
 import React from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 
 interface ActionAlertProps {
     visible: boolean;
@@ -26,7 +28,12 @@ export default function CustomAlert({
     cancelText = 'Cancel',
     isDestructive = false
 }: ActionAlertProps) {
+    const colorScheme = useColorScheme() ?? 'light';
+    const theme = Colors[colorScheme];
+
     if (!visible) return null;
+
+    const actionColor = isDestructive ? theme.danger : theme.tint;
 
     return (
         <Modal
@@ -35,10 +42,10 @@ export default function CustomAlert({
             visible={visible}
             onRequestClose={onClose}
         >
-            <View style={styles.overlay}>
-                <View style={styles.alertBox}>
-                    <Text style={styles.title}>{title}</Text>
-                    <Text style={styles.message}>{message}</Text>
+            <View style={[styles.overlay, { backgroundColor: theme.overlay }]}>
+                <View style={[styles.alertBox, { backgroundColor: theme.card }]}>
+                    <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
+                    <Text style={[styles.message, { color: theme.textSecondary }]}>{message}</Text>
 
                     <View style={styles.actionsWrapper}>
                         {onConfirm ? (
@@ -46,7 +53,7 @@ export default function CustomAlert({
                                 // 3 Options - Stacked Vertically
                                 <View style={styles.buttonContainerVertical}>
                                     <TouchableOpacity
-                                        style={[styles.button, styles.buttonVertical, isDestructive ? styles.destructiveButton : styles.confirmButton]}
+                                        style={[styles.button, styles.buttonVertical, { backgroundColor: actionColor }]}
                                         onPress={() => {
                                             onClose();
                                             onConfirm();
@@ -55,7 +62,7 @@ export default function CustomAlert({
                                         <Text style={styles.confirmText}>{confirmText}</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
-                                        style={[styles.button, styles.buttonVertical, isDestructive ? styles.destructiveButton : styles.confirmButton]}
+                                        style={[styles.button, styles.buttonVertical, { backgroundColor: actionColor }]}
                                         onPress={() => {
                                             onClose();
                                             onSecondaryConfirm();
@@ -63,18 +70,24 @@ export default function CustomAlert({
                                     >
                                         <Text style={styles.confirmText}>{secondaryConfirmText}</Text>
                                     </TouchableOpacity>
-                                    <TouchableOpacity style={[styles.button, styles.buttonVertical, styles.cancelButton]} onPress={onClose}>
-                                        <Text style={styles.cancelText}>{cancelText}</Text>
+                                    <TouchableOpacity
+                                        style={[styles.button, styles.buttonVertical, { backgroundColor: theme.cardAlt, borderColor: theme.border, borderWidth: StyleSheet.hairlineWidth }]}
+                                        onPress={onClose}
+                                    >
+                                        <Text style={[styles.cancelText, { color: theme.textSecondary }]}>{cancelText}</Text>
                                     </TouchableOpacity>
                                 </View>
                             ) : (
                                 // 2 Options - Side by Side
                                 <View style={styles.buttonContainerHorizontal}>
-                                    <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={onClose}>
-                                        <Text style={styles.cancelText}>{cancelText}</Text>
+                                    <TouchableOpacity
+                                        style={[styles.button, { backgroundColor: theme.cardAlt, borderColor: theme.border, borderWidth: StyleSheet.hairlineWidth }]}
+                                        onPress={onClose}
+                                    >
+                                        <Text style={[styles.cancelText, { color: theme.textSecondary }]}>{cancelText}</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
-                                        style={[styles.button, isDestructive ? styles.destructiveButton : styles.confirmButton]}
+                                        style={[styles.button, { backgroundColor: actionColor }]}
                                         onPress={() => {
                                             onClose();
                                             onConfirm();
@@ -87,7 +100,7 @@ export default function CustomAlert({
                         ) : (
                             // 1 Option
                             <View style={styles.buttonContainerHorizontal}>
-                                <TouchableOpacity style={[styles.button, styles.confirmButton]} onPress={onClose}>
+                                <TouchableOpacity style={[styles.button, { backgroundColor: theme.tint }]} onPress={onClose}>
                                     <Text style={styles.confirmText}>OK</Text>
                                 </TouchableOpacity>
                             </View>
@@ -102,39 +115,34 @@ export default function CustomAlert({
 const styles = StyleSheet.create({
     overlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
         justifyContent: 'center',
         alignItems: 'center',
         // Add padding to handle web rendering correctly
-        padding: 20
+        padding: Spacing.xl,
     },
     alertBox: {
         width: Platform.OS === 'web' ? 400 : '90%',
         maxWidth: '100%',
-        backgroundColor: '#fff',
-        borderRadius: 12,
-        padding: 20,
+        borderRadius: Radii.xl,
+        padding: Spacing.xl,
         shadowColor: '#000',
         shadowOffset: {
             width: 0,
-            height: 2,
+            height: 4,
         },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
-        elevation: 5,
+        shadowOpacity: 0.2,
+        shadowRadius: 16,
+        elevation: 8,
     },
     title: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: '#333',
-        marginBottom: 10,
+        ...Typography.title2,
+        marginBottom: Spacing.sm,
         textAlign: 'center',
     },
     message: {
-        fontSize: 16,
-        color: '#666',
+        ...Typography.body,
         textAlign: 'center',
-        marginBottom: 25,
+        marginBottom: Spacing.xxl,
         lineHeight: 22,
     },
     actionsWrapper: {
@@ -143,18 +151,18 @@ const styles = StyleSheet.create({
     buttonContainerHorizontal: {
         flexDirection: 'row',
         justifyContent: 'center',
-        gap: 12,
+        gap: Spacing.md,
     },
     buttonContainerVertical: {
         flexDirection: 'column',
         justifyContent: 'center',
-        gap: 12,
+        gap: Spacing.md,
     },
     button: {
         flex: 1,
-        paddingVertical: 14,
-        paddingHorizontal: 15,
-        borderRadius: 10,
+        paddingVertical: Spacing.md + 2,
+        paddingHorizontal: Spacing.lg,
+        borderRadius: Radii.md,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -162,25 +170,11 @@ const styles = StyleSheet.create({
         flex: 0,
         width: '100%',
     },
-    cancelButton: {
-        backgroundColor: '#f5f5f5',
-        borderWidth: 1,
-        borderColor: '#ddd',
-    },
-    confirmButton: {
-        backgroundColor: '#F26122', // Thrive Orange
-    },
-    destructiveButton: {
-        backgroundColor: '#e53935', // Red
-    },
     cancelText: {
-        color: '#666',
-        fontSize: 16,
-        fontWeight: 'bold',
+        ...Typography.headline,
     },
     confirmText: {
+        ...Typography.headline,
         color: '#fff',
-        fontSize: 16,
-        fontWeight: 'bold',
     },
 });

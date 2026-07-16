@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import Head from 'expo-router/head';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { setDoc, doc } from 'firebase/firestore';
 import { auth, db } from '../../config/firebaseConfig';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii } from '@/constants/theme';
+import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import { getGlobalSettings } from '../../services/settingsService';
 import { getAllPTs, assignClientToPt } from '../../services/bookingService';
+import { Button } from '@/components/ui';
 
 export default function SignUpScreen() {
     const [name, setName] = useState('');
@@ -30,7 +31,7 @@ export default function SignUpScreen() {
         try {
             setLoading(true);
             setCodeError('');
-            
+
             const trimmedCode = signupCode.trim();
 
             // Validate code before creating account — settings and PT profiles are publicly readable
@@ -91,7 +92,7 @@ export default function SignUpScreen() {
                 <TextInput
                     style={[styles.input, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
                     placeholder="Full Name"
-                    placeholderTextColor={theme.icon}
+                    placeholderTextColor={theme.textTertiary}
                     value={name}
                     onChangeText={setName}
                     autoCapitalize="words"
@@ -100,7 +101,7 @@ export default function SignUpScreen() {
                 <TextInput
                     style={[styles.input, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
                     placeholder="Email"
-                    placeholderTextColor={theme.icon}
+                    placeholderTextColor={theme.textTertiary}
                     value={email}
                     onChangeText={setEmail}
                     autoCapitalize="none"
@@ -110,7 +111,7 @@ export default function SignUpScreen() {
                 <TextInput
                     style={[styles.input, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
                     placeholder="Password"
-                    placeholderTextColor={theme.icon}
+                    placeholderTextColor={theme.textTertiary}
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
@@ -119,11 +120,11 @@ export default function SignUpScreen() {
                 <View>
                     <TextInput
                         style={[
-                            styles.input, 
-                            { backgroundColor: theme.card, borderColor: codeError ? '#ef4444' : theme.border, color: theme.text }
+                            styles.input,
+                            { backgroundColor: theme.card, borderColor: codeError ? theme.danger : theme.border, color: theme.text }
                         ]}
                         placeholder="Signup Code"
-                        placeholderTextColor={theme.icon}
+                        placeholderTextColor={theme.textTertiary}
                         value={signupCode}
                         onChangeText={(text) => {
                             setSignupCode(text);
@@ -132,27 +133,17 @@ export default function SignUpScreen() {
                         autoCapitalize="none"
                     />
                     {codeError ? (
-                        <Text style={styles.errorText}>{codeError}</Text>
+                        <Text style={[styles.errorText, { color: theme.danger }]}>{codeError}</Text>
                     ) : null}
                 </View>
 
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: theme.tint }]}
-                    onPress={handleSignUp}
-                    disabled={loading}
-                >
-                    {loading ? (
-                        <ActivityIndicator color="#fff" />
-                    ) : (
-                        <Text style={styles.buttonText}>Sign Up</Text>
-                    )}
-                </TouchableOpacity>
+                <Button variant="primary" label="Sign Up" onPress={handleSignUp} loading={loading} style={{ marginTop: Spacing.sm }} />
 
                 <TouchableOpacity
                     style={styles.linkButton}
                     onPress={() => router.back()}
                 >
-                    <Text style={[styles.linkText, { color: theme.icon }]}>Already have an account? Log In</Text>
+                    <Text style={[styles.linkText, { color: theme.textSecondary }]}>Already have an account? Log In</Text>
                 </TouchableOpacity>
             </View>
         </ScrollView>
@@ -163,51 +154,36 @@ const styles = StyleSheet.create({
     container: {
         flexGrow: 1,
         justifyContent: 'center',
-        padding: 20,
+        padding: Spacing.xl,
     },
     logo: {
         width: 80,
         height: 80,
         alignSelf: 'center',
-        marginBottom: 20,
+        marginBottom: Spacing.xl,
     },
     title: {
-        fontSize: 34,
-        fontWeight: '700', // matches website typography
-        marginBottom: 40,
+        ...Typography.largeTitle,
+        marginBottom: Spacing.huge,
         textAlign: 'center',
-        letterSpacing: -0.5,
     },
     form: {
         gap: 15,
     },
     input: {
         borderWidth: StyleSheet.hairlineWidth,
-        padding: 16,
+        padding: Spacing.lg,
         borderRadius: Radii.md,
         fontSize: 16,
     },
-    button: {
-        padding: 16,
-        borderRadius: Radii.pill,
-        alignItems: 'center',
-        marginTop: 10,
-    },
-    buttonText: {
-        color: '#ffffff',
-        fontSize: 16,
-        fontWeight: '600',
-    },
     linkButton: {
-        marginTop: 15,
+        marginTop: Spacing.lg,
         alignItems: 'center',
     },
     linkText: {
-        fontSize: 14,
-        fontWeight: '500',
+        ...Typography.footnote,
     },
     errorText: {
-        color: '#ef4444',
         fontSize: 12,
         marginTop: 5,
         marginLeft: 4,

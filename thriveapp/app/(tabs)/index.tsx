@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Image, Modal, FlatList } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Modal, FlatList } from 'react-native';
 import { useAuth } from '../../context/auth';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,8 +10,9 @@ import { format, isSameDay } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii } from '@/constants/theme';
+import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import UpdateBanner from '../../components/UpdateBanner';
+import { ScreenHeader, Card, SectionHeader, EmptyState, Badge, Button, ListContainer, ListRow } from '@/components/ui';
 
 export default function DashboardScreen() {
   const { user } = useAuth();
@@ -19,8 +20,8 @@ export default function DashboardScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
 
-  type ExtendedBooking = Booking & { 
-    clientName?: string; 
+  type ExtendedBooking = Booking & {
+    clientName?: string;
     partnerName?: string;
     partnerBookingId?: string;
   };
@@ -96,7 +97,7 @@ export default function DashboardScreen() {
       if (profile?.role === 'pt' || profile?.role === 'admin') {
         // Deduplicate group sessions (so the PT doesn't see N cards for 1 group session)
         const groupSessions = new Set(upcoming.filter(b => b.type === 'group').map(b => `${b.groupId}-${b.startTime.getTime()}`));
-        
+
         upcoming = upcoming.filter(b => {
           if (b.type === 'group') {
             const key = `${b.groupId}-${b.startTime.getTime()}`;
@@ -185,7 +186,7 @@ export default function DashboardScreen() {
       setAlertConfig({
         visible: true,
         title: 'Cannot Cancel Here',
-        message: userProfile?.role === 'pt' 
+        message: userProfile?.role === 'pt'
           ? 'Please go to the Groups tab to cancel a group session.'
           : 'Group sessions cannot be cancelled here. Please contact your trainer.',
         onConfirm: undefined,
@@ -212,7 +213,7 @@ export default function DashboardScreen() {
       setAlertConfig({
         visible: true,
         title: isGrouped ? 'Cancel Paired Session' : 'Cancel Booking',
-        message: isGrouped 
+        message: isGrouped
           ? `This will cancel the session for BOTH ${(booking as any).clientName} and ${(booking as any).partnerName} at ${format(booking.startTime, 'HH:mm')}. Are you sure?`
           : `Are you sure you want to cancel this ${booking.type} booking on ${format(booking.startTime, 'MMM d, HH:mm')}?`,
         isDestructive: true,
@@ -303,7 +304,7 @@ export default function DashboardScreen() {
       });
       setPartnerModalVisible(false);
       setSelectedBookingForPartner(null);
-      
+
       // Refresh immediately so the background reflects the change
       fetchBookingsAndProfile();
 
@@ -327,10 +328,9 @@ export default function DashboardScreen() {
     }
   };
 
-  const now = new Date();
   const nextBooking = bookings.find(b => b.status !== 'cancelled') ?? null;
   const remainingBookings = bookings.filter(b => b !== nextBooking);
-  
+
   const displayedBookings = remainingBookings.filter(b => {
     if (!showCancelled && b.status === 'cancelled') return false;
     return true;
@@ -342,21 +342,17 @@ export default function DashboardScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.tint} />}
       >
-        <View style={styles.header}>
-          <Image
-            source={require('../../assets/images/TC_Monogram_White.png')}
-            style={[styles.logo, colorScheme === 'light' && { tintColor: '#000' }]}
-            resizeMode="contain"
-          />
-          <Text style={[styles.greeting, { color: theme.text }]}>Hello, {userProfile?.name?.split(' ')[0] || 'there'}</Text>
-          <Text style={[styles.subtitle, { color: theme.icon }]}>Welcome to Thrive Collective</Text>
-        </View>
+        <ScreenHeader
+          logo={require('../../assets/images/TC_Monogram_White.png')}
+          title={`Hello, ${userProfile?.name?.split(' ')[0] || 'there'}`}
+          subtitle="Welcome to Thrive Collective"
+        />
 
         <UpdateBanner latestVersion={globalSettings?.latestVersion} />
 
         {globalSettings?.showAnnouncement && globalSettings?.announcementText && (
-          <View style={[styles.announcementBanner, { backgroundColor: theme.tint + '15', borderColor: theme.tint }]}>
-            <Ionicons name="megaphone-outline" size={20} color={theme.tint} style={{ marginRight: 10, marginTop: 2 }} />
+          <View style={[styles.announcementBanner, { backgroundColor: theme.tintMuted, borderColor: theme.tint }]}>
+            <Ionicons name="megaphone-outline" size={20} color={theme.tint} style={{ marginRight: Spacing.md, marginTop: 2 }} />
             <Text style={[styles.announcementText, { color: theme.text }]}>
               {globalSettings.announcementText}
             </Text>
@@ -366,16 +362,13 @@ export default function DashboardScreen() {
         {loading ? (
           <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 40 }} />
         ) : bookings.filter(b => showCancelled || b.status !== 'cancelled').length === 0 ? (
-          <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 20 }]}>
-            <Ionicons name="calendar-outline" size={48} color={theme.icon} />
-            <Text style={[styles.emptyText, { color: theme.icon }]}>You have no upcoming bookings.</Text>
-          </View>
+          <EmptyState icon="calendar-outline" title="You have no upcoming bookings." />
         ) : (
           <>
             {nextBooking && (
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Next Session</Text>
-              <View style={[styles.highlightCard, { backgroundColor: theme.tint }]}>
+              <SectionHeader title="Next Session" />
+              <Card elevated tinted padding={20}>
                 <View style={styles.highlightHeader}>
                   <Text style={styles.highlightTypeText}>
                     {nextBooking.recurringTemplateId && (
@@ -389,38 +382,26 @@ export default function DashboardScreen() {
                      nextBooking.type === 'pt' &&
                      nextBooking.status === 'confirmed' &&
                      !nextBooking.partnerName && (
-                      <TouchableOpacity
-                        style={styles.highlightCancelButton}
+                      <Button
+                        variant="onTint"
+                        size="sm"
+                        icon="person-add-outline"
+                        label="Add Partner"
                         onPress={() => {
                           setSelectedBookingForPartner(nextBooking);
                           setPartnerModalVisible(true);
                         }}
-                      >
-                        <Ionicons name="person-add-outline" size={14} color="#ffffff" style={{ marginRight: 4 }} />
-                        <Text style={styles.highlightCancelText}>Add Partner</Text>
-                      </TouchableOpacity>
+                      />
                     )}
-                    <TouchableOpacity
-                      style={styles.highlightCancelButton}
+                    <Button
+                      variant="onTint"
+                      size="sm"
+                      loading={cancellingId === nextBooking.id}
+                      icon={nextBooking.recurringTemplateId ? 'settings-outline' : 'close-circle-outline'}
+                      label={nextBooking.status === 'pending' ? 'Withdraw' : nextBooking.recurringTemplateId ? 'Manage' : 'Cancel'}
                       onPress={() => handleCancel(nextBooking)}
                       disabled={!!cancellingId}
-                    >
-                      {cancellingId === nextBooking.id ? (
-                        <ActivityIndicator size="small" color="#ffffff" />
-                      ) : (
-                        <>
-                          <Ionicons
-                            name={nextBooking.recurringTemplateId ? "settings-outline" : "close-circle-outline"}
-                            size={14}
-                            color="#ffffff"
-                            style={{ marginRight: 4 }}
-                          />
-                          <Text style={styles.highlightCancelText}>
-                            {nextBooking.status === 'pending' ? 'Withdraw' : nextBooking.recurringTemplateId ? 'Manage' : 'Cancel'}
-                          </Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
+                    />
                   </View>
                   )}
                 </View>
@@ -436,33 +417,28 @@ export default function DashboardScreen() {
                     {format(nextBooking.startTime, 'HH:mm')} - {format(nextBooking.endTime, 'HH:mm')}
                   </Text>
                 </View>
-              </View>
+              </Card>
             </View>
             )}
 
             {remainingBookings.length > 0 && (
               <View style={styles.section}>
                 {bookings.some(b => b.status === 'cancelled') && (
-                  <View style={[styles.filterContainer, { justifyContent: 'flex-end' }]}>
-                    <TouchableOpacity 
-                      style={{ flexDirection: 'row', alignItems: 'center', opacity: 0.8 }} 
+                  <View style={styles.filterContainer}>
+                    <TouchableOpacity
+                      style={{ flexDirection: 'row', alignItems: 'center', opacity: 0.8 }}
                       onPress={() => setShowCancelled(!showCancelled)}
                     >
-                      <Ionicons name={showCancelled ? "checkbox" : "square-outline"} size={20} color={theme.icon} style={{ marginRight: 6 }} />
-                      <Text style={{ fontSize: 13, color: theme.icon, fontWeight: '500' }}>Show Cancelled</Text>
+                      <Ionicons name={showCancelled ? "checkbox" : "square-outline"} size={20} color={theme.textSecondary} style={{ marginRight: 6 }} />
+                      <Text style={{ fontSize: 13, color: theme.textSecondary, fontWeight: '500' }}>Show Cancelled</Text>
                     </TouchableOpacity>
                   </View>
                 )}
 
                 {displayedBookings.length === 0 ? (
-                  <View style={[styles.emptyState, { backgroundColor: theme.card, borderColor: theme.border, padding: 30, marginTop: 10 }]}>
-                    <Ionicons name="calendar-clear-outline" size={32} color={theme.icon} />
-                    <Text style={[styles.emptyText, { color: theme.icon, fontSize: 14 }]}>
-                      No more sessions scheduled.
-                    </Text>
-                  </View>
+                  <EmptyState icon="calendar-clear-outline" title="No more sessions scheduled." compact />
                 ) : (
-                  <View style={[styles.list, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 10 }]}>
+                  <ListContainer>
                     {displayedBookings.map((booking, index) => {
                       const isLast = index === displayedBookings.length - 1;
                       const isCancelled = booking.status === 'cancelled';
@@ -472,74 +448,57 @@ export default function DashboardScreen() {
                         : booking.cancelledBy === 'client' ? 'Cancelled by client'
                         : 'Cancelled';
                       return (
-                        <View key={booking.id} style={{ opacity: isCancelled ? 0.5 : 1 }}>
-                          <View style={styles.card}>
-                            <View style={styles.cardHeader}>
-                              <Text style={[styles.typeText, { color: theme.text }]}>
-                                {booking.recurringTemplateId && (
-                                  <Ionicons name="repeat-outline" size={15} color={theme.icon} style={{ marginRight: 4 }} />
-                                )}
-                                {getTypeLabel(booking)}
-                              </Text>
-                              <View style={styles.detailsRow}>
-                                <Ionicons name="time-outline" size={15} color={theme.icon} style={{ marginRight: 6 }} />
-                                <Text style={[styles.detailsText, { color: theme.icon }]}>
-                                  {format(booking.startTime, 'EEE, MMM d')} • {format(booking.startTime, 'HH:mm')} - {format(booking.endTime, 'HH:mm')}
-                                </Text>
-                              </View>
-                              {isCancelled && (
-                                <View style={styles.cancelledBadge}>
-                                  <Text style={styles.cancelledBadgeText}>{cancelledByLabel}</Text>
-                                </View>
-                              )}
-
-                              {booking.type !== 'group' && !isCancelled && (
-                                <View style={styles.cardActionsRow}>
-                                  {(userProfile?.role === 'pt' || userProfile?.role === 'admin') &&
-                                   booking.type === 'pt' &&
-                                   booking.status === 'confirmed' &&
-                                   !booking.partnerName && (
-                                    <TouchableOpacity
-                                      style={[styles.cancelButton, { backgroundColor: theme.tint + '15' }]}
-                                      onPress={() => {
-                                        setSelectedBookingForPartner(booking);
-                                        setPartnerModalVisible(true);
-                                      }}
-                                    >
-                                      <Ionicons name="person-add-outline" size={14} color={theme.tint} style={{ marginRight: 4 }} />
-                                      <Text style={[styles.cancelButtonText, { color: theme.tint }]}>Add Partner</Text>
-                                    </TouchableOpacity>
-                                  )}
-                                  <TouchableOpacity
-                                    style={styles.cancelButton}
-                                    onPress={() => handleCancel(booking)}
-                                    disabled={!!cancellingId}
-                                  >
-                                    {cancellingId === booking.id ? (
-                                      <ActivityIndicator size="small" color={theme.icon} />
-                                    ) : (
-                                      <>
-                                        <Ionicons
-                                          name={booking.recurringTemplateId ? "settings-outline" : "close-circle-outline"}
-                                          size={14}
-                                          color={theme.icon}
-                                          style={{ marginRight: 4 }}
-                                        />
-                                        <Text style={[styles.cancelButtonText, { color: theme.text }]}>
-                                          {booking.status === 'pending' ? 'Withdraw' : booking.recurringTemplateId ? 'Manage' : 'Cancel'}
-                                        </Text>
-                                      </>
-                                    )}
-                                  </TouchableOpacity>
-                                </View>
-                              )}
-                            </View>
+                        <ListRow key={booking.id} isLast={isLast} style={{ opacity: isCancelled ? 0.5 : 1 }}>
+                          <Text style={[styles.typeText, { color: theme.text }]}>
+                            {booking.recurringTemplateId && (
+                              <Ionicons name="repeat-outline" size={15} color={theme.textSecondary} style={{ marginRight: 4 }} />
+                            )}
+                            {getTypeLabel(booking)}
+                          </Text>
+                          <View style={styles.detailsRow}>
+                            <Ionicons name="time-outline" size={15} color={theme.textSecondary} style={{ marginRight: 6 }} />
+                            <Text style={[styles.detailsText, { color: theme.textSecondary }]}>
+                              {format(booking.startTime, 'EEE, MMM d')} • {format(booking.startTime, 'HH:mm')} - {format(booking.endTime, 'HH:mm')}
+                            </Text>
                           </View>
-                          {!isLast && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
-                        </View>
+                          {isCancelled && (
+                            <View style={{ marginTop: 6 }}>
+                              <Badge label={cancelledByLabel} tone="danger" />
+                            </View>
+                          )}
+
+                          {booking.type !== 'group' && !isCancelled && (
+                            <View style={styles.cardActionsRow}>
+                              {(userProfile?.role === 'pt' || userProfile?.role === 'admin') &&
+                               booking.type === 'pt' &&
+                               booking.status === 'confirmed' &&
+                               !booking.partnerName && (
+                                <Button
+                                  variant="tint"
+                                  size="sm"
+                                  icon="person-add-outline"
+                                  label="Add Partner"
+                                  onPress={() => {
+                                    setSelectedBookingForPartner(booking);
+                                    setPartnerModalVisible(true);
+                                  }}
+                                />
+                              )}
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                loading={cancellingId === booking.id}
+                                icon={booking.recurringTemplateId ? 'settings-outline' : 'close-circle-outline'}
+                                label={booking.status === 'pending' ? 'Withdraw' : booking.recurringTemplateId ? 'Manage' : 'Cancel'}
+                                onPress={() => handleCancel(booking)}
+                                disabled={!!cancellingId}
+                              />
+                            </View>
+                          )}
+                        </ListRow>
                       );
                     })}
-                  </View>
+                  </ListContainer>
                 )}
               </View>
             )}
@@ -568,16 +527,16 @@ export default function DashboardScreen() {
         animationType="slide"
         onRequestClose={() => setPartnerModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
           <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: theme.text }]}>Add Partner</Text>
               <TouchableOpacity onPress={() => setPartnerModalVisible(false)}>
-                <Ionicons name="close" size={24} color={theme.icon} />
+                <Ionicons name="close" size={24} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
-            
-            <Text style={[styles.modalSubtitle, { color: theme.icon }]}>
+
+            <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
               Select a client to add to the {selectedBookingForPartner ? format(selectedBookingForPartner.startTime, 'HH:mm') : ''} session.
             </Text>
 
@@ -594,13 +553,13 @@ export default function DashboardScreen() {
                   >
                     <View style={styles.clientInfo}>
                       <Text style={[styles.clientNameOption, { color: theme.text }]}>{item.name}</Text>
-                      <Text style={[styles.clientEmailOption, { color: theme.icon }]}>{item.email}</Text>
+                      <Text style={[styles.clientEmailOption, { color: theme.textSecondary }]}>{item.email}</Text>
                     </View>
                     <Ionicons name="add-circle-outline" size={24} color={theme.tint} />
                   </TouchableOpacity>
                 )}
                 ListEmptyComponent={
-                  <Text style={[styles.emptyClientsText, { color: theme.icon }]}>No other clients found.</Text>
+                  <Text style={[styles.emptyClientsText, { color: theme.textSecondary }]}>No other clients found.</Text>
                 }
                 style={styles.modalList}
               />
@@ -617,100 +576,36 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 20,
+    padding: Spacing.xl,
     flexGrow: 1,
   },
-  header: {
-    marginBottom: 30,
-    alignItems: 'flex-start',
-    paddingVertical: 10,
-  },
-  logo: {
-    width: 48,
-    height: 48,
-    marginBottom: 16,
-  },
-  greeting: {
-    fontSize: 34,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontSize: 16,
-    marginTop: 4,
-  },
   section: {
-    marginTop: 10,
-  },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 15,
-    letterSpacing: -0.5,
+    marginTop: Spacing.sm,
   },
   announcementBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    padding: 16,
+    padding: Spacing.lg,
     borderRadius: Radii.lg,
     borderWidth: 1,
-    marginBottom: 25,
+    marginBottom: Spacing.xxl,
   },
   announcementText: {
     flex: 1,
-    fontSize: 15,
-    fontWeight: '500',
+    ...Typography.subhead,
     lineHeight: 22,
   },
-  emptyState: {
-    padding: 40,
-    borderRadius: Radii.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderStyle: 'dashed',
-  },
-  emptyText: {
-    marginTop: 12,
-    fontSize: 16,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  highlightCard: {
-    borderRadius: Radii.xl,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 4,
-  },
   highlightHeader: {
-    marginBottom: 12,
+    marginBottom: Spacing.md,
   },
   highlightTypeText: {
-    fontSize: 20,
-    fontWeight: '700',
+    ...Typography.title3,
     color: '#ffffff',
-    letterSpacing: -0.5,
   },
   highlightActionsRow: {
     flexDirection: 'row',
-    gap: 6,
-    marginTop: 10,
-  },
-  highlightCancelButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: Radii.pill,
-  },
-  highlightCancelText: {
-    color: '#ffffff',
-    fontWeight: '600',
-    fontSize: 12,
+    gap: Spacing.xs + 2,
+    marginTop: Spacing.md - 2,
   },
   highlightDetailsRow: {
     flexDirection: 'row',
@@ -719,60 +614,24 @@ const styles = StyleSheet.create({
   },
   highlightDetailsText: {
     color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '500',
+    ...Typography.subhead,
   },
   filterContainer: {
     flexDirection: 'row',
-    marginBottom: 15,
+    marginBottom: Spacing.lg,
     flexWrap: 'wrap',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
+    justifyContent: 'flex-end',
+    gap: Spacing.sm,
   },
-  filterTab: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: Radii.pill,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    marginRight: 10,
-  },
-  filterText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  list: {
-    borderRadius: Radii.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
-  },
-  card: {
-    padding: 16,
-  },
-  cardHeader: {},
   typeText: {
-    fontSize: 17,
-    fontWeight: '600',
+    ...Typography.headline,
     marginBottom: 4,
-    letterSpacing: -0.4,
   },
   cardActionsRow: {
     flexDirection: 'row',
-    gap: 6,
-    marginTop: 10,
-  },
-  cancelButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: Radii.pill,
-    backgroundColor: 'rgba(0,0,0,0.04)',
-  },
-  cancelButtonText: {
-    fontWeight: '600',
-    fontSize: 12,
+    gap: Spacing.xs + 2,
+    marginTop: Spacing.md - 2,
   },
   detailsRow: {
     flexDirection: 'row',
@@ -780,77 +639,54 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   detailsText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  separator: {
-    height: StyleSheet.hairlineWidth,
-    marginLeft: 16,
-  },
-  cancelledBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: Radii.pill,
-    backgroundColor: 'rgba(255,59,48,0.1)',
-    marginTop: 6,
-  },
-  cancelledBadgeText: {
-    color: '#FF3B30',
-    fontWeight: '600',
-    fontSize: 12,
+    ...Typography.footnote,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
   modalContent: {
     borderTopLeftRadius: Radii.xl,
     borderTopRightRadius: Radii.xl,
-    padding: 24,
+    padding: Spacing.xxl,
     maxHeight: '80%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: Spacing.sm,
   },
   modalTitle: {
-    fontSize: 22,
-    fontWeight: '700',
+    ...Typography.title2,
   },
   modalSubtitle: {
-    fontSize: 15,
-    marginBottom: 20,
+    ...Typography.subhead,
+    marginBottom: Spacing.xl,
   },
   modalList: {
-    marginTop: 10,
+    marginTop: Spacing.sm,
   },
   clientOption: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 16,
+    paddingVertical: Spacing.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   clientInfo: {
     flex: 1,
   },
   clientNameOption: {
-    fontSize: 17,
-    fontWeight: '600',
+    ...Typography.headline,
   },
   clientEmailOption: {
-    fontSize: 14,
+    ...Typography.footnote,
     marginTop: 2,
   },
   emptyClientsText: {
     textAlign: 'center',
     paddingVertical: 32,
-    fontSize: 15,
+    ...Typography.subhead,
   }
 });

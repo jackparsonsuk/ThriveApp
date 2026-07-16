@@ -8,7 +8,8 @@ import { Asset } from 'expo-asset';
 // Import legacy API to resolve deprecation warning
 import * as FileSystem from 'expo-file-system/legacy';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii } from '@/constants/theme';
+import { Colors, Spacing } from '@/constants/theme';
+import { Card } from '@/components/ui';
 
 export default function ChangelogScreen() {
     const router = useRouter();
@@ -116,7 +117,7 @@ export default function ChangelogScreen() {
             }} />
             
             <ScrollView contentContainerStyle={styles.content}>
-                <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                <Card elevated padding={20}>
                     {loading ? (
                         <ActivityIndicator size="large" color={theme.tint} />
                     ) : content ? (
@@ -124,7 +125,7 @@ export default function ChangelogScreen() {
                             {content}
                         </Markdown>
                     ) : null}
-                </View>
+                </Card>
             </ScrollView>
         </SafeAreaView>
     );
@@ -135,15 +136,6 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     content: {
-        padding: 20,
-    },
-    card: {
-        padding: 20,
-        borderRadius: Radii.xl,
-        borderWidth: StyleSheet.hairlineWidth,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.05,
-        shadowRadius: 10,
-        elevation: 2,
+        padding: Spacing.xl,
     },
 });

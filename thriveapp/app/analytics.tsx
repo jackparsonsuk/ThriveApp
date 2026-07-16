@@ -5,8 +5,16 @@ import { useRouter } from 'expo-router';
 import { getAnalyticsData, AnalyticsData } from '../services/bookingService';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii } from '@/constants/theme';
+import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import { format, addDays, subDays, isToday } from 'date-fns';
+import { Badge, EmptyState } from '@/components/ui';
+
+type BookingTypeBadgeProps = { type: string };
+const BookingTypeBadge = ({ type }: BookingTypeBadgeProps) => {
+    if (type === 'pt') return <Badge label="PT" tone="tint" />;
+    if (type === 'group') return <Badge label="GROUP" tone="info" />;
+    return <Badge label={type.toUpperCase()} tone="neutral" />;
+};
 
 export default function AnalyticsScreen() {
     const router = useRouter();
@@ -56,14 +64,14 @@ export default function AnalyticsScreen() {
                     <Ionicons name={icon} size={22} color={color} />
                 </View>
                 <View style={styles.statInfo}>
-                    <Text style={[styles.statTitle, { color: theme.icon }]}>{title}</Text>
+                    <Text style={[styles.statTitle, { color: theme.textSecondary }]}>{title}</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                         <Text style={[styles.statValue, { color: theme.text }]}>{value}</Text>
                         {onPress && (
-                            <Ionicons name="chevron-forward" size={14} color={theme.icon} style={{ opacity: 0.5 }} />
+                            <Ionicons name="chevron-forward" size={14} color={theme.textSecondary} style={{ opacity: 0.5 }} />
                         )}
                     </View>
-                    {subValue ? <Text style={[styles.statSubValue, { color: theme.icon }]}>{subValue}</Text> : null}
+                    {subValue ? <Text style={[styles.statSubValue, { color: theme.textSecondary }]}>{subValue}</Text> : null}
                 </View>
             </CardComponent>
         );
@@ -130,7 +138,7 @@ export default function AnalyticsScreen() {
                         {format(targetDate, 'EEEE, d MMMM yyyy')}
                     </Text>
                     {isToday(targetDate) ? (
-                        <View style={[styles.todayBadge, { backgroundColor: theme.tint + '15' }]}>
+                        <View style={[styles.todayBadge, { backgroundColor: theme.tintMuted }]}>
                             <Text style={[styles.todayBadgeText, { color: theme.tint }]}>TODAY</Text>
                         </View>
                     ) : (
@@ -160,32 +168,32 @@ export default function AnalyticsScreen() {
                     {isToday(targetDate) ? "Today's Snapshot" : `${format(targetDate, 'EEEE')}'s Snapshot`}
                 </Text>
                 <View style={styles.statsGrid}>
-                    <StatCard 
-                        title="Total Bookings" 
-                        value={data?.bookingsToday ?? 0} 
-                        icon="calendar" 
-                        color="#3b82f6" 
+                    <StatCard
+                        title="Total Bookings"
+                        value={data?.bookingsToday ?? 0}
+                        icon="calendar"
+                        color={theme.info}
                         onPress={() => handleCardPress('all', 'Total Bookings')}
                     />
-                    <StatCard 
-                        title="Gym Sessions" 
-                        value={data?.gymBookingsToday ?? 0} 
-                        icon="barbell" 
-                        color={theme.tint} 
+                    <StatCard
+                        title="Gym Sessions"
+                        value={data?.gymBookingsToday ?? 0}
+                        icon="barbell"
+                        color={theme.tint}
                         onPress={() => handleCardPress('gym', 'Gym Sessions')}
                     />
-                    <StatCard 
-                        title="PT Sessions" 
-                        value={data?.ptSessionsToday ?? 0} 
-                        icon="body" 
-                        color="#10b981" 
+                    <StatCard
+                        title="PT Sessions"
+                        value={data?.ptSessionsToday ?? 0}
+                        icon="body"
+                        color={theme.success}
                         onPress={() => handleCardPress('pt', 'PT Sessions')}
                     />
-                    <StatCard 
-                        title="Cancellations" 
-                        value={data?.cancelledToday ?? 0} 
-                        icon="close-circle" 
-                        color="#ef4444" 
+                    <StatCard
+                        title="Cancellations"
+                        value={data?.cancelledToday ?? 0}
+                        icon="close-circle"
+                        color={theme.danger}
                         onPress={() => handleCardPress('cancelled', 'Cancellations')}
                     />
                 </View>
@@ -194,28 +202,28 @@ export default function AnalyticsScreen() {
                 <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>This Week</Text>
                 <View style={styles.statsGrid}>
                     <StatCard title="Total Bookings" value={data?.bookingsThisWeek ?? 0} icon="bar-chart" color={theme.tint} />
-                    <StatCard title="Gym Sessions" value={data?.gymBookingsThisWeek ?? 0} icon="barbell" color="#3b82f6" />
+                    <StatCard title="Gym Sessions" value={data?.gymBookingsThisWeek ?? 0} icon="barbell" color={theme.info} />
                     <StatCard title="PT Sessions" value={data?.ptSessionsThisWeek ?? 0} icon="fitness" color="#8b5cf6" />
-                    <StatCard title="Cancelled" value={data?.cancelledThisWeek ?? 0} icon="trash" color="#f59e0b" />
+                    <StatCard title="Cancelled" value={data?.cancelledThisWeek ?? 0} icon="trash" color={theme.warning} />
                 </View>
 
                 {/* GROUP SESSIONS */}
                 <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>Group Sessions</Text>
                 <View style={styles.statsGrid}>
-                    <StatCard title="This Week" value={data?.groupSessionsThisWeek ?? 0} icon="people" color="#3b82f6" />
+                    <StatCard title="This Week" value={data?.groupSessionsThisWeek ?? 0} icon="people" color={theme.info} />
                     <StatCard title="This Month" value={data?.groupSessionsThisMonth ?? 0} icon="people-circle" color="#8b5cf6" />
-                    <StatCard title="Recurring Plans" value={data?.activeRecurringTemplates ?? 0} icon="repeat" color="#10b981" />
-                    <StatCard title="Cancel Rate" value={data?.cancellationRate ?? 0} icon="trending-down" color="#ef4444" subValue="% this week" />
+                    <StatCard title="Recurring Plans" value={data?.activeRecurringTemplates ?? 0} icon="repeat" color={theme.success} />
+                    <StatCard title="Cancel Rate" value={data?.cancellationRate ?? 0} icon="trending-down" color={theme.danger} subValue="% this week" />
                 </View>
 
                 {(data?.groupBreakdown?.length ?? 0) > 0 && (
                     <>
-                        <Text style={[styles.subSectionTitle, { color: theme.icon }]}>By Group — {data?.currentMonth}</Text>
+                        <Text style={[styles.subSectionTitle, { color: theme.textSecondary }]}>By Group — {data?.currentMonth}</Text>
                         <View style={[styles.breakdownCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                             <View style={[styles.breakdownHeader, { borderBottomColor: theme.border }]}>
-                                <Text style={[styles.breakdownHeaderText, { color: theme.icon, flex: 1 }]}>Group</Text>
-                                <Text style={[styles.breakdownHeaderText, { color: theme.icon, width: 64, textAlign: 'center' }]}>Members</Text>
-                                <Text style={[styles.breakdownHeaderText, { color: theme.icon, width: 64, textAlign: 'center' }]}>Sessions</Text>
+                                <Text style={[styles.breakdownHeaderText, { color: theme.textSecondary, flex: 1 }]}>Group</Text>
+                                <Text style={[styles.breakdownHeaderText, { color: theme.textSecondary, width: 64, textAlign: 'center' }]}>Members</Text>
+                                <Text style={[styles.breakdownHeaderText, { color: theme.textSecondary, width: 64, textAlign: 'center' }]}>Sessions</Text>
                             </View>
                             {data!.groupBreakdown.map((g, index) => (
                                 <View
@@ -223,12 +231,12 @@ export default function AnalyticsScreen() {
                                     style={[styles.breakdownRow, index !== data!.groupBreakdown.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth }]}
                                 >
                                     <View style={styles.ptInfo}>
-                                        <View style={[styles.avatar, { backgroundColor: '#3b82f620' }]}>
-                                            <Text style={[styles.avatarText, { color: '#3b82f6' }]}>{g.groupName.charAt(0)}</Text>
+                                        <View style={[styles.avatar, { backgroundColor: theme.info + '20' }]}>
+                                            <Text style={[styles.avatarText, { color: theme.info }]}>{g.groupName.charAt(0)}</Text>
                                         </View>
                                         <Text style={[styles.ptName, { color: theme.text }]}>{g.groupName}</Text>
                                     </View>
-                                    <Text style={[styles.breakdownCount, { color: theme.icon, width: 64, textAlign: 'center', fontSize: 15 }]}>{g.memberCount}</Text>
+                                    <Text style={[styles.breakdownCount, { color: theme.textSecondary, width: 64, textAlign: 'center', fontSize: 15 }]}>{g.memberCount}</Text>
                                     <Text style={[styles.breakdownCount, { color: theme.text, width: 64, textAlign: 'center' }]}>{g.sessionsThisMonth}</Text>
                                 </View>
                             ))}
@@ -240,12 +248,12 @@ export default function AnalyticsScreen() {
                 {(data?.peakHours?.length ?? 0) > 0 && (
                     <>
                         <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>Peak Booking Hours</Text>
-                        <Text style={[styles.subSectionTitle, { color: theme.icon }]}>Most popular gym & PT start times this week</Text>
+                        <Text style={[styles.subSectionTitle, { color: theme.textSecondary }]}>Most popular gym & PT start times this week</Text>
                         <View style={[styles.peakCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                             {data!.peakHours.map((slot, index) => {
                                 const maxCount = data!.peakHours[0].count;
                                 const barWidth = maxCount > 0 ? (slot.count / maxCount) * 100 : 0;
-                                const rankColor = index === 0 ? theme.tint : index === 1 ? '#8b5cf6' : '#3b82f6';
+                                const rankColor = index === 0 ? theme.tint : index === 1 ? '#8b5cf6' : theme.info;
                                 return (
                                     <View key={slot.hour} style={[styles.peakRow, index !== data!.peakHours.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
                                         <Text style={[styles.peakHourLabel, { color: theme.text }]}>{slot.hour}</Text>
@@ -265,18 +273,18 @@ export default function AnalyticsScreen() {
                 {/* PENDING REQUESTS */}
                 <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>Pending PT Requests</Text>
                 <View style={[styles.highlightRow, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                    <View style={[styles.iconContainer, { backgroundColor: '#f59e0b20' }]}>
-                        <Ionicons name="time" size={22} color="#f59e0b" />
+                    <View style={[styles.iconContainer, { backgroundColor: theme.warning + '20' }]}>
+                        <Ionicons name="time" size={22} color={theme.warning} />
                     </View>
                     <View style={{ flex: 1, marginLeft: 14 }}>
-                        <Text style={[styles.highlightLabel, { color: theme.icon }]}>Awaiting PT Approval</Text>
+                        <Text style={[styles.highlightLabel, { color: theme.textSecondary }]}>Awaiting PT Approval</Text>
                         <Text style={[styles.highlightValue, { color: theme.text }]}>
                             {data?.pendingRequestsTotal ?? 0} request{(data?.pendingRequestsTotal ?? 0) !== 1 ? 's' : ''}
                         </Text>
                     </View>
                     {(data?.pendingRequestsTotal ?? 0) > 0 && (
-                        <View style={[styles.pendingBadge, { backgroundColor: '#f59e0b' }]}>
-                            <Text style={styles.pendingBadgeText}>{data?.pendingRequestsTotal}</Text>
+                        <View style={[styles.pendingBadge, { backgroundColor: theme.warning }]}>
+                            <Text style={[styles.pendingBadgeText, { color: theme.onTint }]}>{data?.pendingRequestsTotal}</Text>
                         </View>
                     )}
                 </View>
@@ -285,33 +293,33 @@ export default function AnalyticsScreen() {
                 <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>Membership Access</Text>
                 <View style={[styles.membershipCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <View style={styles.membershipRow}>
-                        <Text style={[styles.membershipLabel, { color: theme.icon }]}>Total Clients</Text>
+                        <Text style={[styles.membershipLabel, { color: theme.textSecondary }]}>Total Clients</Text>
                         <Text style={[styles.membershipValue, { color: theme.text }]}>{data?.clientsTotal ?? 0}</Text>
                     </View>
                     <View style={[styles.divider, { backgroundColor: theme.border }]} />
                     <View style={styles.membershipRow}>
                         <View style={styles.membershipLabelRow}>
-                            <View style={[styles.dot, { backgroundColor: '#10b981' }]} />
-                            <Text style={[styles.membershipLabel, { color: theme.icon }]}>Gym Access Granted</Text>
+                            <View style={[styles.dot, { backgroundColor: theme.success }]} />
+                            <Text style={[styles.membershipLabel, { color: theme.textSecondary }]}>Gym Access Granted</Text>
                         </View>
-                        <Text style={[styles.membershipValue, { color: '#10b981' }]}>{data?.clientsWithGymAccess ?? 0}</Text>
+                        <Text style={[styles.membershipValue, { color: theme.success }]}>{data?.clientsWithGymAccess ?? 0}</Text>
                     </View>
                     <View style={[styles.divider, { backgroundColor: theme.border }]} />
                     <View style={styles.membershipRow}>
                         <View style={styles.membershipLabelRow}>
-                            <View style={[styles.dot, { backgroundColor: '#ef4444' }]} />
-                            <Text style={[styles.membershipLabel, { color: theme.icon }]}>No Gym Access</Text>
+                            <View style={[styles.dot, { backgroundColor: theme.danger }]} />
+                            <Text style={[styles.membershipLabel, { color: theme.textSecondary }]}>No Gym Access</Text>
                         </View>
-                        <Text style={[styles.membershipValue, { color: '#ef4444' }]}>{noGymAccess}</Text>
+                        <Text style={[styles.membershipValue, { color: theme.danger }]}>{noGymAccess}</Text>
                     </View>
                     {(data?.clientsTotal ?? 0) > 0 && (
                         <>
                             <View style={[styles.divider, { backgroundColor: theme.border }]} />
                             <View style={styles.progressBarContainer}>
                                 <View style={[styles.progressBarTrack, { backgroundColor: theme.border }]}>
-                                    <View style={[styles.progressBarFill, { width: `${gymAccessPercent}%`, backgroundColor: '#10b981' }]} />
+                                    <View style={[styles.progressBarFill, { width: `${gymAccessPercent}%`, backgroundColor: theme.success }]} />
                                 </View>
-                                <Text style={[styles.progressLabel, { color: theme.icon }]}>{gymAccessPercent}% have gym access</Text>
+                                <Text style={[styles.progressLabel, { color: theme.textSecondary }]}>{gymAccessPercent}% have gym access</Text>
                             </View>
                         </>
                     )}
@@ -321,9 +329,9 @@ export default function AnalyticsScreen() {
                 <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>PT Breakdown</Text>
                 <View style={[styles.breakdownCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <View style={[styles.breakdownHeader, { borderBottomColor: theme.border }]}>
-                        <Text style={[styles.breakdownHeaderText, { color: theme.icon, flex: 1 }]}>Trainer</Text>
-                        <Text style={[styles.breakdownHeaderText, { color: theme.icon, width: 50, textAlign: 'center' }]}>Today</Text>
-                        <Text style={[styles.breakdownHeaderText, { color: theme.icon, width: 50, textAlign: 'center' }]}>Week</Text>
+                        <Text style={[styles.breakdownHeaderText, { color: theme.textSecondary, flex: 1 }]}>Trainer</Text>
+                        <Text style={[styles.breakdownHeaderText, { color: theme.textSecondary, width: 50, textAlign: 'center' }]}>Today</Text>
+                        <Text style={[styles.breakdownHeaderText, { color: theme.textSecondary, width: 50, textAlign: 'center' }]}>Week</Text>
                         <Text style={[styles.breakdownHeaderText, { color: theme.tint, width: 56, textAlign: 'center' }]}>Month</Text>
                     </View>
                     {data?.ptBreakdown && data.ptBreakdown.length > 0 ? (
@@ -333,7 +341,7 @@ export default function AnalyticsScreen() {
                                 style={[styles.breakdownRow, index !== data.ptBreakdown.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth }]}
                             >
                                 <View style={styles.ptInfo}>
-                                    <View style={[styles.avatar, { backgroundColor: theme.tint + '20' }]}>
+                                    <View style={[styles.avatar, { backgroundColor: theme.tintMuted }]}>
                                         <Text style={[styles.avatarText, { color: theme.tint }]}>{pt.ptName.charAt(0)}</Text>
                                     </View>
                                     <Text style={[styles.ptName, { color: theme.text }]}>{pt.ptName}</Text>
@@ -344,11 +352,11 @@ export default function AnalyticsScreen() {
                             </View>
                         ))
                     ) : (
-                        <Text style={[styles.emptyText, { color: theme.icon }]}>No PT data available.</Text>
+                        <EmptyState icon="people-outline" title="No PT data available." compact />
                     )}
                 </View>
                 {data?.currentMonth && (
-                    <Text style={[styles.billingNote, { color: theme.icon }]}>
+                    <Text style={[styles.billingNote, { color: theme.textSecondary }]}>
                         Month column shows confirmed PT sessions for {data.currentMonth} — use for billing.
                     </Text>
                 )}
@@ -361,23 +369,23 @@ export default function AnalyticsScreen() {
                 transparent={true}
                 onRequestClose={() => setDetailModalVisible(false)}
             >
-                <View style={styles.modalOverlay}>
+                <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
                     <View style={[styles.modalContent, { backgroundColor: theme.card, borderColor: theme.border }]}>
                         <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
                             <View>
                                 <Text style={[styles.modalTitle, { color: theme.text }]}>{selectedCardTitle}</Text>
-                                <Text style={[styles.modalSubtitle, { color: theme.icon }]}>
+                                <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
                                     {format(targetDate, 'EEEE, d MMMM yyyy')}
                                 </Text>
                             </View>
-                            <TouchableOpacity 
-                                style={[styles.modalCloseBtn, { backgroundColor: theme.border }]} 
+                            <TouchableOpacity
+                                style={[styles.modalCloseBtn, { backgroundColor: theme.cardAlt }]}
                                 onPress={() => setDetailModalVisible(false)}
                             >
                                 <Ionicons name="close" size={20} color={theme.text} />
                             </TouchableOpacity>
                         </View>
-                        
+
                         <FlatList
                             data={filteredBookings}
                             keyExtractor={(item) => item.id || Math.random().toString()}
@@ -391,7 +399,7 @@ export default function AnalyticsScreen() {
                                                 {userName}
                                             </Text>
                                             {item.type === 'pt' && item.instructorName ? (
-                                                <Text style={[styles.bookingSubText, { color: theme.icon }]}>
+                                                <Text style={[styles.bookingSubText, { color: theme.textSecondary }]}>
                                                     Trainer: {item.instructorName}
                                                 </Text>
                                             ) : null}
@@ -400,18 +408,9 @@ export default function AnalyticsScreen() {
                                             </Text>
                                         </View>
                                         <View style={{ alignItems: 'flex-end' }}>
-                                            <View style={[
-                                                styles.typeBadge, 
-                                                item.type === 'pt' ? { backgroundColor: theme.tint } : 
-                                                item.type === 'group' ? { backgroundColor: '#3b82f6' } : 
-                                                { backgroundColor: '#a3a3a3' }
-                                            ]}>
-                                                <Text style={styles.typeBadgeText}>
-                                                    {item.type.toUpperCase()}
-                                                </Text>
-                                            </View>
+                                            <BookingTypeBadge type={item.type} />
                                             {item.status === 'cancelled' && (
-                                                <Text style={{ color: '#ef4444', fontSize: 11, fontWeight: '700', marginTop: 4 }}>
+                                                <Text style={{ color: theme.danger, fontSize: 11, fontWeight: '700', marginTop: 4 }}>
                                                     CANCELLED
                                                 </Text>
                                             )}
@@ -419,14 +418,7 @@ export default function AnalyticsScreen() {
                                     </View>
                                 );
                             }}
-                            ListEmptyComponent={
-                                <View style={styles.emptyContainer}>
-                                    <Ionicons name="calendar-outline" size={48} color={theme.icon} style={{ opacity: 0.3, marginBottom: 12 }} />
-                                    <Text style={[styles.emptyModalText, { color: theme.icon }]}>
-                                        No bookings found for this category.
-                                    </Text>
-                                </View>
-                            }
+                            ListEmptyComponent={<EmptyState icon="calendar-outline" title="No bookings found for this category." />}
                         />
                     </View>
                 </View>
@@ -475,7 +467,7 @@ const styles = StyleSheet.create({
     highlightLabel: { fontSize: 13, fontWeight: '500', marginBottom: 2 },
     highlightValue: { fontSize: 20, fontWeight: '700' },
     pendingBadge: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-    pendingBadgeText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+    pendingBadgeText: { fontSize: 14, fontWeight: '700' },
     membershipCard: { borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
     membershipRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
     membershipLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -549,7 +541,6 @@ const styles = StyleSheet.create({
     // MODAL STYLES
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
         justifyContent: 'flex-end',
     },
     modalContent: {
@@ -607,25 +598,5 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '600',
         marginTop: 2,
-    },
-    typeBadgeText: {
-        color: '#fff',
-        fontSize: 10,
-        fontWeight: '700',
-    },
-    typeBadge: {
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        borderRadius: 4,
-    },
-    emptyContainer: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 40,
-    },
-    emptyModalText: {
-        fontSize: 14,
-        fontStyle: 'italic',
-        textAlign: 'center',
     },
 });

@@ -9,9 +9,10 @@ import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii } from '@/constants/theme';
+import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import { BOOKING_WINDOW_DAYS } from '@/constants/config';
 import { useMouseDragScroll } from '@/hooks/useMouseDragScroll';
+import { ScreenHeader, SectionHeader, EmptyState, Badge, Button, ListContainer, ListRow } from '@/components/ui';
 
 const PT_OPEN_HOUR = 7;
 const PT_CLOSE_HOUR = 20;
@@ -413,58 +414,48 @@ export default function GroupsScreen() {
     if (userProfile?.role !== 'pt') {
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-                <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-                    <Text style={[styles.title, { color: theme.text }]}>Groups</Text>
-                    <Text style={[styles.subtitle, { color: theme.icon }]}>Manage your group training</Text>
+                <View style={styles.headerContainer}>
+                    <ScreenHeader title="Groups" subtitle="Manage your group training" />
                 </View>
                 <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-                    
+
                     {/* Client's Joined Groups Section */}
-                    <View style={{ paddingHorizontal: 20, paddingTop: 10 }}>
-                        <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 10 }]}>My Groups</Text>
+                    <View style={{ paddingHorizontal: Spacing.xl, paddingTop: Spacing.sm }}>
+                        <SectionHeader title="My Groups" />
                         {loading ? (
                             <ActivityIndicator color={theme.tint} />
                         ) : clientGroups.length === 0 ? (
-                            <Text style={{ color: theme.icon, marginBottom: 20 }}>You haven't joined any groups yet.</Text>
+                            <EmptyState icon="people-outline" title="You haven't joined any groups yet." compact />
                         ) : (
-                            <View style={[styles.listWrapper, { backgroundColor: theme.card, borderColor: theme.border, marginBottom: 20 }]}>
+                            <ListContainer style={{ marginBottom: Spacing.xl }}>
                                 {clientGroups.map((group, index) => {
                                     const isLast = index === clientGroups.length - 1;
                                     return (
-                                        <View key={group.id}>
-                                            <View style={styles.groupRow}>
-                                                <View>
-                                                    <Text style={[styles.groupNameText, { color: theme.text }]}>{group.name}</Text>
-                                                    <Text style={[styles.groupMetaText, { color: theme.icon }]}>Trainer: {group.ptName}</Text>
-                                                </View>
-                                            </View>
-                                            {!isLast && <View style={[styles.separator, { backgroundColor: theme.border, marginLeft: 16 }]} />}
-                                        </View>
+                                        <ListRow key={group.id} isLast={isLast}>
+                                            <Text style={[styles.groupNameText, { color: theme.text }]}>{group.name}</Text>
+                                            <Text style={[styles.groupMetaText, { color: theme.textSecondary }]}>Trainer: {group.ptName}</Text>
+                                        </ListRow>
                                     );
                                 })}
-                            </View>
+                            </ListContainer>
                         )}
                     </View>
 
                     {/* Pending Invites Section */}
-                    <View style={{ paddingHorizontal: 20 }}>
-                        <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 10 }]}>Group Invites</Text>
+                    <View style={{ paddingHorizontal: Spacing.xl }}>
+                        <SectionHeader title="Group Invites" />
                         {clientInvitesLoading ? (
                             <ActivityIndicator color={theme.tint} />
                         ) : pendingInvites.length === 0 ? (
-                            <Text style={{ color: theme.icon }}>You have no pending group invites.</Text>
+                            <EmptyState icon="mail-outline" title="You have no pending group invites." compact />
                         ) : (
                             pendingInvites.map(inv => (
-                                <View key={inv.id} style={{ backgroundColor: theme.card, padding: 16, borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border, marginBottom: 10 }}>
-                                    <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700', marginBottom: 4 }}>{inv.groupName}</Text>
-                                    <Text style={{ color: theme.icon, marginBottom: 16 }}>Invited by {inv.ptName}</Text>
-                                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                                        <TouchableOpacity style={{ flex: 1, padding: 12, borderRadius: Radii.pill, backgroundColor: theme.tint, alignItems: 'center' }} onPress={() => handleAcceptInvite(inv)}>
-                                            <Text style={{ color: '#fff', fontWeight: '600', fontSize: 16 }}>Accept</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity style={{ flex: 1, padding: 12, borderRadius: Radii.pill, backgroundColor: 'rgba(239, 68, 68, 0.1)', alignItems: 'center' }} onPress={() => handleDeclineInvite(inv)}>
-                                            <Text style={{ color: '#ef4444', fontWeight: '600', fontSize: 16 }}>Decline</Text>
-                                        </TouchableOpacity>
+                                <View key={inv.id} style={{ backgroundColor: theme.card, padding: Spacing.lg, borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border, marginBottom: Spacing.md }}>
+                                    <Text style={{ color: theme.text, ...Typography.title3, fontSize: 18, marginBottom: 4 }}>{inv.groupName}</Text>
+                                    <Text style={{ color: theme.textSecondary, marginBottom: Spacing.lg }}>Invited by {inv.ptName}</Text>
+                                    <View style={{ flexDirection: 'row', gap: Spacing.md }}>
+                                        <Button variant="primary" label="Accept" onPress={() => handleAcceptInvite(inv)} style={{ flex: 1 }} />
+                                        <Button variant="destructive" label="Decline" onPress={() => handleDeclineInvite(inv)} style={{ flex: 1 }} />
                                     </View>
                                 </View>
                             ))
@@ -479,19 +470,19 @@ export default function GroupsScreen() {
     if (isBookingMode && selectedGroup) {
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-                <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <View>
-                            <Text style={[styles.title, { color: theme.text }]}>Book: {selectedGroup.name}</Text>
-                            <Text style={[styles.subtitle, { color: theme.icon }]}>Select date and time</Text>
-                        </View>
-                        <TouchableOpacity onPress={() => setIsBookingMode(false)} style={[styles.backButton, { backgroundColor: theme.border }]}>
-                            <Text style={[styles.backButtonText, { color: theme.text }]}>Cancel</Text>
-                        </TouchableOpacity>
-                    </View>
+                <View style={styles.headerContainer}>
+                    <ScreenHeader
+                        title={`Book: ${selectedGroup.name}`}
+                        subtitle="Select date and time"
+                        right={
+                            <TouchableOpacity onPress={() => setIsBookingMode(false)} style={[styles.backButton, { backgroundColor: theme.cardAlt }]}>
+                                <Text style={[styles.backButtonText, { color: theme.text }]}>Cancel</Text>
+                            </TouchableOpacity>
+                        }
+                    />
                 </View>
-                
-                <View 
+
+                <View
                     style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}
                     {...dragProps}
                 >
@@ -521,22 +512,22 @@ export default function GroupsScreen() {
                             const isSelected = selectedDate.getTime() === date.getTime();
                             return (
                                 <TouchableOpacity
-                                    style={[styles.dateCard, { backgroundColor: isSelected ? theme.tint : 'transparent' }, isSelected && styles.dateCardSelected]}
+                                    style={[styles.dateCard, { backgroundColor: isSelected ? theme.tint : 'transparent' }, isSelected && { ...styles.dateCardSelected, shadowColor: theme.tint }]}
                                     onPress={() => setSelectedDate(date)}
                                 >
-                                    <Text style={[styles.dayText, { color: isSelected ? '#fff' : theme.icon }]}>{format(date, 'EEE')}</Text>
-                                    <Text style={[styles.dateText, { color: isSelected ? '#fff' : theme.text }]}>{format(date, 'd')}</Text>
+                                    <Text style={[styles.dayText, { color: isSelected ? theme.onTint : theme.textSecondary }]}>{format(date, 'EEE')}</Text>
+                                    <Text style={[styles.dateText, { color: isSelected ? theme.onTint : theme.text }]}>{format(date, 'd')}</Text>
                                 </TouchableOpacity>
                             );
                         }}
                     />
                 </View>
-                
+
                 <ScrollView contentContainerStyle={styles.slotsContainer}>
                     {slotsLoading ? (
                         <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
                     ) : availableSlots.length === 0 ? (
-                        <Text style={{ textAlign: 'center', color: theme.icon }}>No slots available this day.</Text>
+                        <Text style={{ textAlign: 'center', color: theme.textSecondary }}>No slots available this day.</Text>
                     ) : (
                         <View style={[styles.slotsList, { backgroundColor: theme.card, borderColor: theme.border }]}>
                             {availableSlots.map((slot, index) => {
@@ -544,22 +535,22 @@ export default function GroupsScreen() {
                                 return (
                                     <View key={index}>
                                         <TouchableOpacity
-                                            style={[styles.slotRow, !slot.available && styles.slotRowUnavailable]}
+                                            style={[styles.slotRow, !slot.available && { backgroundColor: theme.cardAlt, opacity: 0.7 }]}
                                             disabled={!slot.available || bookingLoading}
                                             onPress={() => handleSlotPress(slot)}
                                         >
                                             <View style={styles.slotTimeContainer}>
-                                                <Text style={[styles.slotTime, { color: slot.available ? theme.text : theme.icon }, !slot.available && styles.slotTextUnavailable]}>
+                                                <Text style={[styles.slotTime, { color: slot.available ? theme.text : theme.textSecondary }, !slot.available && styles.slotTextUnavailable]}>
                                                     {format(slot.time, 'HH:mm')}
                                                 </Text>
                                             </View>
                                             <View style={styles.slotDetailsContainer}>
-                                                <Text style={[styles.slotDuration, { color: slot.available ? theme.tint : theme.icon }]}>
+                                                <Text style={[styles.slotDuration, { color: slot.available ? theme.tint : theme.textSecondary }]}>
                                                     {slot.available ? '1 Hour' : (slot.blockReason || 'Gym in use')}
                                                 </Text>
                                             </View>
                                             <View style={styles.slotChevron}>
-                                                {slot.available && <Ionicons name="chevron-forward" size={20} color={theme.icon} opacity={0.5} />}
+                                                {slot.available && <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} opacity={0.5} />}
                                             </View>
                                         </TouchableOpacity>
                                         {!isLast && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
@@ -583,128 +574,111 @@ export default function GroupsScreen() {
     if (selectedGroup) {
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-                <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <View>
-                            <Text style={[styles.title, { color: theme.text }]}>{selectedGroup.name}</Text>
-                            <Text style={[styles.subtitle, { color: theme.icon }]}>{members.length} Members</Text>
-                        </View>
-                        <TouchableOpacity onPress={() => setSelectedGroup(null)} style={[styles.backButton, { backgroundColor: theme.border }]}>
-                            <Text style={[styles.backButtonText, { color: theme.text }]}>Back</Text>
-                        </TouchableOpacity>
-                    </View>
+                <View style={styles.headerContainer}>
+                    <ScreenHeader
+                        title={selectedGroup.name}
+                        subtitle={`${members.length} Members`}
+                        right={
+                            <TouchableOpacity onPress={() => setSelectedGroup(null)} style={[styles.backButton, { backgroundColor: theme.cardAlt }]}>
+                                <Text style={[styles.backButtonText, { color: theme.text }]}>Back</Text>
+                            </TouchableOpacity>
+                        }
+                    />
                 </View>
 
-                <ScrollView contentContainerStyle={{ padding: 20 }}>
-                     <TouchableOpacity 
-                        style={[styles.bookButton, { backgroundColor: theme.tint, marginBottom: 20 }]} 
+                <ScrollView contentContainerStyle={{ padding: Spacing.xl }}>
+                    <Button
+                        variant="primary"
+                        icon="calendar-outline"
+                        label="Book Group Session"
                         onPress={() => setIsBookingMode(true)}
-                    >
-                        <Ionicons name="calendar-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-                        <Text style={styles.bookButtonText}>Book Group Session</Text>
-                    </TouchableOpacity>
+                        style={{ marginBottom: Spacing.xl }}
+                    />
 
-                    <View style={styles.sectionHeader}>
-                        <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 10 }]}>Upcoming Sessions</Text>
-                    </View>
-                    
+                    <SectionHeader title="Upcoming Sessions" />
+
                     {detailsLoading ? (
                         <ActivityIndicator color={theme.tint} />
                     ) : upcomingSessions.length === 0 ? (
-                        <Text style={{ color: theme.icon, marginBottom: 20 }}>No sessions scheduled yet.</Text>
+                        <EmptyState icon="calendar-outline" title="No sessions scheduled yet." compact />
                     ) : (
-                        <View style={[styles.listWrapper, { backgroundColor: theme.card, borderColor: theme.border, marginBottom: 20 }]}>
+                        <ListContainer style={{ marginBottom: Spacing.xl }}>
                             {upcomingSessions.map((session, i) => (
-                                <View key={session.id}>
-                                    <View style={[styles.listItem, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
-                                        <View>
-                                            <Text style={[styles.listItemText, { color: theme.text }]}>
-                                                {format(session.startTime, 'MMM do')}
-                                            </Text>
-                                            <Text style={[styles.listItemSub, { color: theme.icon }]}>
-                                                {format(session.startTime, 'HH:mm')} - {format(session.endTime, 'HH:mm')}
-                                            </Text>
-                                        </View>
-                                        <TouchableOpacity 
-                                            style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radii.pill }}
-                                            onPress={() => handleCancelSession(session)}
-                                        >
-                                            <Text style={{ color: '#ef4444', fontWeight: '600', fontSize: 13 }}>Cancel</Text>
-                                        </TouchableOpacity>
+                                <ListRow key={session.id} isLast={i === upcomingSessions.length - 1} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <View>
+                                        <Text style={[styles.listItemText, { color: theme.text }]}>
+                                            {format(session.startTime, 'MMM do')}
+                                        </Text>
+                                        <Text style={[styles.listItemSub, { color: theme.textSecondary }]}>
+                                            {format(session.startTime, 'HH:mm')} - {format(session.endTime, 'HH:mm')}
+                                        </Text>
                                     </View>
-                                    {i < upcomingSessions.length - 1 && <View style={[styles.separator, { backgroundColor: theme.border, marginLeft: 0 }]} />}
-                                </View>
+                                    <Button variant="destructive" size="sm" label="Cancel" onPress={() => handleCancelSession(session)} />
+                                </ListRow>
                             ))}
-                        </View>
+                        </ListContainer>
                     )}
 
-                    <View style={styles.sectionHeader}>
-                        <Text style={[styles.sectionTitle, { color: theme.text }]}>Members</Text>
-                        <TouchableOpacity onPress={() => setInviteModalVisible(true)}>
-                            <Text style={{ color: theme.tint, fontWeight: '600' }}>+ Invite</Text>
-                        </TouchableOpacity>
-                    </View>
-                    
+                    <SectionHeader
+                        title="Members"
+                        action={
+                            <TouchableOpacity onPress={() => setInviteModalVisible(true)}>
+                                <Text style={{ color: theme.tint, fontWeight: '600' }}>+ Invite</Text>
+                            </TouchableOpacity>
+                        }
+                    />
+
                     {detailsLoading ? (
                         <ActivityIndicator color={theme.tint} />
                     ) : members.length === 0 ? (
-                        <Text style={{ color: theme.icon, marginBottom: 20 }}>No members have joined yet.</Text>
+                        <EmptyState icon="person-outline" title="No members have joined yet." compact />
                     ) : (
-                        <View style={[styles.listWrapper, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                        <ListContainer style={{ marginBottom: Spacing.xl }}>
                             {members.map((m, i) => (
-                                <View key={m.id}>
-                                    <View style={[styles.listItem, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
-                                        <View>
-                                            <Text style={[styles.listItemText, { color: theme.text }]}>{m.name}</Text>
-                                            <Text style={[styles.listItemSub, { color: theme.icon }]}>{m.email}</Text>
-                                        </View>
-                                        <TouchableOpacity 
-                                            style={{ paddingHorizontal: 12, paddingVertical: 6 }}
-                                            onPress={() => handleRemoveMember(m)}
-                                        >
-                                            <Ionicons name="close-circle" size={24} color={theme.icon} />
-                                        </TouchableOpacity>
+                                <ListRow key={m.id} isLast={i === members.length - 1} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <View>
+                                        <Text style={[styles.listItemText, { color: theme.text }]}>{m.name}</Text>
+                                        <Text style={[styles.listItemSub, { color: theme.textSecondary }]}>{m.email}</Text>
                                     </View>
-                                    {i < members.length - 1 && <View style={[styles.separator, { backgroundColor: theme.border, marginLeft: 0 }]} />}
-                                </View>
+                                    <TouchableOpacity
+                                        style={{ paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm }}
+                                        onPress={() => handleRemoveMember(m)}
+                                    >
+                                        <Ionicons name="close-circle" size={24} color={theme.textSecondary} />
+                                    </TouchableOpacity>
+                                </ListRow>
                             ))}
-                        </View>
+                        </ListContainer>
                     )}
 
-                    <View style={styles.sectionHeader}>
-                        <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 10 }]}>Pending Invites</Text>
-                    </View>
-                    
+                    <SectionHeader title="Pending Invites" />
+
                     {detailsLoading ? (
                         <ActivityIndicator color={theme.tint} />
                     ) : invites.filter(i => i.status === 'pending').length === 0 ? (
-                        <Text style={{ color: theme.icon }}>No pending invites.</Text>
+                        <EmptyState icon="mail-outline" title="No pending invites." compact />
                     ) : (
-                        <View style={[styles.listWrapper, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                        <ListContainer>
                             {invites.filter(inv => inv.status === 'pending').map((inv, i, arr) => (
-                                <View key={inv.id}>
-                                    <View style={styles.listItem}>
-                                        <Text style={[styles.listItemText, { color: theme.text }]}>{inv.email}</Text>
-                                        <Text style={[styles.listItemSub, { color: theme.icon }]}>Invited {format(inv.createdAt, 'MMM d')}</Text>
-                                    </View>
-                                    {i < arr.length - 1 && <View style={[styles.separator, { backgroundColor: theme.border, marginLeft: 0 }]} />}
-                                </View>
+                                <ListRow key={inv.id} isLast={i === arr.length - 1}>
+                                    <Text style={[styles.listItemText, { color: theme.text }]}>{inv.email}</Text>
+                                    <Text style={[styles.listItemSub, { color: theme.textSecondary }]}>Invited {format(inv.createdAt, 'MMM d')}</Text>
+                                </ListRow>
                             ))}
-                        </View>
+                        </ListContainer>
                     )}
 
                     {/* Danger Zone: Delete Group */}
                     {userProfile?.role === 'pt' && (
-                        <View style={{ marginTop: 40, marginBottom: 40 }}>
-                            <Text style={[styles.sectionTitle, { color: '#ef4444', marginBottom: 15 }]}>Danger Zone</Text>
-                            <TouchableOpacity 
-                                style={{ padding: 16, borderRadius: Radii.pill, backgroundColor: 'transparent', borderWidth: 2, borderColor: '#ef4444', alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
+                        <View style={{ marginTop: Spacing.huge, marginBottom: Spacing.huge }}>
+                            <Text style={[styles.sectionTitle, { color: theme.danger, marginBottom: Spacing.lg - 1 }]}>Danger Zone</Text>
+                            <Button
+                                variant="destructive"
+                                icon="trash-outline"
+                                label="Delete Group"
                                 onPress={handleDeleteGroup}
-                            >
-                                <Ionicons name="trash-outline" size={20} color="#ef4444" style={{ marginRight: 8 }} />
-                                <Text style={{ color: '#ef4444', fontSize: 16, fontWeight: '600' }}>Delete Group</Text>
-                            </TouchableOpacity>
-                            <Text style={{ color: theme.icon, fontSize: 13, textAlign: 'center', marginTop: 10 }}>
+                            />
+                            <Text style={{ color: theme.textSecondary, fontSize: 13, textAlign: 'center', marginTop: Spacing.sm + 2 }}>
                                 This will irrevocably cancel all upcoming sessions along with deleting the group itself.
                             </Text>
                         </View>
@@ -712,28 +686,26 @@ export default function GroupsScreen() {
                 </ScrollView>
 
                 <Modal visible={isInviteModalVisible} transparent animationType="fade">
-                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
                         <View style={[styles.modalContent, { backgroundColor: theme.card, borderColor: theme.border }]}>
                             <Text style={[styles.modalTitle, { color: theme.text }]}>Invite Client</Text>
-                            <Text style={[styles.modalSubtitle, { color: theme.icon }]}>Enter the client's email address</Text>
-                            
+                            <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>Enter the client's email address</Text>
+
                             <TextInput
                                 style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
                                 placeholder="client@example.com"
-                                placeholderTextColor={theme.icon}
+                                placeholderTextColor={theme.textTertiary}
                                 value={inviteEmail}
                                 onChangeText={setInviteEmail}
                                 autoCapitalize="none"
                                 keyboardType="email-address"
                             />
-                            
+
                             <View style={styles.modalActions}>
                                 <TouchableOpacity style={styles.modalCancel} onPress={() => setInviteModalVisible(false)} disabled={inviting}>
-                                    <Text style={[styles.modalCancelText, { color: theme.icon }]}>Cancel</Text>
+                                    <Text style={[styles.modalCancelText, { color: theme.textSecondary }]}>Cancel</Text>
                                 </TouchableOpacity>
-                                <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: theme.tint }]} onPress={handleInvite} disabled={inviting}>
-                                    {inviting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.modalSubmitText}>Send Invite</Text>}
-                                </TouchableOpacity>
+                                <Button variant="primary" label="Send Invite" onPress={handleInvite} loading={inviting} />
                             </View>
                         </View>
                     </KeyboardAvoidingView>
@@ -752,77 +724,67 @@ export default function GroupsScreen() {
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-            <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <View>
-                        <Text style={[styles.title, { color: theme.text }]}>Your Groups</Text>
-                        <Text style={[styles.subtitle, { color: theme.icon }]}>Manage group training</Text>
-                    </View>
-                    <TouchableOpacity style={[styles.addButton, { backgroundColor: theme.tint }]} onPress={() => setCreateModalVisible(true)}>
-                        <Ionicons name="add" size={20} color="#fff" />
-                        <Text style={styles.addButtonText}>New</Text>
-                    </TouchableOpacity>
-                </View>
+            <View style={styles.headerContainer}>
+                <ScreenHeader
+                    title="Your Groups"
+                    subtitle="Manage group training"
+                    right={
+                        <Button variant="primary" size="sm" icon="add" label="New" onPress={() => setCreateModalVisible(true)} />
+                    }
+                />
             </View>
 
-            <ScrollView contentContainerStyle={{ padding: 20 }}>
+            <ScrollView contentContainerStyle={{ padding: Spacing.xl }}>
                 {groups.length === 0 ? (
-                    <View style={[styles.emptyState, { borderColor: theme.border }]}>
-                        <Ionicons name="people-outline" size={48} color={theme.icon} />
-                        <Text style={{ color: theme.text, fontSize: 18, fontWeight: '600', marginTop: 10 }}>No Groups Yet</Text>
-                        <Text style={{ color: theme.icon, textAlign: 'center', marginTop: 5 }}>Create a group to invite clients and book shared sessions.</Text>
-                    </View>
+                    <EmptyState icon="people-outline" title="No Groups Yet" subtitle="Create a group to invite clients and book shared sessions." />
                 ) : (
-                    <View style={[styles.listWrapper, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <ListContainer>
                         {groups.map((group, index) => {
                             const isLast = index === groups.length - 1;
                             return (
-                                <View key={group.id}>
-                                    <TouchableOpacity 
-                                        style={styles.groupRow}
-                                        onPress={() => loadGroupDetails(group)}    
+                                <ListRow key={group.id} isLast={isLast} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <TouchableOpacity
+                                        style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                                        onPress={() => loadGroupDetails(group)}
                                     >
                                         <View>
                                             <Text style={[styles.groupNameText, { color: theme.text }]}>{group.name}</Text>
-                                            <Text style={[styles.groupMetaText, { color: theme.icon }]}>Created {format(group.createdAt, 'MMM d, yyyy')}</Text>
+                                            <Text style={[styles.groupMetaText, { color: theme.textSecondary }]}>Created {format(group.createdAt, 'MMM d, yyyy')}</Text>
                                         </View>
-                                        <Ionicons name="chevron-forward" size={20} color={theme.icon} />
+                                        <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
                                     </TouchableOpacity>
-                                    {!isLast && <View style={[styles.separator, { backgroundColor: theme.border, marginLeft: 16 }]} />}
-                                </View>
+                                </ListRow>
                             );
                         })}
-                    </View>
+                    </ListContainer>
                 )}
             </ScrollView>
 
             <Modal visible={isCreateModalVisible} transparent animationType="fade">
-                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
                     <View style={[styles.modalContent, { backgroundColor: theme.card, borderColor: theme.border }]}>
                         <Text style={[styles.modalTitle, { color: theme.text }]}>Create Group</Text>
-                        <Text style={[styles.modalSubtitle, { color: theme.icon }]}>Give your new training group a name</Text>
-                        
+                        <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>Give your new training group a name</Text>
+
                         <TextInput
                             style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
                             placeholder="e.g. Mens 6am Class"
-                            placeholderTextColor={theme.icon}
+                            placeholderTextColor={theme.textTertiary}
                             value={newGroupName}
                             onChangeText={setNewGroupName}
                             autoCapitalize="words"
                         />
-                        
+
                         <View style={styles.modalActions}>
                             <TouchableOpacity style={styles.modalCancel} onPress={() => setCreateModalVisible(false)} disabled={creatingGroup}>
-                                <Text style={[styles.modalCancelText, { color: theme.icon }]}>Cancel</Text>
+                                <Text style={[styles.modalCancelText, { color: theme.textSecondary }]}>Cancel</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: theme.tint }]} onPress={handleCreateGroup} disabled={creatingGroup}>
-                                {creatingGroup ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.modalSubmitText}>Create</Text>}
-                            </TouchableOpacity>
+                            <Button variant="primary" label="Create" onPress={handleCreateGroup} loading={creatingGroup} />
                         </View>
                     </View>
                 </KeyboardAvoidingView>
             </Modal>
-            
+
             <CustomAlert
                 visible={alertConfig.visible}
                 title={alertConfig.title}
@@ -835,53 +797,39 @@ export default function GroupsScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    header: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20, borderBottomWidth: StyleSheet.hairlineWidth },
-    title: { fontSize: 34, fontWeight: '700', letterSpacing: -0.5 },
-    subtitle: { fontSize: 16, marginTop: 4 },
-    addButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radii.pill },
-    addButtonText: { color: '#fff', fontWeight: '600', marginLeft: 4 },
-    emptyState: { alignItems: 'center', justifyContent: 'center', padding: 40, borderStyle: 'dashed', borderWidth: 1, borderRadius: Radii.lg },
-    listWrapper: { borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden', marginBottom: 20 },
-    groupRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
-    groupNameText: { fontSize: 17, fontWeight: '600' },
-    groupMetaText: { fontSize: 14, marginTop: 4 },
+    headerContainer: { paddingHorizontal: Spacing.xl, paddingTop: Spacing.sm },
+    groupNameText: { ...Typography.headline },
+    groupMetaText: { ...Typography.subhead, marginTop: 4 },
     separator: { height: StyleSheet.hairlineWidth },
-    
+
     // Details
     backButton: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radii.pill },
     backButtonText: { fontWeight: '600', fontSize: 14 },
-    bookButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: Radii.pill },
-    bookButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-    sectionTitle: { fontSize: 20, fontWeight: '700' },
-    listItem: { padding: 16 },
-    listItemText: { fontSize: 16, fontWeight: '500' },
-    listItemSub: { fontSize: 14, marginTop: 2 },
-    
+    sectionTitle: { ...Typography.title3 },
+    listItemText: { ...Typography.bodyMedium },
+    listItemSub: { ...Typography.footnote, marginTop: 2 },
+
     // Modal
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
-    modalContent: { padding: 24, borderRadius: Radii.xl, borderWidth: 1 },
-    modalTitle: { fontSize: 22, fontWeight: '700', marginBottom: 6 },
-    modalSubtitle: { fontSize: 15, marginBottom: 20 },
-    input: { padding: 16, borderRadius: Radii.lg, borderWidth: 1, fontSize: 16, marginBottom: 24 },
-    modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12 },
-    modalCancel: { paddingHorizontal: 20, paddingVertical: 12, justifyContent: 'center' },
+    modalOverlay: { flex: 1, justifyContent: 'center', padding: Spacing.xl },
+    modalContent: { padding: Spacing.xxl, borderRadius: Radii.xl, borderWidth: 1 },
+    modalTitle: { ...Typography.title2, marginBottom: 6 },
+    modalSubtitle: { ...Typography.subhead, marginBottom: Spacing.xl },
+    input: { padding: Spacing.lg, borderRadius: Radii.lg, borderWidth: 1, fontSize: 16, marginBottom: Spacing.xxl },
+    modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: Spacing.md },
+    modalCancel: { paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md, justifyContent: 'center' },
     modalCancelText: { fontWeight: '600', fontSize: 16 },
-    modalSubmit: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: Radii.pill, justifyContent: 'center' },
-    modalSubmitText: { color: '#fff', fontWeight: '600', fontSize: 16 },
 
     // Booking Slots
     dateSelectorContainer: { borderBottomWidth: StyleSheet.hairlineWidth },
     monthLabel: { fontSize: 14, fontWeight: '600', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 2 },
     dateSelector: { paddingHorizontal: 15, paddingVertical: 12, gap: 8 },
     dateCard: { paddingVertical: 10, paddingHorizontal: 8, borderRadius: Radii.pill, alignItems: 'center', minWidth: 54 },
-    dateCardSelected: { shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4, shadowColor: '#F26122' },
+    dateCardSelected: { shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
     dayText: { fontSize: 11, textTransform: 'uppercase', fontWeight: '600', marginBottom: 4 },
     dateText: { fontSize: 20, fontWeight: '500' },
     slotsContainer: { padding: 16, paddingBottom: 40 },
     slotsList: { borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
     slotRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16 },
-    slotRowUnavailable: { opacity: 0.6, backgroundColor: 'rgba(0,0,0,0.02)' },
     slotTimeContainer: { width: 70 },
     slotTime: { fontSize: 17, fontWeight: '600', letterSpacing: -0.4 },
     slotTextUnavailable: { textDecorationLine: 'line-through' },
