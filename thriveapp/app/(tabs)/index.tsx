@@ -1,21 +1,43 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Modal, FlatList } from 'react-native';
 import { useAuth } from '../../context/auth';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getUserBookings, getPTBookingsForInstructor, getUserCancelledUpcomingBookings, getPTCancelledBookingsForInstructor, cancelBooking, cancelRecurringSeries, Booking, getUserProfile, UserProfile, getClientsForPt, createBooking } from '../../services/bookingService';
 import { getGroupById } from '../../services/groupService';
 import { getGlobalSettings, GlobalSettings } from '../../services/settingsService';
-import { format, isSameDay } from 'date-fns';
+import { format, isSameDay, isToday, isTomorrow } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import UpdateBanner from '../../components/UpdateBanner';
-import { ScreenHeader, Card, SectionHeader, EmptyState, Badge, Button, ListContainer, ListRow } from '@/components/ui';
+import { Card, SectionHeader, EmptyState, Badge, Button, ListContainer, ListRow } from '@/components/ui';
+
+const getGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 5) return 'Good night';
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+};
+
+const getGreetingIcon = (): keyof typeof Ionicons.glyphMap => {
+  const hour = new Date().getHours();
+  if (hour < 6 || hour >= 20) return 'moon-outline';
+  if (hour < 12) return 'partly-sunny-outline';
+  return 'sunny-outline';
+};
+
+const getRelativeDayLabel = (date: Date) => {
+  if (isToday(date)) return 'Today';
+  if (isTomorrow(date)) return 'Tomorrow';
+  return format(date, 'EEE, d MMM');
+};
 
 export default function DashboardScreen() {
   const { user } = useAuth();
+  const router = useRouter();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
@@ -336,17 +358,76 @@ export default function DashboardScreen() {
     return true;
   });
 
+  const isPtOrAdmin = userProfile?.role === 'pt' || userProfile?.role === 'admin';
+  const firstName = userProfile?.name?.split(' ')[0] || 'there';
+  const initial = (userProfile?.name?.trim()?.[0] || firstName[0] || '?').toUpperCase();
+
+  const heroSubtitle = loading
+    ? 'Loading your schedule…'
+    : nextBooking
+    ? isToday(nextBooking.startTime)
+      ? "You've got a session today — let's make it count."
+      : isTomorrow(nextBooking.startTime)
+      ? 'Your next session is tomorrow. Get ready!'
+      : `Your next session is ${format(nextBooking.startTime, 'EEEE, MMM d')}.`
+    : isPtOrAdmin
+    ? "Here's what's on your schedule."
+    : "You're all clear — time to book your next session.";
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.tint} />}
       >
-        <ScreenHeader
-          logo={require('../../assets/images/TC_Monogram_White.png')}
-          title={`Hello, ${userProfile?.name?.split(' ')[0] || 'there'}`}
-          subtitle="Welcome to Thrive Collective"
-        />
+        <View style={styles.heroSection}>
+          <View style={styles.heroRow}>
+            <View style={[styles.avatarCircle, { backgroundColor: theme.tint }]}>
+              <Text style={styles.avatarInitial}>{initial}</Text>
+            </View>
+            <View style={styles.heroTextColumn}>
+              <View style={styles.heroGreetingRow}>
+                <Ionicons name={getGreetingIcon()} size={16} color={theme.tint} style={{ marginRight: 6 }} />
+                <Text style={[styles.greetingText, { color: theme.textSecondary }]}>{getGreeting()}</Text>
+              </View>
+              <Text style={[styles.nameText, { color: theme.text }]} numberOfLines={1}>{firstName}</Text>
+            </View>
+          </View>
+          <Text style={[styles.heroSubtitle, { color: theme.textSecondary }]}>{heroSubtitle}</Text>
+        </View>
+
+        <View style={styles.quickActionsRow}>
+          <TouchableOpacity
+            style={[styles.quickAction, { backgroundColor: theme.card, borderColor: theme.border }]}
+            onPress={() => router.push('/gym')}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: theme.tintMuted }]}>
+              <Ionicons name="barbell-outline" size={20} color={theme.tint} />
+            </View>
+            <Text style={[styles.quickActionLabel, { color: theme.text }]}>Gym</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.quickAction, { backgroundColor: theme.card, borderColor: theme.border }]}
+            onPress={() => router.push('/pt')}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: theme.tintMuted }]}>
+              <Ionicons name="body-outline" size={20} color={theme.tint} />
+            </View>
+            <Text style={[styles.quickActionLabel, { color: theme.text }]}>PT</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.quickAction, { backgroundColor: theme.card, borderColor: theme.border }]}
+            onPress={() => router.push('/groups')}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: theme.tintMuted }]}>
+              <Ionicons name="people-outline" size={20} color={theme.tint} />
+            </View>
+            <Text style={[styles.quickActionLabel, { color: theme.text }]}>Groups</Text>
+          </TouchableOpacity>
+        </View>
 
         <UpdateBanner latestVersion={globalSettings?.latestVersion} />
 
@@ -362,13 +443,28 @@ export default function DashboardScreen() {
         {loading ? (
           <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 40 }} />
         ) : bookings.filter(b => showCancelled || b.status !== 'cancelled').length === 0 ? (
-          <EmptyState icon="calendar-outline" title="You have no upcoming bookings." />
+          <View style={styles.section}>
+            <EmptyState
+              icon="calendar-outline"
+              title="Your calendar's wide open"
+              subtitle={isPtOrAdmin ? 'No upcoming sessions scheduled yet.' : "Let's get your next session on the books."}
+            />
+            {!isPtOrAdmin && (
+              <View style={styles.emptyActionsRow}>
+                <Button variant="primary" icon="barbell-outline" label="Book Gym" onPress={() => router.push('/gym')} style={{ flex: 1 }} />
+                <Button variant="secondary" icon="body-outline" label="Book PT" onPress={() => router.push('/pt')} style={{ flex: 1 }} />
+              </View>
+            )}
+          </View>
         ) : (
           <>
             {nextBooking && (
             <View style={styles.section}>
               <SectionHeader title="Next Session" />
               <Card elevated tinted padding={20}>
+                <View style={styles.relativeDayPill}>
+                  <Text style={styles.relativeDayText}>{getRelativeDayLabel(nextBooking.startTime)}</Text>
+                </View>
                 <View style={styles.highlightHeader}>
                   <Text style={styles.highlightTypeText}>
                     {nextBooking.recurringTemplateId && (
@@ -581,6 +677,86 @@ const styles = StyleSheet.create({
   },
   section: {
     marginTop: Spacing.sm,
+  },
+  heroSection: {
+    marginBottom: Spacing.xl,
+    paddingVertical: Spacing.sm,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatarCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  heroTextColumn: {
+    marginLeft: Spacing.md,
+    flex: 1,
+  },
+  heroGreetingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  greetingText: {
+    ...Typography.subhead,
+  },
+  nameText: {
+    ...Typography.largeTitle,
+    marginTop: 2,
+  },
+  heroSubtitle: {
+    ...Typography.body,
+    marginTop: Spacing.md,
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginBottom: Spacing.xxl,
+  },
+  quickAction: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: Spacing.lg,
+    borderRadius: Radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  quickActionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.sm,
+  },
+  quickActionLabel: {
+    ...Typography.footnote,
+    fontWeight: '600',
+  },
+  emptyActionsRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.lg,
+  },
+  relativeDayPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radii.pill,
+    marginBottom: Spacing.md,
+  },
+  relativeDayText: {
+    color: '#ffffff',
+    ...Typography.caption,
   },
   announcementBanner: {
     flexDirection: 'row',
