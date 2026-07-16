@@ -377,17 +377,17 @@ export default function DashboardScreen() {
               <Text style={[styles.sectionTitle, { color: theme.text }]}>Next Session</Text>
               <View style={[styles.highlightCard, { backgroundColor: theme.tint }]}>
                 <View style={styles.highlightHeader}>
-                  <Text style={styles.highlightTypeText} numberOfLines={1}>
+                  <Text style={styles.highlightTypeText}>
                     {nextBooking.recurringTemplateId && (
                       <Ionicons name="repeat-outline" size={16} color="#ffffff" style={{ marginRight: 4 }} />
                     )}
                     {getTypeLabel(nextBooking)}
                   </Text>
                   {nextBooking.type !== 'group' && (
-                  <View style={{ flexDirection: 'row', gap: 6 }}>
-                    {(userProfile?.role === 'pt' || userProfile?.role === 'admin') && 
-                     nextBooking.type === 'pt' && 
-                     nextBooking.status === 'confirmed' && 
+                  <View style={styles.highlightActionsRow}>
+                    {(userProfile?.role === 'pt' || userProfile?.role === 'admin') &&
+                     nextBooking.type === 'pt' &&
+                     nextBooking.status === 'confirmed' &&
                      !nextBooking.partnerName && (
                       <TouchableOpacity
                         style={styles.highlightCancelButton}
@@ -475,31 +475,29 @@ export default function DashboardScreen() {
                         <View key={booking.id} style={{ opacity: isCancelled ? 0.5 : 1 }}>
                           <View style={styles.card}>
                             <View style={styles.cardHeader}>
-                              <View style={{ flex: 1, paddingRight: 10 }}>
-                                <Text style={[styles.typeText, { color: theme.text }]} numberOfLines={1}>
-                                  {booking.recurringTemplateId && (
-                                    <Ionicons name="repeat-outline" size={15} color={theme.icon} style={{ marginRight: 4 }} />
-                                  )}
-                                  {getTypeLabel(booking)}
-                                </Text>
-                                <View style={styles.detailsRow}>
-                                  <Ionicons name="time-outline" size={15} color={theme.icon} style={{ marginRight: 6 }} />
-                                  <Text style={[styles.detailsText, { color: theme.icon }]}>
-                                    {format(booking.startTime, 'EEE, MMM d')} • {format(booking.startTime, 'HH:mm')} - {format(booking.endTime, 'HH:mm')}
-                                  </Text>
-                                </View>
-                                {isCancelled && (
-                                  <View style={styles.cancelledBadge}>
-                                    <Text style={styles.cancelledBadgeText}>{cancelledByLabel}</Text>
-                                  </View>
+                              <Text style={[styles.typeText, { color: theme.text }]}>
+                                {booking.recurringTemplateId && (
+                                  <Ionicons name="repeat-outline" size={15} color={theme.icon} style={{ marginRight: 4 }} />
                                 )}
+                                {getTypeLabel(booking)}
+                              </Text>
+                              <View style={styles.detailsRow}>
+                                <Ionicons name="time-outline" size={15} color={theme.icon} style={{ marginRight: 6 }} />
+                                <Text style={[styles.detailsText, { color: theme.icon }]}>
+                                  {format(booking.startTime, 'EEE, MMM d')} • {format(booking.startTime, 'HH:mm')} - {format(booking.endTime, 'HH:mm')}
+                                </Text>
                               </View>
+                              {isCancelled && (
+                                <View style={styles.cancelledBadge}>
+                                  <Text style={styles.cancelledBadgeText}>{cancelledByLabel}</Text>
+                                </View>
+                              )}
 
                               {booking.type !== 'group' && !isCancelled && (
-                                <View style={{ flexDirection: 'row', gap: 6 }}>
-                                  {(userProfile?.role === 'pt' || userProfile?.role === 'admin') && 
-                                   booking.type === 'pt' && 
-                                   booking.status === 'confirmed' && 
+                                <View style={styles.cardActionsRow}>
+                                  {(userProfile?.role === 'pt' || userProfile?.role === 'admin') &&
+                                   booking.type === 'pt' &&
+                                   booking.status === 'confirmed' &&
                                    !booking.partnerName && (
                                     <TouchableOpacity
                                       style={[styles.cancelButton, { backgroundColor: theme.tint + '15' }]}
@@ -688,18 +686,18 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   highlightHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: 12,
   },
   highlightTypeText: {
     fontSize: 20,
     fontWeight: '700',
     color: '#ffffff',
-    flex: 1,
-    paddingRight: 10,
     letterSpacing: -0.5,
+  },
+  highlightActionsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 10,
   },
   highlightCancelButton: {
     flexDirection: 'row',
@@ -752,16 +750,17 @@ const styles = StyleSheet.create({
   card: {
     padding: 16,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
+  cardHeader: {},
   typeText: {
     fontSize: 17,
     fontWeight: '600',
     marginBottom: 4,
     letterSpacing: -0.4,
+  },
+  cardActionsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 10,
   },
   cancelButton: {
     flexDirection: 'row',
