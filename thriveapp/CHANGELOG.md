@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.8.0] - 2026-07-16
+
+### Added
+- **Design System**: Introduced a shared `components/ui/` library (`Card`, `Button`, `Badge`, `EmptyState`, `ListRow`, `ScreenHeader`, `SectionHeader`, `StatBox`) and an expanded `theme.ts` token set, and rolled it out across the auth, dashboard, gym, PT, groups, admin, and profile screens for a more consistent look.
+- **Welcoming Dashboard**: The dashboard now greets you by name with a time-of-day message, shows a "Today"/"Tomorrow" badge on your next session, and offers a friendlier empty state with direct booking shortcuts.
+- **Quick Actions & Streamlined Navigation**: Added Gym/PT/Groups quick-action shortcuts to the top of the dashboard and removed the corresponding tabs from the bottom navigation bar to reduce redundancy. The pending PT request indicator (previously a tab badge) now shows on the dashboard's PT quick action instead.
+
+### Changed
+- **Firestore Security Rules**: Tightened rules for `users`, `groups`, and `group_invites` — group membership updates can now only add/remove the requesting user (not others), and group invites are now scoped so only the invited user (by email), the owning PT, or an admin can read, accept/decline, or delete them.
+
+### Fixed
+- **PT Client Booking Names**: Fixed an issue on the dashboard where a PT session's client name could display incorrectly.
+
 ## [2.7.0] - 2026-06-03
 
 ### Added
