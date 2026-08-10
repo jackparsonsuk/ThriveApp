@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, Dimensions, FlatList, ViewToken } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, Dimensions, FlatList, ViewToken, Switch, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, Booking, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession, getGymBookingsForDate, checkSlotAvailability, getPendingPTRequestsForPT, updateBookingStatus, getUserPendingBookings, cancelBooking, getPersonAllBookingsForDate } from '../../services/bookingService';
+import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, Booking, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession, getGymBookingsForDate, checkSlotAvailability, getPendingPTRequestsForPT, updateBookingStatus, getUserPendingBookings, cancelBooking, getPersonAllBookingsForDate, updateWorkingHours, WorkingHours } from '../../services/bookingService';
+import { getPtDayAvailability, PtSlot, formatWorkingDay, DAY_LABELS, DAY_ORDER, TIME_OPTIONS, effectiveWorkingHours, LEGACY_WORKING_DAY } from '../../services/availabilityService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
@@ -61,6 +62,17 @@ export default function PTBookingScreen() {
 
     // Client's Assigned PT State
     const [assignedPtData, setAssignedPtData] = useState<UserProfile | null>(null);
+
+    // Client-facing view of their PT's day
+    const [ptSlots, setPtSlots] = useState<PtSlot[]>([]);
+    const [ptSlotsLoading, setPtSlotsLoading] = useState(false);
+    const [ptDayWindow, setPtDayWindow] = useState<{ start: Date; end: Date } | null>(null);
+
+    // Working hours editor (PT role)
+    const [isEditingHours, setIsEditingHours] = useState(false);
+    const [hoursDraft, setHoursDraft] = useState<WorkingHours>({});
+    const [savingHours, setSavingHours] = useState(false);
+    const [timePicker, setTimePicker] = useState<{ day: string; field: 'start' | 'end' } | null>(null);
 
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState<{
@@ -135,6 +147,14 @@ export default function PTBookingScreen() {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [userProfile, user]);
+
+    // Clients see their PT's day — wait for the PT profile so we know their working hours
+    useEffect(() => {
+        if (userProfile?.role === 'client' && userProfile.assignedPtId && assignedPtData) {
+            fetchClientAvailability();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedDate, userProfile, assignedPtData]);
 
     const loadUserProfile = async () => {
         if (!user) return;
@@ -258,7 +278,8 @@ export default function PTBookingScreen() {
                 setCancellingSessionId(session.id);
                 try {
                     await cancelBooking(session.id, 'client');
-                    if (user?.uid) fetchClientPendingSessions(user.uid);
+                    // The freed hour has to reappear in the slot list too
+                    if (user?.uid) await Promise.all([fetchClientPendingSessions(user.uid), fetchClientAvailability()]);
                 } catch (error) {
                     console.error('Error cancelling pending session:', error);
                     setAlertConfig({ visible: true, title: 'Error', message: 'Failed to cancel the request.', isError: true });
@@ -280,6 +301,139 @@ export default function PTBookingScreen() {
             console.error('Error fetching assigned PT profile:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const ptFirstName = assignedPtData?.name?.split(' ')[0] || 'Your PT';
+
+    const openHoursEditor = () => {
+        setHoursDraft(effectiveWorkingHours(userProfile?.workingHours));
+        setIsEditingHours(true);
+    };
+
+    const toggleWorkingDay = (day: string, enabled: boolean) => {
+        setHoursDraft(prev => {
+            const next = { ...prev } as WorkingHours;
+            if (enabled) next[day as keyof WorkingHours] = prev[day as keyof WorkingHours] ?? LEGACY_WORKING_DAY;
+            else delete next[day as keyof WorkingHours];
+            return next;
+        });
+    };
+
+    const setWorkingTime = (day: string, field: 'start' | 'end', value: string) => {
+        setHoursDraft(prev => {
+            const existing = prev[day as keyof WorkingHours] ?? LEGACY_WORKING_DAY;
+            return { ...prev, [day]: { ...existing, [field]: value } };
+        });
+    };
+
+    const handleSaveWorkingHours = async () => {
+        if (!user?.uid) return;
+
+        const invalidDay = DAY_ORDER.find(day => {
+            const hours = hoursDraft[day];
+            return hours && hours.end <= hours.start;
+        });
+        if (invalidDay) {
+            setAlertConfig({
+                visible: true,
+                title: 'Check Your Hours',
+                message: `${DAY_LABELS[Number(invalidDay)]} finishes before it starts. Adjust the times and try again.`,
+                isError: true
+            });
+            return;
+        }
+
+        setSavingHours(true);
+        try {
+            await updateWorkingHours(user.uid, hoursDraft);
+            setUserProfile(prev => prev ? { ...prev, workingHours: hoursDraft } : prev);
+            setIsEditingHours(false);
+            setAlertConfig({
+                visible: true,
+                title: 'Hours Saved',
+                message: 'Your clients can now only request sessions inside these hours.',
+                isSuccess: true
+            });
+        } catch (error) {
+            console.error('Error saving working hours:', error);
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to save your working hours. Please try again.',
+                isError: true
+            });
+        } finally {
+            setSavingHours(false);
+        }
+    };
+
+    // Client view: what hours can I actually request with my PT on this date?
+    const fetchClientAvailability = async () => {
+        if (!user?.uid || !userProfile?.assignedPtId) return;
+        setPtSlotsLoading(true);
+        try {
+            const { slots, window } = await getPtDayAvailability({
+                ptId: userProfile.assignedPtId,
+                clientId: user.uid,
+                date: selectedDate,
+                workingHours: assignedPtData?.workingHours,
+                ptFirstName,
+            });
+            setPtSlots(slots);
+            setPtDayWindow(window);
+        } catch (error) {
+            console.error('Error fetching PT availability for client:', error);
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: "Failed to load your PT's availability.",
+                isError: true
+            });
+        } finally {
+            setPtSlotsLoading(false);
+        }
+    };
+
+    const handleRequestPtSession = (slot: PtSlot) => {
+        setAlertConfig({
+            visible: true,
+            title: 'Request Session',
+            message: `Request a PT session with ${ptFirstName} on ${format(slot.time, 'EEE, MMM d')} at ${format(slot.time, 'HH:mm')}?`,
+            onConfirm: () => confirmPtRequest(slot)
+        });
+    };
+
+    const confirmPtRequest = async (slot: PtSlot) => {
+        if (!user?.uid || !userProfile?.assignedPtId) return;
+        setBookingLoading(true);
+        try {
+            await createBooking({
+                userId: user.uid,
+                startTime: slot.time,
+                endTime: slot.endTime,
+                type: 'pt',
+                ptId: userProfile.assignedPtId,
+                status: 'pending'
+            });
+            setAlertConfig({
+                visible: true,
+                title: 'Request Sent!',
+                message: `${ptFirstName} will confirm your session shortly.`,
+                isSuccess: true,
+                onConfirm: undefined
+            });
+            await Promise.all([fetchClientAvailability(), fetchClientPendingSessions(user.uid)]);
+        } catch (error) {
+            console.error('Error requesting PT session:', error);
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to send your request. Please try again.',
+                isError: true
+            });
+        } finally {
+            setBookingLoading(false);
         }
     };
 
@@ -711,6 +865,88 @@ export default function PTBookingScreen() {
                     <SectionDivider theme={theme} />
 
                     <View style={styles.clientsSection}>
+                        <SectionHeader title="Working Hours" />
+                        <Text style={[styles.hoursIntro, { color: theme.textSecondary }]}>
+                            Clients can only request sessions inside these hours. Block out individual days under Manage My Availability.
+                        </Text>
+
+                        {!userProfile?.workingHours && !isEditingHours && (
+                            <View style={[styles.hoursNotice, { backgroundColor: theme.tintMuted, borderColor: theme.tint }]}>
+                                <Ionicons name="information-circle-outline" size={18} color={theme.tint} style={{ marginRight: Spacing.sm }} />
+                                <Text style={[styles.hoursNoticeText, { color: theme.text }]}>
+                                    You haven&apos;t set your hours yet, so clients can request any day from 07:00 to 20:00.
+                                </Text>
+                            </View>
+                        )}
+
+                        <ListContainer>
+                            {DAY_ORDER.map((day, index) => {
+                                const source = isEditingHours ? hoursDraft : effectiveWorkingHours(userProfile?.workingHours);
+                                const hours = source[day];
+                                return (
+                                    <ListRow
+                                        key={day}
+                                        isLast={index === DAY_ORDER.length - 1}
+                                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                                    >
+                                        <Text style={[styles.hoursDayLabel, { color: theme.text }]}>{DAY_LABELS[Number(day)]}</Text>
+
+                                        {isEditingHours ? (
+                                            <View style={styles.hoursRowControls}>
+                                                {hours ? (
+                                                    <View style={styles.hoursChipRow}>
+                                                        <TouchableOpacity
+                                                            style={[styles.timeChip, { borderColor: theme.border, backgroundColor: theme.cardAlt }]}
+                                                            onPress={() => setTimePicker({ day, field: 'start' })}
+                                                        >
+                                                            <Text style={[styles.timeChipText, { color: theme.text }]}>{hours.start}</Text>
+                                                        </TouchableOpacity>
+                                                        <Text style={{ color: theme.textTertiary }}>–</Text>
+                                                        <TouchableOpacity
+                                                            style={[styles.timeChip, { borderColor: theme.border, backgroundColor: theme.cardAlt }]}
+                                                            onPress={() => setTimePicker({ day, field: 'end' })}
+                                                        >
+                                                            <Text style={[styles.timeChipText, { color: theme.text }]}>{hours.end}</Text>
+                                                        </TouchableOpacity>
+                                                    </View>
+                                                ) : (
+                                                    <Text style={[styles.hoursValue, { color: theme.textTertiary }]}>Not working</Text>
+                                                )}
+                                                <Switch
+                                                    value={!!hours}
+                                                    onValueChange={(enabled) => toggleWorkingDay(day, enabled)}
+                                                    trackColor={{ false: theme.border, true: theme.tint }}
+                                                    thumbColor="#ffffff"
+                                                />
+                                            </View>
+                                        ) : (
+                                            <Text style={[styles.hoursValue, { color: hours ? theme.textSecondary : theme.textTertiary }]}>
+                                                {formatWorkingDay(hours)}
+                                            </Text>
+                                        )}
+                                    </ListRow>
+                                );
+                            })}
+                        </ListContainer>
+
+                        {isEditingHours ? (
+                            <View style={styles.hoursActions}>
+                                <Button variant="secondary" label="Cancel" onPress={() => setIsEditingHours(false)} style={{ flex: 1 }} />
+                                <Button variant="primary" label="Save Hours" onPress={handleSaveWorkingHours} loading={savingHours} style={{ flex: 1 }} />
+                            </View>
+                        ) : (
+                            <Button
+                                variant="secondary"
+                                label="Edit Working Hours"
+                                onPress={openHoursEditor}
+                                style={{ alignSelf: 'center', marginTop: Spacing.lg }}
+                            />
+                        )}
+                    </View>
+
+                    <SectionDivider theme={theme} />
+
+                    <View style={styles.clientsSection}>
                         <SectionHeader title="Your Own Training" />
 
                         {userProfile?.assignedPtId ? (
@@ -757,6 +993,44 @@ export default function PTBookingScreen() {
                         )}
                     </View>
 
+                    <Modal
+                        transparent
+                        animationType="fade"
+                        visible={!!timePicker}
+                        onRequestClose={() => setTimePicker(null)}
+                    >
+                        <TouchableOpacity
+                            style={[styles.pickerOverlay, { backgroundColor: theme.overlay }]}
+                            activeOpacity={1}
+                            onPress={() => setTimePicker(null)}
+                        >
+                            <View style={[styles.pickerBox, { backgroundColor: theme.card }]}>
+                                <Text style={[styles.pickerTitle, { color: theme.text }]}>
+                                    {timePicker ? `${DAY_LABELS[Number(timePicker.day)]} ${timePicker.field === 'start' ? 'start' : 'finish'}` : ''}
+                                </Text>
+                                <ScrollView style={{ maxHeight: 320 }}>
+                                    {TIME_OPTIONS.map(option => {
+                                        const current = timePicker ? hoursDraft[timePicker.day as keyof WorkingHours]?.[timePicker.field] : undefined;
+                                        const isSelected = current === option;
+                                        return (
+                                            <TouchableOpacity
+                                                key={option}
+                                                style={[styles.pickerOption, isSelected && { backgroundColor: theme.tintMuted }]}
+                                                onPress={() => {
+                                                    if (timePicker) setWorkingTime(timePicker.day, timePicker.field, option);
+                                                    setTimePicker(null);
+                                                }}
+                                            >
+                                                <Text style={[styles.pickerOptionText, { color: isSelected ? theme.tint : theme.text }]}>{option}</Text>
+                                                {isSelected && <Ionicons name="checkmark" size={18} color={theme.tint} />}
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </ScrollView>
+                            </View>
+                        </TouchableOpacity>
+                    </Modal>
+
                     <CustomAlert
                         visible={alertConfig.visible}
                         title={alertConfig.title}
@@ -769,129 +1043,244 @@ export default function PTBookingScreen() {
         );
     }
 
-    if (userProfile?.role === 'client') {
+    if (userProfile?.role === 'client' && !userProfile.assignedPtId) {
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
                 <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-                    
-                    {!userProfile.assignedPtId ? (
-                        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-                            <View style={[styles.ptConnectContainer, { minHeight: Dimensions.get('window').height * 0.75 }]}>
-                                {/* Icon */}
-                                <View style={[styles.ptConnectIconWrap, { backgroundColor: theme.tintMuted }]}>
-                                    <Ionicons name="person-add-outline" size={40} color={theme.tint} />
-                                </View>
+                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+                        <View style={[styles.ptConnectContainer, { minHeight: Dimensions.get('window').height * 0.75 }]}>
+                            {/* Icon */}
+                            <View style={[styles.ptConnectIconWrap, { backgroundColor: theme.tintMuted }]}>
+                                <Ionicons name="person-add-outline" size={40} color={theme.tint} />
+                            </View>
 
-                                <Text style={[styles.ptConnectTitle, { color: theme.text }]}>Connect with a PT</Text>
-                                <Text style={[styles.ptConnectSubtitle, { color: theme.textSecondary }]}>
-                                    Enter the 6-character code provided by your Thrive Coach.
-                                </Text>
+                            <Text style={[styles.ptConnectTitle, { color: theme.text }]}>Connect with a PT</Text>
+                            <Text style={[styles.ptConnectSubtitle, { color: theme.textSecondary }]}>
+                                Enter the 6-character code provided by your Thrive Coach.
+                            </Text>
 
-                                {/* OTP-style character boxes */}
+                            {/* OTP-style character boxes */}
+                            <TouchableOpacity
+                                activeOpacity={1}
+                                onPress={() => ptCodeInputRef.current?.focus()}
+                                style={styles.otpRow}
+                            >
+                                {Array.from({ length: 6 }).map((_, i) => {
+                                    const char = ptCodeInput[i] || '';
+                                    const isFilled = !!char;
+                                    return (
+                                        <View
+                                            key={i}
+                                            style={[
+                                                styles.otpBox,
+                                                { backgroundColor: theme.card, borderColor: isFilled ? theme.tint : theme.border },
+                                                isFilled && { shadowColor: theme.tint, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 3 }
+                                            ]}
+                                        >
+                                            <Text style={[styles.otpChar, { color: theme.text }]}>{char}</Text>
+                                        </View>
+                                    );
+                                })}
+                                <TextInput
+                                    ref={ptCodeInputRef}
+                                    style={styles.otpHiddenInput}
+                                    value={ptCodeInput}
+                                    onChangeText={(text) => setPtCodeInput(text.toUpperCase())}
+                                    maxLength={6}
+                                    autoCapitalize="characters"
+                                    autoFocus
+                                />
+                            </TouchableOpacity>
+
+                            <Button
+                                variant="primary"
+                                label="Connect to Trainer"
+                                onPress={handleAssignPT}
+                                disabled={!ptCodeInput || ptCodeInput.length < 6}
+                                loading={assigningLoading}
+                                style={{ width: '100%', shadowColor: theme.tint, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 4 }}
+                            />
+                        </View>
+                    </KeyboardAvoidingView>
+                </ScrollView>
+                <CustomAlert visible={alertConfig.visible} title={alertConfig.title} message={alertConfig.message} onClose={closeAlert} onConfirm={alertConfig.onConfirm} />
+            </SafeAreaView>
+        );
+    }
+
+    if (userProfile?.role === 'client') {
+        const bookableSlots = ptSlots.filter(s => s.available);
+
+        return (
+            <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+                <View style={styles.headerContainer}>
+                    <ScreenHeader
+                        title={assignedPtData ? `Book with ${ptFirstName}` : 'Your PT'}
+                        subtitle="Pick a time and send a request"
+                    />
+                </View>
+
+                <View
+                    style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}
+                    {...dragProps}
+                >
+                    <Text style={[styles.monthLabel, { color: theme.text }]}>{visibleMonth}</Text>
+                    <FlatList
+                        ref={flatListRef}
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.dateSelector}
+                        data={dates}
+                        keyExtractor={(_, index) => index.toString()}
+                        onScroll={onMouseDragScroll}
+                        scrollEventThrottle={16}
+                        onViewableItemsChanged={onViewableItemsChanged}
+                        viewabilityConfig={viewabilityConfig}
+                        getItemLayout={(_, index) => ({ length: 62, offset: 62 * index, index })}
+                        onScrollToIndexFailed={(info) => {
+                            setTimeout(() => {
+                                flatListRef.current?.scrollToIndex({ index: info.index, animated: false });
+                            }, 100);
+                        }}
+                        renderItem={({ item: date }) => {
+                            const isSelected = selectedDate.getTime() === date.getTime();
+                            return (
                                 <TouchableOpacity
-                                    activeOpacity={1}
-                                    onPress={() => ptCodeInputRef.current?.focus()}
-                                    style={styles.otpRow}
+                                    style={[
+                                        styles.dateCard,
+                                        { backgroundColor: isSelected ? theme.tint : 'transparent' },
+                                        isSelected && { ...styles.dateCardSelected, shadowColor: theme.tint }
+                                    ]}
+                                    onPress={() => setSelectedDate(date)}
                                 >
-                                    {Array.from({ length: 6 }).map((_, i) => {
-                                        const char = ptCodeInput[i] || '';
-                                        const isFilled = !!char;
+                                    <Text style={[styles.dayText, { color: isSelected ? theme.onTint : theme.textSecondary }]}>
+                                        {format(date, 'EEE')}
+                                    </Text>
+                                    <Text style={[styles.dateText, { color: isSelected ? theme.onTint : theme.text }]}>
+                                        {format(date, 'd')}
+                                    </Text>
+                                </TouchableOpacity>
+                            );
+                        }}
+                    />
+                </View>
+
+                <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+                    <View style={styles.slotsContainer}>
+                        {loading || ptSlotsLoading ? (
+                            <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
+                        ) : !assignedPtData ? (
+                            <Text style={[styles.noPtText, { color: theme.text, textAlign: 'center', marginTop: 40 }]}>
+                                Failed to load your PT&apos;s details.
+                            </Text>
+                        ) : !ptDayWindow ? (
+                            <EmptyState
+                                icon="moon-outline"
+                                title={`${ptFirstName} doesn't work ${format(selectedDate, 'EEEE')}s`}
+                                subtitle="Try another day."
+                            />
+                        ) : ptSlots.length === 0 ? (
+                            <EmptyState
+                                icon="time-outline"
+                                title="No more times left today"
+                                subtitle={`${ptFirstName} works ${format(ptDayWindow.start, 'HH:mm')} – ${format(ptDayWindow.end, 'HH:mm')} on ${format(selectedDate, 'EEEE')}s.`}
+                            />
+                        ) : (
+                            <>
+                                <Text style={[styles.workingHoursHint, { color: theme.textSecondary }]}>
+                                    {bookableSlots.length > 0
+                                        ? `${bookableSlots.length} time${bookableSlots.length === 1 ? '' : 's'} available · ${format(ptDayWindow.start, 'HH:mm')} – ${format(ptDayWindow.end, 'HH:mm')}`
+                                        : `Fully booked · ${format(ptDayWindow.start, 'HH:mm')} – ${format(ptDayWindow.end, 'HH:mm')}`}
+                                </Text>
+                                <View style={[styles.slotsList, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                    {ptSlots.map((slot, index) => {
+                                        const isLast = index === ptSlots.length - 1;
                                         return (
-                                            <View
-                                                key={i}
-                                                style={[
-                                                    styles.otpBox,
-                                                    { backgroundColor: theme.card, borderColor: isFilled ? theme.tint : theme.border },
-                                                    isFilled && { shadowColor: theme.tint, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 3 }
-                                                ]}
-                                            >
-                                                <Text style={[styles.otpChar, { color: theme.text }]}>{char}</Text>
+                                            <View key={slot.time.toISOString()}>
+                                                <TouchableOpacity
+                                                    style={[
+                                                        styles.slotRow,
+                                                        !slot.available && { backgroundColor: theme.cardAlt, opacity: 0.7 }
+                                                    ]}
+                                                    disabled={!slot.available || bookingLoading}
+                                                    onPress={() => handleRequestPtSession(slot)}
+                                                >
+                                                    <View style={styles.slotTimeContainer}>
+                                                        <Text style={[
+                                                            styles.slotTime,
+                                                            { color: slot.available ? theme.text : theme.textSecondary },
+                                                            !slot.available && styles.slotTextUnavailable
+                                                        ]}>
+                                                            {format(slot.time, 'HH:mm')}
+                                                        </Text>
+                                                    </View>
+
+                                                    <View style={styles.slotDetailsContainer}>
+                                                        <Text style={[styles.slotDuration, { color: slot.available ? theme.tint : theme.textSecondary }]}>
+                                                            {slot.available ? '1 Hour' : (slot.reason ?? 'Unavailable')}
+                                                        </Text>
+                                                        {slot.available && (
+                                                            <Text style={[styles.slotAttendees, { color: theme.textSecondary }]}>
+                                                                until {format(slot.endTime, 'HH:mm')}
+                                                            </Text>
+                                                        )}
+                                                    </View>
+
+                                                    <View style={styles.slotChevron}>
+                                                        {slot.available && (
+                                                            <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} opacity={0.5} />
+                                                        )}
+                                                    </View>
+                                                </TouchableOpacity>
+                                                {!isLast && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
                                             </View>
                                         );
                                     })}
-                                    <TextInput
-                                        ref={ptCodeInputRef}
-                                        style={styles.otpHiddenInput}
-                                        value={ptCodeInput}
-                                        onChangeText={(text) => setPtCodeInput(text.toUpperCase())}
-                                        maxLength={6}
-                                        autoCapitalize="characters"
-                                        autoFocus
-                                    />
-                                </TouchableOpacity>
-
-                                <Button
-                                    variant="primary"
-                                    label="Connect to Trainer"
-                                    onPress={handleAssignPT}
-                                    disabled={!ptCodeInput || ptCodeInput.length < 6}
-                                    loading={assigningLoading}
-                                    style={{ width: '100%', shadowColor: theme.tint, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 4 }}
-                                />
-                            </View>
-                        </KeyboardAvoidingView>
-                    ) : (
-                        <View>
-                            <View style={styles.headerContainer}>
-                                <ScreenHeader title="Your PT" subtitle="You are connected to a Thrive Coach" />
-                            </View>
-
-                            {loading ? (
-                                <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
-                            ) : assignedPtData ? (
-                                <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: Spacing.xl, marginTop: 40 }]}>
-                                    <Text style={[styles.noPtSubText, { color: theme.textSecondary }]}>You are currently training with</Text>
-                                    <View style={[styles.ptCodeCard, { backgroundColor: theme.card, borderColor: theme.tint, marginTop: Spacing.xl, borderStyle: 'solid' }]}>
-                                        <Text style={[styles.ptCodeText, { color: theme.text, letterSpacing: 2, fontSize: 32 }]}>
-                                            {assignedPtData.name}
-                                        </Text>
-                                    </View>
-                                    <Text style={[styles.noPtSubText, { color: theme.textSecondary, textAlign: 'center', marginTop: Spacing.xxl + 6 }]}>
-                                        Your PT will book your 1-to-1 sessions directly. Reach out to them to arrange a time!
-                                    </Text>
                                 </View>
-                            ) : (
-                                <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: Spacing.xl }]}>
-                                    <Text style={[styles.noPtText, { color: theme.text, textAlign: 'center' }]}>Failed to load your PT's details.</Text>
-                                </View>
-                            )}
+                            </>
+                        )}
+                    </View>
 
-                            {/* Pending session requests */}
-                            <View style={styles.clientsSection}>
-                                <SectionHeader title="Pending Requests" />
-                                {clientPendingLoading ? (
-                                    <ActivityIndicator size="small" color={theme.tint} style={{ marginTop: 20 }} />
-                                ) : clientPendingSessions.length === 0 ? (
-                                    <EmptyState icon="hourglass-outline" title="No pending session requests." compact />
-                                ) : (
-                                    <ListContainer>
-                                        {clientPendingSessions.map((session, index) => {
-                                            const isLast = index === clientPendingSessions.length - 1;
-                                            return (
-                                                <ListRow key={session.id} isLast={isLast} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: Spacing.sm + 2 }}>
-                                                    <View style={{ flex: 1 }}>
-                                                        <Text style={[styles.clientName, { color: theme.text }]}>PT Session Request</Text>
-                                                        <Text style={[styles.clientEmail, { color: theme.textSecondary }]}>
-                                                            {format(session.startTime, 'EEE, MMM d')} • {format(session.startTime, 'HH:mm')} - {format(session.endTime, 'HH:mm')}
-                                                        </Text>
-                                                        <View style={{ marginTop: Spacing.xs }}>
-                                                            <Badge label="Awaiting approval" tone="warning" />
-                                                        </View>
-                                                    </View>
-                                                    <Button
-                                                        variant="destructive"
-                                                        size="sm"
-                                                        label="Cancel Request"
-                                                        onPress={() => handleCancelPendingSession(session)}
-                                                        loading={cancellingSessionId === session.id}
-                                                    />
-                                                </ListRow>
-                                            );
-                                        })}
-                                    </ListContainer>
-                                )}
-                            </View>
-                        </View>
+                    {/* Pending session requests */}
+                    <View style={styles.clientsSection}>
+                        <SectionHeader title="Pending Requests" />
+                        {clientPendingLoading ? (
+                            <ActivityIndicator size="small" color={theme.tint} style={{ marginTop: 20 }} />
+                        ) : clientPendingSessions.length === 0 ? (
+                            <EmptyState icon="hourglass-outline" title="No pending session requests." compact />
+                        ) : (
+                            <ListContainer>
+                                {clientPendingSessions.map((session, index) => {
+                                    const isLast = index === clientPendingSessions.length - 1;
+                                    return (
+                                        <ListRow key={session.id} isLast={isLast} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: Spacing.sm + 2 }}>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={[styles.clientName, { color: theme.text }]}>PT Session Request</Text>
+                                                <Text style={[styles.clientEmail, { color: theme.textSecondary }]}>
+                                                    {format(session.startTime, 'EEE, MMM d')} • {format(session.startTime, 'HH:mm')} - {format(session.endTime, 'HH:mm')}
+                                                </Text>
+                                                <View style={{ marginTop: Spacing.xs }}>
+                                                    <Badge label="Awaiting approval" tone="warning" />
+                                                </View>
+                                            </View>
+                                            <Button
+                                                variant="destructive"
+                                                size="sm"
+                                                label="Cancel Request"
+                                                onPress={() => handleCancelPendingSession(session)}
+                                                loading={cancellingSessionId === session.id}
+                                            />
+                                        </ListRow>
+                                    );
+                                })}
+                            </ListContainer>
+                        )}
+                    </View>
+
+                    {assignedPtData && (
+                        <Text style={[styles.trainerFooter, { color: theme.textTertiary }]}>
+                            Training with {assignedPtData.name} · requests need their approval
+                        </Text>
                     )}
                 </ScrollView>
                 <CustomAlert visible={alertConfig.visible} title={alertConfig.title} message={alertConfig.message} onClose={closeAlert} onConfirm={alertConfig.onConfirm} />
@@ -1288,6 +1677,101 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         textAlign: 'center',
         paddingHorizontal: 20,
+    },
+    hoursIntro: {
+        ...Typography.footnote,
+        marginTop: -Spacing.xs,
+        marginBottom: Spacing.md,
+        lineHeight: 18,
+    },
+    hoursNotice: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        padding: Spacing.md,
+        borderRadius: Radii.md,
+        borderWidth: StyleSheet.hairlineWidth,
+        marginBottom: Spacing.md,
+    },
+    hoursNoticeText: {
+        ...Typography.footnote,
+        flex: 1,
+        lineHeight: 18,
+    },
+    hoursDayLabel: {
+        ...Typography.subhead,
+        fontWeight: '600',
+        width: 86,
+    },
+    hoursValue: {
+        ...Typography.subhead,
+    },
+    hoursRowControls: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+        flexShrink: 1,
+    },
+    hoursChipRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.xs,
+    },
+    timeChip: {
+        paddingVertical: 4,
+        paddingHorizontal: Spacing.sm,
+        borderRadius: Radii.sm,
+        borderWidth: StyleSheet.hairlineWidth,
+    },
+    timeChipText: {
+        ...Typography.footnote,
+        fontWeight: '600',
+    },
+    hoursActions: {
+        flexDirection: 'row',
+        gap: Spacing.md,
+        marginTop: Spacing.lg,
+    },
+    pickerOverlay: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: Spacing.xl,
+    },
+    pickerBox: {
+        width: Platform.OS === 'web' ? 320 : '80%',
+        borderRadius: Radii.xl,
+        paddingVertical: Spacing.lg,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 16,
+        elevation: 8,
+    },
+    pickerTitle: {
+        ...Typography.headline,
+        textAlign: 'center',
+        marginBottom: Spacing.md,
+    },
+    pickerOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: Spacing.md,
+        paddingHorizontal: Spacing.xl,
+    },
+    pickerOptionText: {
+        ...Typography.body,
+    },
+    workingHoursHint: {
+        ...Typography.footnote,
+        marginBottom: Spacing.sm,
+        marginLeft: 4,
+    },
+    trainerFooter: {
+        ...Typography.footnote,
+        textAlign: 'center',
+        marginTop: Spacing.xxl,
+        paddingHorizontal: Spacing.xl,
     },
     noPtSubText: {
         fontSize: 14,

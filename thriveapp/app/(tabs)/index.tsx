@@ -362,6 +362,8 @@ export default function DashboardScreen() {
   });
 
   const isPtOrAdmin = userProfile?.role === 'pt' || userProfile?.role === 'admin';
+  // Clients without gym access can only reach a lock screen there, so don't offer it
+  const canBookGym = isPtOrAdmin || (userProfile?.canBookGym ?? true);
   const firstName = userProfile?.name?.split(' ')[0] || 'there';
   const initial = (userProfile?.name?.trim()?.[0] || firstName[0] || '?').toUpperCase();
 
@@ -400,6 +402,7 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.quickActionsRow}>
+          {canBookGym && (
           <TouchableOpacity
             style={[styles.quickAction, { backgroundColor: theme.card, borderColor: theme.border }]}
             onPress={() => router.push('/gym')}
@@ -410,6 +413,7 @@ export default function DashboardScreen() {
             </View>
             <Text style={[styles.quickActionLabel, { color: theme.text }]}>Gym</Text>
           </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[styles.quickAction, { backgroundColor: theme.card, borderColor: theme.border }]}
             onPress={() => router.push('/pt')}
@@ -459,8 +463,10 @@ export default function DashboardScreen() {
             />
             {!isPtOrAdmin && (
               <View style={styles.emptyActionsRow}>
-                <Button variant="primary" icon="barbell-outline" label="Book Gym" onPress={() => router.push('/gym')} style={{ flex: 1 }} />
-                <Button variant="secondary" icon="body-outline" label="Book PT" onPress={() => router.push('/pt')} style={{ flex: 1 }} />
+                {canBookGym && (
+                  <Button variant="primary" icon="barbell-outline" label="Book Gym" onPress={() => router.push('/gym')} style={{ flex: 1 }} />
+                )}
+                <Button variant={canBookGym ? 'secondary' : 'primary'} icon="body-outline" label="Book PT" onPress={() => router.push('/pt')} style={{ flex: 1 }} />
               </View>
             )}
           </View>

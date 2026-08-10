@@ -1,6 +1,7 @@
 import { collection, query, where, getDocs, addDoc, Timestamp, doc, getDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../config/firebaseConfig';
 import { addMinutes, startOfDay, endOfDay, isBefore, isEqual, addDays, addWeeks, addMonths, startOfMonth, endOfMonth } from 'date-fns';
+import type { WorkingHours } from './workingHours';
 
 export interface Booking {
     id?: string;
@@ -29,6 +30,8 @@ export interface RecurringSessionTemplate {
     status: 'active' | 'cancelled';
 }
 
+export type { WorkingHours, WorkingHoursDay } from './workingHours';
+
 export interface UserProfile {
     id: string;
     name: string;
@@ -36,6 +39,9 @@ export interface UserProfile {
     role: 'client' | 'pt' | 'admin';
     assignedPtId: string | null;
     canBookGym?: boolean;
+    // Only meaningful for PTs. Undefined means "not set yet" — treated as the
+    // legacy all-week 07:00–20:00 window so existing PTs stay bookable.
+    workingHours?: WorkingHours;
 }
 
 
@@ -499,6 +505,11 @@ export const assignClientToPt = async (clientId: string, ptId: string | null) =>
 // Update arbitrary user profile fields (used by admin toggle)
 export const updateUserProfile = async (userId: string, updates: Partial<Pick<UserProfile, 'canBookGym' | 'assignedPtId' | 'role'>>) => {
     await updateDoc(doc(db, USERS_COLLECTION, userId), updates);
+};
+
+// A PT sets the weekly window in which clients may request sessions with them
+export const updateWorkingHours = async (ptId: string, workingHours: WorkingHours) => {
+    await updateDoc(doc(db, USERS_COLLECTION, ptId), { workingHours });
 };
 
 // PT queries all pending requests assigned to them

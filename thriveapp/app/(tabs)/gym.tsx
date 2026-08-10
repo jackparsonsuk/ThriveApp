@@ -25,7 +25,7 @@ export default function GymBookingScreen() {
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [profileLoading, setProfileLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
-    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean; attendees: number; conflictType?: string; ptAvailable: boolean; ptOccupied?: boolean; conflictBookingId?: string; conflictBookingType?: string; }[]>([]);
+    const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean; attendees: number; conflictType?: string; conflictBookingId?: string; conflictBookingType?: string; }[]>([]);
     const [loading, setLoading] = useState(false);
     const [bookingLoading, setBookingLoading] = useState(false);
     const flatListRef = useRef<FlatList>(null);
@@ -52,8 +52,6 @@ export default function GymBookingScreen() {
         isSuccess?: boolean;
         confirmText?: string;
         onConfirm?: () => void;
-        secondaryConfirmText?: string;
-        onSecondaryConfirm?: () => void;
     }>({ visible: false, title: '', message: '' });
 
     const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
@@ -101,7 +99,6 @@ export default function GymBookingScreen() {
         try {
             const bookingsForDay = await getGymBookingsForDate(selectedDate);
 
-            let ptBookingsForDay: Booking[] = [];
             let userMyBookings: Booking[] = [];
 
             // If the user happens to have instructional PT bookings, block them out too
@@ -151,16 +148,6 @@ export default function GymBookingScreen() {
                     else if (b.type === 'group') reason = 'Group Class';
                     bookingsForDay.push({ ...b, type: 'block', reason });
                 });
-
-                // Fetch the assigned PT's full schedule so we know when they're free for PT requests
-                if (userProfile?.assignedPtId) {
-                    const [ptPersonal, ptSessions] = await Promise.all([
-                        getPersonAllBookingsForDate(userProfile.assignedPtId, selectedDate),
-                        getPTBookingsForDate(selectedDate, userProfile.assignedPtId),
-                    ]);
-                    const combined = [...ptPersonal, ...ptSessions];
-                    ptBookingsForDay = Array.from(new Map(combined.map(b => [b.id, b])).values());
-                }
             }
 
             const slots = [];
@@ -188,15 +175,7 @@ export default function GymBookingScreen() {
 
                 const isFullHourAvailable = slotData.available && nextSlotData1.available && nextSlotData2.available && nextSlotData3.available;
 
-                // PT is available if they have no bookings overlapping the 1-hour PT session window
-                const ptSessionEnd = addMinutes(currentTime, 60);
-                const ptConflict = ptBookingsForDay.some(b => b.startTime < ptSessionEnd && b.endTime > currentTime);
-                const ptAvailable = !ptConflict;
-
-                // PT is occupied exactly at this 15 minute slot (to distinguish from simply not having a full 60min window)
                 const targetSlotEnd = addMinutes(currentTime, 15);
-                const ptOccupied = ptBookingsForDay.some(b => b.startTime < targetSlotEnd && b.endTime > currentTime);
-
                 const myConflict = userMyBookings.find(b => b.startTime < targetSlotEnd && b.endTime > currentTime);
                 const generalBlock = bookingsForDay.find(b => b.type === 'block' && b.startTime < targetSlotEnd && b.endTime > currentTime);
                 const conflictBookingId = myConflict?.id || (generalBlock ? 'admin-block' : undefined);
@@ -208,8 +187,6 @@ export default function GymBookingScreen() {
                     isNextAvailable: isFullHourAvailable,
                     attendees: slotData.count,
                     conflictType: slotData.blockReason || (!slotData.available ? 'Full' : undefined),
-                    ptAvailable,
-                    ptOccupied,
                     conflictBookingId,
                     conflictBookingType
                 });
@@ -231,70 +208,28 @@ export default function GymBookingScreen() {
         }
     };
 
-    const handleBookSlot = async (slot: { time: Date; available: boolean; isNextAvailable: boolean; attendees: number; ptAvailable: boolean; ptOccupied?: boolean }) => {
+    // PT sessions are requested from the PT screen — this screen books gym slots only
+    const handleBookSlot = async (slot: { time: Date; available: boolean; isNextAvailable: boolean; attendees: number }) => {
         if (!user || !userProfile) return;
 
-        const canGym = userProfile.canBookGym ?? true;
-        const hasPt = !!userProfile.assignedPtId;
         const duration = slot.isNextAvailable ? 60 : 15;
 
-        if (canGym && hasPt) {
-            if (!slot.ptAvailable) {
-                // PT is busy — gym only
-                setAlertConfig({
-                    visible: true,
-                    title: 'Book This Slot',
-                    message: `Your PT is unavailable at ${format(slot.time, 'HH:mm')}. You can still book a gym session.`,
-                    onConfirm: () => confirmGymBooking(slot.time, duration),
-                    confirmText: 'Book Gym Session',
-                });
-                return;
-            }
-            // Show choice modal
+        if (!slot.isNextAvailable) {
             setAlertConfig({
                 visible: true,
-                title: 'Book This Slot',
-                message: `What would you like to book at ${format(slot.time, 'HH:mm')}?`,
-                onConfirm: () => confirmGymBooking(slot.time, duration),
-                secondaryConfirmText: 'Request PT Session',
-                onSecondaryConfirm: () => confirmPTRequest(slot.time),
-                confirmText: 'Book Gym Session',
-            });
-        } else if (canGym && !hasPt) {
-            // Standard gym booking
-            if (!slot.isNextAvailable) {
-                setAlertConfig({
-                    visible: true,
-                    title: 'Limited Availability',
-                    message: 'Due to capacity limits, you can only book a 15-minute session at this time. Would you like to proceed?',
-                    onConfirm: () => confirmGymBooking(slot.time, duration),
-                });
-                return;
-            }
-            setAlertConfig({
-                visible: true,
-                title: 'Confirm Booking',
-                message: `Book gym session at ${format(slot.time, 'HH:mm')} for 1 hour?`,
+                title: 'Limited Availability',
+                message: 'Due to capacity limits, you can only book a 15-minute session at this time. Would you like to proceed?',
                 onConfirm: () => confirmGymBooking(slot.time, duration),
             });
-        } else if (!canGym && hasPt) {
-            if (!slot.ptAvailable) {
-                setAlertConfig({
-                    visible: true,
-                    title: 'PT Unavailable',
-                    message: `Your PT already has a booking at ${format(slot.time, 'HH:mm')}. Please choose another time.`,
-                    isError: true,
-                });
-                return;
-            }
-            // PT request only
-            setAlertConfig({
-                visible: true,
-                title: 'Request PT Session',
-                message: `Send a PT session request for ${format(slot.time, 'HH:mm')}?`,
-                onConfirm: () => confirmPTRequest(slot.time),
-            });
+            return;
         }
+
+        setAlertConfig({
+            visible: true,
+            title: 'Confirm Booking',
+            message: `Book gym session at ${format(slot.time, 'HH:mm')} for 1 hour?`,
+            onConfirm: () => confirmGymBooking(slot.time, duration),
+        });
     };
 
     const confirmGymBooking = async (startTime: Date, durationMinutes: number) => {
@@ -330,43 +265,8 @@ export default function GymBookingScreen() {
         }
     };
 
-    const confirmPTRequest = async (startTime: Date) => {
-        if (!user || !userProfile?.assignedPtId) return;
-        setBookingLoading(true);
-        try {
-            const endTime = addMinutes(startTime, 60);
-            await createBooking({
-                userId: user.uid,
-                startTime,
-                endTime,
-                type: 'pt',
-                ptId: userProfile.assignedPtId,
-                status: 'pending'
-            });
-            setAlertConfig({
-                visible: true,
-                title: 'Request Sent!',
-                message: 'PT session request sent — your PT will confirm it shortly.',
-                isSuccess: true,
-                onConfirm: undefined
-            });
-            fetchAvailability();
-        } catch (error) {
-            console.error('Error sending PT request:', error);
-            setAlertConfig({
-                visible: true,
-                title: 'Error',
-                message: 'Failed to send PT request. Please try again.',
-                isError: true
-            });
-        } finally {
-            setBookingLoading(false);
-        }
-    };
-
     const canGym = userProfile?.canBookGym ?? true;
-    const hasPt = !!userProfile?.assignedPtId;
-    const isGated = !profileLoading && !canGym && !hasPt;
+    const isGated = !profileLoading && !canGym;
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
@@ -428,7 +328,7 @@ export default function GymBookingScreen() {
                     <EmptyState
                         icon="lock-closed-outline"
                         title="Gym Access Required"
-                        subtitle="Contact your PT to gain access or book a session."
+                        subtitle="Contact your PT to get gym access. You can still book 1-to-1 sessions from the PT screen."
                     />
                 </View>
             ) : null}
@@ -510,11 +410,6 @@ export default function GymBookingScreen() {
                                                         {slot.isNextAvailable ? '1 Hour' : '15 Mins'}
                                                     </Text>
                                                     <View style={styles.slotRightInfo}>
-                                                        {!slot.ptAvailable && hasPt && (
-                                                            <Text style={[styles.ptBusyBadge, { color: theme.textSecondary }]}>
-                                                                {slot.ptOccupied ? 'PT Busy' : 'PT < 1hr Free'}
-                                                            </Text>
-                                                        )}
                                                         <Text style={[styles.slotAttendees, { color: theme.textSecondary }]}>
                                                             {slot.attendees} / 4 Booked
                                                         </Text>
@@ -548,8 +443,6 @@ export default function GymBookingScreen() {
                 title={alertConfig.title}
                 message={alertConfig.message}
                 confirmText={alertConfig.confirmText}
-                secondaryConfirmText={alertConfig.secondaryConfirmText}
-                onSecondaryConfirm={alertConfig.onSecondaryConfirm}
                 onClose={() => {
                     closeAlert();
                     if (alertConfig.isSuccess) {
@@ -650,11 +543,6 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: Spacing.sm,
-    },
-    ptBusyBadge: {
-        fontSize: 12,
-        fontWeight: '500',
-        opacity: 0.6,
     },
     slotFullText: {
         ...Typography.subhead,
