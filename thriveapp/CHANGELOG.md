@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.9.0] - 2026-08-10
+
+### Added
+- **Book PT Sessions From The PT Screen**: The PT screen now shows your trainer's bookable hours for any date and lets you send a session request directly. Hours your trainer can't do are still listed, with the reason — so a gap in the day is explained rather than mysterious.
+- **PT Working Hours**: PTs can set the weekly window clients may request inside, day by day, from the new Working Hours section on the PT screen. Availability was previously negative-only (block out what you can't do), which meant a trainer who hadn't blocked anything looked free 07:00–20:00 every day. PTs who haven't set hours keep exactly that behaviour until they do.
+
+### Changed
+- **One Place To Book A PT Session**: Booking a PT session used to happen behind a choice modal on the gym screen, while the PT screen said your trainer would book for you. The gym screen now books gym sessions only, and the PT screen is the single route to a 1-to-1. Clients without gym access are no longer sent to a screen titled "Gym Session" to book something that isn't one.
+- **Dashboard Quick Actions**: The Gym shortcut is hidden for clients without gym access, since it only led to a lock screen, and Book PT becomes the primary action for them.
+
+### Fixed
+- **Misleading Slot Reasons**: Hours blocked by your own pending request read as though someone else had taken them.
+- **Stale Availability After Cancelling**: Cancelling a request freed the hour but left it greyed out until the screen was reloaded.
+
 ## [2.8.0] - 2026-07-16
 
 ### Added
