@@ -57,12 +57,17 @@ export const getPtDayAvailability = async ({
     const window = getWorkingWindowForDate(date, workingHours);
     if (!window) return { slots: [], window: null };
 
-    const [ptSchedule, ptPersonal, clientBookings, gymBookings] = await Promise.all([
+    const [ptSchedule, ptPersonal, clientBookings, clientSchedule, gymBookings] = await Promise.all([
         getPTBookingsForDate(date, ptId),
         getPersonAllBookingsForDate(ptId, date),
         getPersonAllBookingsForDate(clientId, date),
+        // The requester may be a PT themselves. Sessions they *lead* are stored
+        // under the attending client's userId, so they don't show up above.
+        getPTBookingsForDate(date, clientId),
         getGymBookingsForDate(date),
     ]);
+
+    const clientLedSessions = clientSchedule.filter(b => b.type === 'pt' && b.ptId === clientId);
 
     const slots: PtSlot[] = [];
     const now = new Date();
@@ -88,6 +93,7 @@ export const getPtDayAvailability = async ({
         const gymWideBlock = gymBookings.find(b => b.type === 'block' && overlaps(b));
         const ptOtherBooking = ptPersonal.find(b => b.type !== 'pt_block' && overlaps(b));
         const clientConflict = clientBookings.find(overlaps);
+        const clientLeading = clientLedSessions.find(overlaps);
 
         if (ptOwnBlock) {
             available = false;
@@ -124,6 +130,11 @@ export const getPtDayAvailability = async ({
             else reason = 'You are busy';
             conflictBookingId = clientConflict.id;
             conflictBookingType = clientConflict.type;
+        } else if (clientLeading) {
+            available = false;
+            reason = 'You are leading a session';
+            conflictBookingId = clientLeading.id;
+            conflictBookingType = 'pt';
         }
 
         // The session occupies a gym place for its whole hour, so every

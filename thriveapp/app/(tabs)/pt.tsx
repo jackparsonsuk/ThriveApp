@@ -68,6 +68,9 @@ export default function PTBookingScreen() {
     const [ptSlotsLoading, setPtSlotsLoading] = useState(false);
     const [ptDayWindow, setPtDayWindow] = useState<{ start: Date; end: Date } | null>(null);
 
+    // A PT/admin who has their own trainer, booking their own session
+    const [isBookingOwnPt, setIsBookingOwnPt] = useState(false);
+
     // Working hours editor (PT role)
     const [isEditingHours, setIsEditingHours] = useState(false);
     const [hoursDraft, setHoursDraft] = useState<WorkingHours>({});
@@ -142,15 +145,16 @@ export default function PTBookingScreen() {
     }, [selectedDate]);
 
     useEffect(() => {
-        if (userProfile?.role === 'client' && user?.uid) {
+        // Anyone with a trainer can have their own pending requests — PTs included
+        if (userProfile?.assignedPtId && user?.uid) {
             fetchClientPendingSessions(user.uid);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [userProfile, user]);
 
-    // Clients see their PT's day — wait for the PT profile so we know their working hours
+    // Anyone with a trainer sees that trainer's day — wait for the PT profile so we know their working hours
     useEffect(() => {
-        if (userProfile?.role === 'client' && userProfile.assignedPtId && assignedPtData) {
+        if (userProfile?.assignedPtId && assignedPtData) {
             fetchClientAvailability();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -305,6 +309,13 @@ export default function PTBookingScreen() {
     };
 
     const ptFirstName = assignedPtData?.name?.split(' ')[0] || 'Your PT';
+
+    // Declared above the render branches so every branch can use it
+    const backButton = (onPress: () => void) => (
+        <TouchableOpacity onPress={onPress} style={[styles.backButton, { backgroundColor: theme.cardAlt }]}>
+            <Text style={[styles.backButtonText, { color: theme.text }]}>Back</Text>
+        </TouchableOpacity>
+    );
 
     const openHoursEditor = () => {
         setHoursDraft(effectiveWorkingHours(userProfile?.workingHours));
@@ -756,7 +767,7 @@ export default function PTBookingScreen() {
         }
     };
 
-    if ((userProfile?.role === 'pt' || userProfile?.role === 'admin') && !selectedClientForBooking && !isManagingAvailability) {
+    if ((userProfile?.role === 'pt' || userProfile?.role === 'admin') && !selectedClientForBooking && !isManagingAvailability && !isBookingOwnPt) {
         const ptCode = user?.uid ? user.uid.substring(0, 6).toUpperCase() : '------';
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
@@ -952,9 +963,12 @@ export default function PTBookingScreen() {
                         {userProfile?.assignedPtId ? (
                             assignedPtData ? (
                                 <ListContainer>
-                                    <ListRow isLast>
-                                        <Text style={[styles.clientName, { color: theme.text }]}>Trainer: {assignedPtData.name}</Text>
-                                        <Text style={[styles.clientEmail, { color: theme.textSecondary }]}>Your trainer will book your 1-to-1 sessions.</Text>
+                                    <ListRow isLast style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.clientName, { color: theme.text }]}>Trainer: {assignedPtData.name}</Text>
+                                            <Text style={[styles.clientEmail, { color: theme.textSecondary }]}>Book your own 1-to-1 sessions here.</Text>
+                                        </View>
+                                        <Button variant="primary" size="sm" label="Book" onPress={() => setIsBookingOwnPt(true)} />
                                     </ListRow>
                                 </ListContainer>
                             ) : (
@@ -1108,7 +1122,7 @@ export default function PTBookingScreen() {
         );
     }
 
-    if (userProfile?.role === 'client') {
+    if (userProfile?.role === 'client' || isBookingOwnPt) {
         const bookableSlots = ptSlots.filter(s => s.available);
 
         return (
@@ -1117,6 +1131,7 @@ export default function PTBookingScreen() {
                     <ScreenHeader
                         title={assignedPtData ? `Book with ${ptFirstName}` : 'Your PT'}
                         subtitle="Pick a time and send a request"
+                        right={isBookingOwnPt ? backButton(() => setIsBookingOwnPt(false)) : undefined}
                     />
                 </View>
 
@@ -1287,12 +1302,6 @@ export default function PTBookingScreen() {
             </SafeAreaView>
         );
     }
-
-    const backButton = (onPress: () => void) => (
-        <TouchableOpacity onPress={onPress} style={[styles.backButton, { backgroundColor: theme.cardAlt }]}>
-            <Text style={[styles.backButtonText, { color: theme.text }]}>Back</Text>
-        </TouchableOpacity>
-    );
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
