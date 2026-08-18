@@ -40,11 +40,17 @@ service cloud.firestore {
       
       // Users can update their own profile (cannot change their own role)
       // Admins can update any profile/role
-      // PTs can update assignedPtId if they are assigning to themselves or null
+      // PTs can update assignedPtId if they are assigning to themselves or null,
+      // and can park/unpark (isActive) a client already assigned to them
       allow update: if isSignedIn() && (
         isAdmin() || 
         (request.auth.uid == userId && request.resource.data.role == resource.data.role) ||
-        (isPT() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['assignedPtId']))
+        (isPT() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['assignedPtId'])) ||
+        (
+          isPT() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isActive']) &&
+          resource.data.get('assignedPtId', '') == request.auth.uid
+        )
       );
       
       // Only admins can delete profiles

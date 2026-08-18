@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator
 import { useAuth } from '../../context/auth';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getUserBookings, getPTBookingsForInstructor, getUserCancelledUpcomingBookings, getPTCancelledBookingsForInstructor, cancelBooking, cancelRecurringSeries, Booking, getUserProfile, UserProfile, getClientsForPt, createBooking, getPendingPTRequestsForPT } from '../../services/bookingService';
+import { getUserBookings, getPTBookingsForInstructor, getUserCancelledUpcomingBookings, getPTCancelledBookingsForInstructor, cancelBooking, cancelRecurringSeries, Booking, getUserProfile, UserProfile, getClientsForPt, createBooking, getPendingPTRequestsForPT, isUserActive } from '../../services/bookingService';
 import { getGroupById } from '../../services/groupService';
 import { getGlobalSettings, GlobalSettings } from '../../services/settingsService';
 import { format, isSameDay, isToday, isTomorrow } from 'date-fns';
@@ -654,7 +654,7 @@ export default function DashboardScreen() {
               <ActivityIndicator size="large" color={theme.tint} style={{ marginVertical: 40 }} />
             ) : (
               <FlatList
-                data={ptsClients.filter(c => c.id !== selectedBookingForPartner?.userId)}
+                data={ptsClients.filter(c => c.id !== selectedBookingForPartner?.userId && isUserActive(c))}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
                   <TouchableOpacity

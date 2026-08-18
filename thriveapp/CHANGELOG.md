@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.10.0] - 2026-08-18
+
+### Added
+- **Active And Inactive Members**: Clients who have left, or who are taking a break, can now be moved out of the working list instead of sitting in it indefinitely. "Your Clients" on the PT screen splits into Active and Inactive tabs, and each row has a one-tap control to move a client between them. Admins get the same split under Members, plus an Active Member switch on each member's detail page. Marking someone inactive is purely a filing change — their history, their login and their existing bookings are all untouched, and switching them back restores everything.
+
+### Fixed
+- **PT Screen Showed Stale Requests And Clients**: Tab screens stay mounted, so a request made elsewhere in the app never appeared on the PT screen until a full reload — incoming client requests most of all. The screen now refreshes whenever you return to it.
+- **One Unreadable Profile Emptied The Requests List**: If a single requester's profile couldn't be loaded, the whole batch failed and the PT was left looking at an empty Client Requests section. Requests now load with the name shown as "Unknown Client" rather than disappearing.
+
 ## [2.9.1] - 2026-08-11
 
 ### Fixed

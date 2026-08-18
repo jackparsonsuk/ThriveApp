@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, Dimensions, FlatList, ViewToken, Switch, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, Booking, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession, getGymBookingsForDate, checkSlotAvailability, getPendingPTRequestsForPT, updateBookingStatus, getUserPendingBookings, cancelBooking, getPersonAllBookingsForDate, updateWorkingHours, WorkingHours } from '../../services/bookingService';
+import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, Booking, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession, getGymBookingsForDate, checkSlotAvailability, getPendingPTRequestsForPT, updateBookingStatus, getUserPendingBookings, cancelBooking, getPersonAllBookingsForDate, updateWorkingHours, updateUserProfile, isUserActive, WorkingHours } from '../../services/bookingService';
 import { getPtDayAvailability, PtSlot, formatWorkingDay, DAY_LABELS, DAY_ORDER, TIME_OPTIONS, effectiveWorkingHours, LEGACY_WORKING_DAY } from '../../services/availabilityService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -70,6 +70,10 @@ export default function PTBookingScreen() {
 
     // A PT/admin who has their own trainer, booking their own session
     const [isBookingOwnPt, setIsBookingOwnPt] = useState(false);
+
+    // Active clients are the working list; inactive ones are parked out of the way
+    // but stay one tap from coming back.
+    const [clientListTab, setClientListTab] = useState<'active' | 'inactive'>('active');
 
     // Working hours editor (PT role)
     const [isEditingHours, setIsEditingHours] = useState(false);
@@ -160,6 +164,22 @@ export default function PTBookingScreen() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedDate, userProfile, assignedPtData]);
 
+    // Tab screens stay mounted, so without this a request made elsewhere never
+    // appears until a full reload — incoming requests most of all.
+    useFocusEffect(useCallback(() => {
+        if (!user?.uid || !userProfile) return;
+
+        if (userProfile.role === 'pt' || userProfile.role === 'admin') {
+            fetchPendingRequests(user.uid);
+            fetchClients(user.uid);
+        }
+        if (userProfile.assignedPtId) {
+            fetchClientPendingSessions(user.uid);
+            if (assignedPtData) fetchClientAvailability();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user, userProfile, assignedPtData, selectedDate]));
+
     const loadUserProfile = async () => {
         if (!user) return;
         try {
@@ -198,13 +218,42 @@ export default function PTBookingScreen() {
         }
     };
 
+    const activeClients = useMemo(() => clients.filter(isUserActive), [clients]);
+    const inactiveClients = useMemo(() => clients.filter(c => !isUserActive(c)), [clients]);
+    const visibleClients = clientListTab === 'active' ? activeClients : inactiveClients;
+
+    // Purely a filing change: an inactive client keeps their history, their login and
+    // their existing bookings, they just stop cluttering the working list.
+    const handleSetClientActive = async (client: UserProfile, isActive: boolean) => {
+        setClients(prev => prev.map(c => (c.id === client.id ? { ...c, isActive } : c)));
+        try {
+            await updateUserProfile(client.id, { isActive });
+        } catch (error) {
+            console.error('Error updating client status:', error);
+            setClients(prev => prev.map(c => (c.id === client.id ? { ...c, isActive: !isActive } : c)));
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: `Could not move ${client.name?.split(' ')[0] || 'this client'} to ${isActive ? 'Active' : 'Inactive'}.`,
+                isError: true
+            });
+        }
+    };
+
     const fetchPendingRequests = async (ptId: string) => {
         setPendingLoading(true);
         try {
             const requests = await getPendingPTRequestsForPT(ptId);
+            // Look up each requester's name, but never let one unreadable profile
+            // reject the whole batch and leave the PT staring at an empty list
             const hydrated = await Promise.all(requests.map(async (req) => {
-                const clientProfile = await getUserProfile(req.userId);
-                return { ...req, clientName: clientProfile?.name || 'Unknown Client' };
+                try {
+                    const clientProfile = await getUserProfile(req.userId);
+                    return { ...req, clientName: clientProfile?.name || 'Unknown Client' };
+                } catch (e) {
+                    console.warn('Could not load requester profile', req.userId, e);
+                    return { ...req, clientName: 'Unknown Client' };
+                }
             }));
             hydrated.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
             setPendingRequests(hydrated);
@@ -813,11 +862,11 @@ export default function PTBookingScreen() {
                     </View>
 
                     <View style={styles.clientsSection}>
-                        <SectionHeader title="Pending Requests" />
+                        <SectionHeader title="Client Requests" />
                         {pendingLoading ? (
                             <ActivityIndicator size="small" color={theme.tint} style={{ marginTop: 20 }} />
                         ) : pendingRequests.length === 0 ? (
-                            <EmptyState icon="hourglass-outline" title="No pending requests." compact />
+                            <EmptyState icon="hourglass-outline" title="No clients are waiting on you." compact />
                         ) : (
                             <ListContainer>
                                 {pendingRequests.map((req, index) => {
@@ -845,25 +894,69 @@ export default function PTBookingScreen() {
 
                     <View style={styles.clientsSection}>
                         <SectionHeader title="Your Clients" />
+
+                        <View style={[styles.clientTabs, { backgroundColor: theme.cardAlt, borderColor: theme.border }]}>
+                            {(['active', 'inactive'] as const).map((tab) => {
+                                const isSelected = clientListTab === tab;
+                                const count = tab === 'active' ? activeClients.length : inactiveClients.length;
+                                return (
+                                    <TouchableOpacity
+                                        key={tab}
+                                        onPress={() => setClientListTab(tab)}
+                                        style={[styles.clientTab, isSelected && { backgroundColor: theme.tint }]}
+                                    >
+                                        <Text style={[styles.clientTabText, { color: isSelected ? theme.onTint : theme.textSecondary }]}>
+                                            {tab === 'active' ? 'Active' : 'Inactive'} ({count})
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
+
                         {clientsLoading ? (
                             <ActivityIndicator size="small" color={theme.tint} style={{ marginTop: 20 }} />
-                        ) : clients.length > 0 ? (
+                        ) : visibleClients.length > 0 ? (
                             <ListContainer>
-                                {clients.map((client, index) => {
-                                    const isLast = index === clients.length - 1;
+                                {visibleClients.map((client, index) => {
+                                    const isLast = index === visibleClients.length - 1;
+                                    const active = isUserActive(client);
                                     return (
                                         <ListRow key={client.id} isLast={isLast} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                             <View style={{ flex: 1 }}>
                                                 <Text style={[styles.clientName, { color: theme.text }]}>{client.name}</Text>
                                                 <Text style={[styles.clientEmail, { color: theme.textSecondary }]}>{client.email}</Text>
                                             </View>
-                                            <Button variant="primary" size="sm" label="Book" onPress={() => setSelectedClientForBooking(client)} />
+                                            <View style={styles.clientRowActions}>
+                                                <Button variant="primary" size="sm" label="Book" onPress={() => setSelectedClientForBooking(client)} />
+                                                <TouchableOpacity
+                                                    onPress={() => handleSetClientActive(client, !active)}
+                                                    style={[styles.clientStatusBtn, { borderColor: theme.border }]}
+                                                    accessibilityRole="button"
+                                                    accessibilityLabel={active ? `Move ${client.name} to Inactive` : `Move ${client.name} to Active`}
+                                                >
+                                                    <Ionicons
+                                                        name={active ? 'archive-outline' : 'arrow-undo-outline'}
+                                                        size={18}
+                                                        color={theme.textSecondary}
+                                                    />
+                                                </TouchableOpacity>
+                                            </View>
                                         </ListRow>
                                     );
                                 })}
                             </ListContainer>
                         ) : (
-                            <EmptyState icon="people-outline" title="You don't have any clients assigned yet." compact />
+                            <EmptyState
+                                icon="people-outline"
+                                title={
+                                    clients.length === 0
+                                        ? "You don't have any clients assigned yet."
+                                        : clientListTab === 'active'
+                                            ? 'No active clients — check the Inactive tab.'
+                                            : 'No inactive clients.'
+                                }
+                                compact
+                            />
                         )}
                         <Button
                             variant="secondary"
@@ -1258,11 +1351,11 @@ export default function PTBookingScreen() {
 
                     {/* Pending session requests */}
                     <View style={styles.clientsSection}>
-                        <SectionHeader title="Pending Requests" />
+                        <SectionHeader title={`Your Requests to ${ptFirstName}`} />
                         {clientPendingLoading ? (
                             <ActivityIndicator size="small" color={theme.tint} style={{ marginTop: 20 }} />
                         ) : clientPendingSessions.length === 0 ? (
-                            <EmptyState icon="hourglass-outline" title="No pending session requests." compact />
+                            <EmptyState icon="hourglass-outline" title="You have no requests awaiting approval." compact />
                         ) : (
                             <ListContainer>
                                 {clientPendingSessions.map((session, index) => {
@@ -1879,6 +1972,33 @@ const styles = StyleSheet.create({
     clientEmail: {
         ...Typography.subhead,
         marginTop: 4,
+    },
+    clientTabs: {
+        flexDirection: 'row',
+        borderWidth: StyleSheet.hairlineWidth,
+        borderRadius: Radii.md,
+        padding: 3,
+        marginBottom: Spacing.md,
+    },
+    clientTab: {
+        flex: 1,
+        alignItems: 'center',
+        paddingVertical: Spacing.sm,
+        borderRadius: Radii.sm,
+    },
+    clientTabText: {
+        ...Typography.subhead,
+        fontWeight: '600',
+    },
+    clientRowActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+    },
+    clientStatusBtn: {
+        padding: Spacing.sm,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderRadius: Radii.sm,
     },
     backButton: {
         paddingVertical: 6,

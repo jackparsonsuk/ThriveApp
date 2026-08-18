@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, FlatList, Alert, Switch, ViewToken } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile, getAllUsers, getUserProfile, updateUserProfile, getBookingsForDateRange, getPTBookingsForInstructor, getUserBookings, getAllPTs } from '../../services/bookingService';
+import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile, getAllUsers, getUserProfile, updateUserProfile, getBookingsForDateRange, getPTBookingsForInstructor, getUserBookings, getAllPTs, isUserActive } from '../../services/bookingService';
 import { getGlobalSettings, updateGlobalSettings, GlobalSettings } from '../../services/settingsService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isToday, isBefore, startOfMonth, endOfMonth, subMonths, addMonths } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
@@ -73,6 +73,8 @@ export default function AdminScreen() {
     const [membersLoading, setMembersLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [roleFilter, setRoleFilter] = useState<'all' | 'client' | 'pt' | 'admin'>('all');
+    // Current members are the default view; the ones who have left or paused sit behind their own tab
+    const [statusFilter, setStatusFilter] = useState<'active' | 'inactive'>('active');
     const [selectedMember, setSelectedMember] = useState<UserProfile | null>(null);
 
     // Settings State
@@ -391,9 +393,10 @@ export default function AdminScreen() {
             const matchesSearch = u.name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
                                 u.email?.toLowerCase().includes(searchQuery.toLowerCase());
             const matchesRole = roleFilter === 'all' || u.role === roleFilter;
-            return matchesSearch && matchesRole;
+            const matchesStatus = isUserActive(u) === (statusFilter === 'active');
+            return matchesSearch && matchesRole && matchesStatus;
         }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    }, [allUsers, searchQuery, roleFilter]);
+    }, [allUsers, searchQuery, roleFilter, statusFilter]);
 
     const renderSchedule = () => {
         const now = new Date();
@@ -520,6 +523,21 @@ export default function AdminScreen() {
         );
     };
 
+    // Marking a member inactive only files them under the Inactive tab: their history,
+    // login and existing bookings are all untouched, and switching back restores the row.
+    const handleToggleActiveStatus = async (member: UserProfile, newVal: boolean) => {
+        setSelectedMember(prev => prev ? { ...prev, isActive: newVal } : null);
+        setAllUsers(prev => prev.map(u => u.id === member.id ? { ...u, isActive: newVal } : u));
+        try {
+            await updateUserProfile(member.id, { isActive: newVal });
+        } catch (error) {
+            console.error('Error updating member status:', error);
+            setSelectedMember(prev => prev ? { ...prev, isActive: !newVal } : null);
+            setAllUsers(prev => prev.map(u => u.id === member.id ? { ...u, isActive: !newVal } : u));
+            setAlertConfig({ visible: true, title: 'Error', message: 'Failed to update membership status.' });
+        }
+    };
+
     const handleToggleGymAccess = async (member: UserProfile, newVal: boolean) => {
         setSelectedMember(prev => prev ? { ...prev, canBookGym: newVal } : null);
         setAllUsers(prev => prev.map(u => u.id === member.id ? { ...u, canBookGym: newVal } : u));
@@ -577,6 +595,25 @@ export default function AdminScreen() {
                         <Text style={[styles.roleBadgeText, { color: theme.onTint }]}>{selectedMember.role.toUpperCase()}</Text>
                     </View>
                 </View>
+
+                {/* Membership status — a filing switch, not an access control */}
+                {selectedMember.id !== user?.uid && (
+                    <View style={[styles.settingsCard, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 16 }]}>
+                        <View style={styles.settingRow}>
+                            <View style={styles.settingInfo}>
+                                <Text style={[styles.settingLabel, { color: theme.text }]}>Active Member</Text>
+                                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                                    Turn off to move this member to the Inactive tab. Their history, login and bookings stay as they are.
+                                </Text>
+                            </View>
+                            <Switch
+                                value={isUserActive(selectedMember)}
+                                onValueChange={(val) => handleToggleActiveStatus(selectedMember, val)}
+                                trackColor={{ false: theme.border, true: theme.tint }}
+                            />
+                        </View>
+                    </View>
+                )}
 
                 {/* Client settings (Gym Access) */}
                 {selectedMember.role === 'client' && (
@@ -727,6 +764,24 @@ export default function AdminScreen() {
                 />
             </View>
 
+            <View style={[styles.statusTabs, { backgroundColor: theme.cardAlt, borderColor: theme.border }]}>
+                {(['active', 'inactive'] as const).map((status) => {
+                    const isSelected = statusFilter === status;
+                    const count = allUsers.filter(u => isUserActive(u) === (status === 'active')).length;
+                    return (
+                        <TouchableOpacity
+                            key={status}
+                            onPress={() => setStatusFilter(status)}
+                            style={[styles.statusTab, isSelected && { backgroundColor: theme.tint }]}
+                        >
+                            <Text style={[styles.statusTabText, { color: isSelected ? theme.onTint : theme.textSecondary }]}>
+                                {status === 'active' ? 'Active' : 'Inactive'} ({count})
+                            </Text>
+                        </TouchableOpacity>
+                    );
+                })}
+            </View>
+
             <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -773,12 +828,17 @@ export default function AdminScreen() {
                                     <View style={[styles.roleBadge, { backgroundColor: item.role === 'admin' ? theme.danger : item.role === 'pt' ? theme.tint : theme.textTertiary }]}>
                                         <Text style={[styles.roleBadgeText, { color: theme.onTint }]}>{item.role.toUpperCase()}</Text>
                                     </View>
+                                    {!isUserActive(item) && (
+                                        <View style={[styles.roleBadge, { backgroundColor: theme.cardAlt, marginLeft: 6 }]}>
+                                            <Text style={[styles.roleBadgeText, { color: theme.textSecondary }]}>INACTIVE</Text>
+                                        </View>
+                                    )}
                                 </View>
                             </View>
                             <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
                         </TouchableOpacity>
                     )}
-                    ListEmptyComponent={<EmptyState icon="people-outline" title="No members found." compact />}
+                    ListEmptyComponent={<EmptyState icon="people-outline" title={statusFilter === 'active' ? 'No active members found.' : 'No inactive members.'} compact />}
                     contentContainerStyle={{ paddingBottom: 20 }}
                     style={{ flex: 1 }}
                 />
@@ -1237,6 +1297,9 @@ const styles = StyleSheet.create({
     searchBarContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
     searchIcon: { position: 'absolute', left: 12, zIndex: 1 },
     searchInput: { flex: 1, height: 44, borderRadius: Radii.md, borderWidth: StyleSheet.hairlineWidth, paddingLeft: 40, paddingRight: 15, fontSize: 16 },
+    statusTabs: { flexDirection: 'row', borderWidth: StyleSheet.hairlineWidth, borderRadius: Radii.md, padding: 3, marginBottom: 12 },
+    statusTab: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: Radii.sm },
+    statusTabText: { fontSize: 14, fontWeight: '600' },
     roleFilters: { flexDirection: 'row', marginBottom: 15, maxHeight: 60 },
     roleFiltersContent: { paddingVertical: 5 },
     roleFilterBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radii.pill, borderWidth: 1, marginRight: 8, justifyContent: 'center' },

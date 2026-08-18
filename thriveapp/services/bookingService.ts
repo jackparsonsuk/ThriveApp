@@ -39,11 +39,18 @@ export interface UserProfile {
     role: 'client' | 'pt' | 'admin';
     assignedPtId: string | null;
     canBookGym?: boolean;
+    // Undefined means active. Profiles written before this flag existed carry no value,
+    // so absence must never read as inactive. Set false to park a client who has left or
+    // is taking a break, without losing their history.
+    isActive?: boolean;
     // Only meaningful for PTs. Undefined means "not set yet" — treated as the
     // legacy all-week 07:00–20:00 window so existing PTs stay bookable.
     workingHours?: WorkingHours;
 }
 
+
+// The only place the "undefined means active" rule is decided, so every list agrees.
+export const isUserActive = (user: Pick<UserProfile, 'isActive'>) => user.isActive !== false;
 
 const BOOKINGS_COLLECTION = 'bookings';
 const USERS_COLLECTION = 'users';
@@ -503,7 +510,7 @@ export const assignClientToPt = async (clientId: string, ptId: string | null) =>
 };
 
 // Update arbitrary user profile fields (used by admin toggle)
-export const updateUserProfile = async (userId: string, updates: Partial<Pick<UserProfile, 'canBookGym' | 'assignedPtId' | 'role'>>) => {
+export const updateUserProfile = async (userId: string, updates: Partial<Pick<UserProfile, 'canBookGym' | 'assignedPtId' | 'role' | 'isActive'>>) => {
     await updateDoc(doc(db, USERS_COLLECTION, userId), updates);
 };
 
