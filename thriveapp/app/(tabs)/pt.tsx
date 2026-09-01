@@ -1756,6 +1756,9 @@ const styles = StyleSheet.create({
     slotDuration: {
         fontSize: 15,
         fontWeight: '600',
+        // Longer reasons ("… has less than one hour available") wrap instead of
+        // running past the chevron.
+        flexShrink: 1,
     },
     slotAttendees: {
         fontSize: 14,

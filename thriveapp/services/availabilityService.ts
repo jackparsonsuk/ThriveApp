@@ -95,9 +95,16 @@ export const getPtDayAvailability = async ({
         const clientConflict = clientBookings.find(overlaps);
         const clientLeading = clientLedSessions.find(overlaps);
 
+        // The PT is free when this slot starts — the hour just runs into
+        // whatever they have next. Saying they're "booked" reads as if the time
+        // itself is taken, so clients skip the run-up slots without realising
+        // it's only the length of the session that doesn't fit.
+        const runsIntoNext = (b: Booking) => b.startTime > slotStart;
+        const shortWindow = `${ptFirstName} has less than one hour available`;
+
         if (ptOwnBlock) {
             available = false;
-            reason = `${ptFirstName} is unavailable`;
+            reason = runsIntoNext(ptOwnBlock) ? shortWindow : `${ptFirstName} is unavailable`;
             conflictBookingId = ptOwnBlock.id;
             conflictBookingType = 'pt_block';
         } else if (ptSession) {
@@ -106,6 +113,8 @@ export const getPtDayAvailability = async ({
             // rather than making it sound like someone else took the slot.
             if (ptSession.userId === clientId) {
                 reason = ptSession.status === 'pending' ? 'You already requested this time' : 'You have a session booked';
+            } else if (runsIntoNext(ptSession)) {
+                reason = shortWindow;
             } else {
                 reason = ptSession.status === 'pending' ? `${ptFirstName} has a pending request` : `${ptFirstName} is booked`;
             }
@@ -113,7 +122,8 @@ export const getPtDayAvailability = async ({
             conflictBookingType = 'pt';
         } else if (ptOtherBooking) {
             available = false;
-            reason = ptOtherBooking.type === 'group' ? `${ptFirstName} has a class` : `${ptFirstName} is training`;
+            if (runsIntoNext(ptOtherBooking)) reason = shortWindow;
+            else reason = ptOtherBooking.type === 'group' ? `${ptFirstName} has a class` : `${ptFirstName} is training`;
             conflictBookingId = ptOtherBooking.id;
             conflictBookingType = ptOtherBooking.type;
         } else if (gymWideBlock) {

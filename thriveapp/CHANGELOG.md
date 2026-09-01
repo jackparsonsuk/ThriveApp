@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.10.1] - 2026-09-01
+
+### Fixed
+- **"Your PT Is Booked" On Hours They Were Free For**: When a requested hour ran into the trainer's next commitment, the slot said they were booked — which read as though the time itself was taken, and clients skipped the run-up hours rather than asking about a shorter session. Those slots now say the trainer has less than one hour available, and only hours that genuinely fall inside a booking still read as booked.
+
 ## [2.10.0] - 2026-08-18
 
 ### Added
