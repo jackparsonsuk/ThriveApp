@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback } from 'react';
 import { Platform } from 'react-native';
 
 /**
@@ -6,9 +6,8 @@ import { Platform } from 'react-native';
  * This simulates touch scrolling using mouse events.
  */
 export const useMouseDragScroll = (ref: any) => {
-  // Only apply logic on Web
-  if (Platform.OS !== 'web') return {};
-
+  // Hooks run on every platform so their order never changes between renders;
+  // only the returned handlers are web-specific.
   const isDown = useRef(false);
   const startX = useRef(0);
   const scrollLeft = useRef(0);
@@ -62,6 +61,8 @@ export const useMouseDragScroll = (ref: any) => {
   const onMouseLeave = () => {
     isDown.current = false;
   };
+
+  if (Platform.OS !== 'web') return {};
 
   return {
     onScroll,

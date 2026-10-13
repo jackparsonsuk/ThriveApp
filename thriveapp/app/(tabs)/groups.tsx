@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Modal, FlatList, ViewToken } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { createGroup, getPTGroups, Group, GroupInvite, inviteToGroup, getGroupMembers, getGroupInvites, getPendingInvitesForEmail, acceptGroupInvite, declineGroupInvite, getClientGroups, removeGroupMember, deleteGroup } from '../../services/groupService';
@@ -9,10 +9,9 @@ import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
+import { Colors, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import { BOOKING_WINDOW_DAYS } from '@/constants/config';
-import { useMouseDragScroll } from '@/hooks/useMouseDragScroll';
-import { ScreenHeader, SectionHeader, EmptyState, Badge, Button, ListContainer, ListRow } from '@/components/ui';
+import { ScreenHeader, SectionHeader, EmptyState, Button, Card, ListContainer, ListRow, DateStrip, SlotList, SlotItem, TextField, IconButton } from '@/components/ui';
 
 const PT_OPEN_HOUR = 7;
 const PT_CLOSE_HOUR = 20;
@@ -55,21 +54,6 @@ export default function GroupsScreen() {
     const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; attendees: number; blockReason?: string }[]>([]);
     const [slotsLoading, setSlotsLoading] = useState(false);
     const [bookingLoading, setBookingLoading] = useState(false);
-    const flatListRef = useRef<FlatList>(null);
-    const [hasInitialScrolled, setHasInitialScrolled] = useState(false);
-    const { onScroll: onMouseDragScroll, dragProps } = useMouseDragScroll(flatListRef);
-    const [visibleMonth, setVisibleMonth] = useState(format(new Date(), 'MMMM yyyy'));
-
-    const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
-        if (viewableItems.length > 0) {
-            const middleItem = viewableItems[Math.floor(viewableItems.length / 2)];
-            if (middleItem?.item) {
-                setVisibleMonth(format(middleItem.item as Date, 'MMMM yyyy'));
-            }
-        }
-    }, []);
-    const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
-
     // Custom Alert
     const [alertConfig, setAlertConfig] = useState<{
         visible: boolean;
@@ -85,7 +69,7 @@ export default function GroupsScreen() {
 
     const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
-    const dates = Array.from({ length: BOOKING_WINDOW_DAYS }).map((_, i) => addDays(startOfDay(new Date()), i));
+    const dates = useMemo(() => Array.from({ length: BOOKING_WINDOW_DAYS }).map((_, i) => addDays(startOfDay(new Date()), i)), []);
 
     useEffect(() => {
         if (user) loadInitialData();
@@ -226,23 +210,6 @@ export default function GroupsScreen() {
             fetchAvailability();
         }
     }, [selectedDate, isBookingMode, selectedGroup]);
-
-    useEffect(() => {
-        if (isBookingMode) {
-            const index = dates.findIndex(d => d.getTime() === selectedDate.getTime());
-            if (index !== -1 && (index > 0 || hasInitialScrolled)) {
-                const timer = setTimeout(() => {
-                    flatListRef.current?.scrollToIndex({ 
-                        index, 
-                        animated: true, 
-                        viewPosition: 0.5 
-                    });
-                    setHasInitialScrolled(true);
-                }, 100);
-                return () => clearTimeout(timer);
-            }
-        }
-    }, [selectedDate, isBookingMode]);
 
     const fetchAvailability = async () => {
         if (!selectedGroup) return;
@@ -415,7 +382,7 @@ export default function GroupsScreen() {
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
                 <View style={styles.headerContainer}>
-                    <ScreenHeader title="Groups" subtitle="Manage your group training" />
+                    <ScreenHeader title="Groups" subtitle="Classes you train in with others" onBack={() => router.navigate('/')} backLabel="Dashboard" />
                 </View>
                 <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
 
@@ -431,9 +398,14 @@ export default function GroupsScreen() {
                                 {clientGroups.map((group, index) => {
                                     const isLast = index === clientGroups.length - 1;
                                     return (
-                                        <ListRow key={group.id} isLast={isLast}>
+                                        <ListRow key={group.id} isLast={isLast} style={styles.groupRow}>
+                                            <View style={[styles.groupIcon, { backgroundColor: theme.purple + '22' }]}>
+                                                <Ionicons name="people" size={18} color={theme.purple} />
+                                            </View>
+                                            <View style={{ flex: 1 }}>
                                             <Text style={[styles.groupNameText, { color: theme.text }]}>{group.name}</Text>
-                                            <Text style={[styles.groupMetaText, { color: theme.textSecondary }]}>Trainer: {group.ptName}</Text>
+                                            <Text style={[styles.groupMetaText, { color: theme.textSecondary }]}>With {group.ptName}</Text>
+                                            </View>
                                         </ListRow>
                                     );
                                 })}
@@ -442,22 +414,22 @@ export default function GroupsScreen() {
                     </View>
 
                     {/* Pending Invites Section */}
-                    <View style={{ paddingHorizontal: Spacing.xl }}>
-                        <SectionHeader title="Group Invites" />
+                    <View style={{ paddingHorizontal: Spacing.xl, marginTop: Spacing.lg }}>
+                        <SectionHeader title="Invites" />
                         {clientInvitesLoading ? (
                             <ActivityIndicator color={theme.tint} />
                         ) : pendingInvites.length === 0 ? (
                             <EmptyState icon="mail-outline" title="You have no pending group invites." compact />
                         ) : (
                             pendingInvites.map(inv => (
-                                <View key={inv.id} style={{ backgroundColor: theme.card, padding: Spacing.lg, borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border, marginBottom: Spacing.md }}>
-                                    <Text style={{ color: theme.text, ...Typography.title3, fontSize: 18, marginBottom: 4 }}>{inv.groupName}</Text>
-                                    <Text style={{ color: theme.textSecondary, marginBottom: Spacing.lg }}>Invited by {inv.ptName}</Text>
-                                    <View style={{ flexDirection: 'row', gap: Spacing.md }}>
-                                        <Button variant="primary" label="Accept" onPress={() => handleAcceptInvite(inv)} style={{ flex: 1 }} />
-                                        <Button variant="destructive" label="Decline" onPress={() => handleDeclineInvite(inv)} style={{ flex: 1 }} />
+                                <Card key={inv.id} style={{ marginBottom: Spacing.md }}>
+                                    <Text style={[styles.groupNameText, { color: theme.text }]}>{inv.groupName}</Text>
+                                    <Text style={[styles.groupMetaText, { color: theme.textSecondary }]}>Invited by {inv.ptName}</Text>
+                                    <View style={styles.buttonRow}>
+                                        <Button variant="secondary" size="sm" label="Decline" onPress={() => handleDeclineInvite(inv)} style={{ flex: 1 }} />
+                                        <Button variant="primary" size="sm" label="Join" onPress={() => handleAcceptInvite(inv)} style={{ flex: 1 }} />
                                     </View>
-                                </View>
+                                </Card>
                             ))
                         )}
                     </View>
@@ -472,95 +444,38 @@ export default function GroupsScreen() {
             <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
                 <View style={styles.headerContainer}>
                     <ScreenHeader
-                        title={`Book: ${selectedGroup.name}`}
-                        subtitle="Select date and time"
-                        right={
-                            <TouchableOpacity onPress={() => setIsBookingMode(false)} style={[styles.backButton, { backgroundColor: theme.cardAlt }]}>
-                                <Text style={[styles.backButtonText, { color: theme.text }]}>Cancel</Text>
-                            </TouchableOpacity>
-                        }
+                        title={selectedGroup.name}
+                        subtitle="Pick a time for the group session"
+                        onBack={() => setIsBookingMode(false)}
+                        backLabel="Group"
                     />
                 </View>
 
-                <View
-                    style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}
-                    {...dragProps}
-                >
-                <Text style={[styles.monthLabel, { color: theme.text }]}>{visibleMonth}</Text>
-                    <FlatList
-                        ref={flatListRef}
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.dateSelector}
-                        data={dates}
-                        keyExtractor={(_, index) => index.toString()}
-                        onScroll={onMouseDragScroll}
-                        scrollEventThrottle={16}
-                        onViewableItemsChanged={onViewableItemsChanged}
-                        viewabilityConfig={viewabilityConfig}
-                        getItemLayout={(_, index) => ({
-                            length: 62, // minWidth (54) + gap (8)
-                            offset: 62 * index,
-                            index,
-                        })}
-                        onScrollToIndexFailed={(info) => {
-                            setTimeout(() => {
-                                flatListRef.current?.scrollToIndex({ index: info.index, animated: false });
-                            }, 100);
-                        }}
-                        renderItem={({ item: date }) => {
-                            const isSelected = selectedDate.getTime() === date.getTime();
-                            return (
-                                <TouchableOpacity
-                                    style={[styles.dateCard, { backgroundColor: isSelected ? theme.tint : 'transparent' }, isSelected && { ...styles.dateCardSelected, shadowColor: theme.tint }]}
-                                    onPress={() => setSelectedDate(date)}
-                                >
-                                    <Text style={[styles.dayText, { color: isSelected ? theme.onTint : theme.textSecondary }]}>{format(date, 'EEE')}</Text>
-                                    <Text style={[styles.dateText, { color: isSelected ? theme.onTint : theme.text }]}>{format(date, 'd')}</Text>
-                                </TouchableOpacity>
-                            );
-                        }}
-                    />
-                </View>
+                <DateStrip dates={dates} selectedDate={selectedDate} onSelect={setSelectedDate} />
 
                 <ScrollView contentContainerStyle={styles.slotsContainer}>
                     {slotsLoading ? (
                         <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
                     ) : availableSlots.length === 0 ? (
-                        <Text style={{ textAlign: 'center', color: theme.textSecondary }}>No slots available this day.</Text>
+                        <EmptyState icon="time-outline" title="No times left today" subtitle="Pick another day above." />
                     ) : (
-                        <View style={[styles.slotsList, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                            {availableSlots.map((slot, index) => {
-                                const isLast = index === availableSlots.length - 1;
-                                return (
-                                    <View key={index}>
-                                        <TouchableOpacity
-                                            style={[styles.slotRow, !slot.available && { backgroundColor: theme.cardAlt, opacity: 0.7 }]}
-                                            disabled={!slot.available || bookingLoading}
-                                            onPress={() => handleSlotPress(slot)}
-                                        >
-                                            <View style={styles.slotTimeContainer}>
-                                                <Text style={[styles.slotTime, { color: slot.available ? theme.text : theme.textSecondary }, !slot.available && styles.slotTextUnavailable]}>
-                                                    {format(slot.time, 'HH:mm')}
-                                                </Text>
-                                            </View>
-                                            <View style={styles.slotDetailsContainer}>
-                                                <Text style={[styles.slotDuration, { color: slot.available ? theme.tint : theme.textSecondary }]}>
-                                                    {slot.available ? '1 Hour' : (slot.blockReason || 'Gym in use')}
-                                                </Text>
-                                            </View>
-                                            <View style={styles.slotChevron}>
-                                                {slot.available && <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} opacity={0.5} />}
-                                            </View>
-                                        </TouchableOpacity>
-                                        {!isLast && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
-                                    </View>
-                                );
-                            })}
-                        </View>
+                        <SlotList
+                            slots={availableSlots.map((slot): SlotItem => ({
+                                key: slot.time.toISOString(),
+                                time: slot.time,
+                                title: slot.available ? `Until ${format(addMinutes(slot.time, 60), 'HH:mm')}` : (slot.blockReason || 'Gym in use'),
+                                tone: slot.available ? 'default' : 'muted',
+                                available: slot.available,
+                            }))}
+                            disabled={bookingLoading}
+                            onPress={item => {
+                                const slot = availableSlots.find(s => s.time.getTime() === item.time.getTime());
+                                if (slot) handleSlotPress(slot);
+                            }}
+                        />
                     )}
                 </ScrollView>
-                 <CustomAlert
+                <CustomAlert
                     visible={alertConfig.visible}
                     title={alertConfig.title}
                     message={alertConfig.message}
@@ -577,12 +492,9 @@ export default function GroupsScreen() {
                 <View style={styles.headerContainer}>
                     <ScreenHeader
                         title={selectedGroup.name}
-                        subtitle={`${members.length} Members`}
-                        right={
-                            <TouchableOpacity onPress={() => setSelectedGroup(null)} style={[styles.backButton, { backgroundColor: theme.cardAlt }]}>
-                                <Text style={[styles.backButtonText, { color: theme.text }]}>Back</Text>
-                            </TouchableOpacity>
-                        }
+                        subtitle={`${members.length} member${members.length === 1 ? '' : 's'}`}
+                        onBack={() => setSelectedGroup(null)}
+                        backLabel="Groups"
                     />
                 </View>
 
@@ -622,9 +534,7 @@ export default function GroupsScreen() {
                     <SectionHeader
                         title="Members"
                         action={
-                            <TouchableOpacity onPress={() => setInviteModalVisible(true)}>
-                                <Text style={{ color: theme.tint, fontWeight: '600' }}>+ Invite</Text>
-                            </TouchableOpacity>
+                            <Button variant="ghost" size="sm" icon="person-add-outline" label="Invite" onPress={() => setInviteModalVisible(true)} />
                         }
                     />
 
@@ -640,12 +550,7 @@ export default function GroupsScreen() {
                                         <Text style={[styles.listItemText, { color: theme.text }]}>{m.name}</Text>
                                         <Text style={[styles.listItemSub, { color: theme.textSecondary }]}>{m.email}</Text>
                                     </View>
-                                    <TouchableOpacity
-                                        style={{ paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm }}
-                                        onPress={() => handleRemoveMember(m)}
-                                    >
-                                        <Ionicons name="close-circle" size={24} color={theme.textSecondary} />
-                                    </TouchableOpacity>
+                                    <IconButton icon="close" size={32} accessibilityLabel={`Remove ${m.name}`} onPress={() => handleRemoveMember(m)} />
                                 </ListRow>
                             ))}
                         </ListContainer>
@@ -671,15 +576,15 @@ export default function GroupsScreen() {
                     {/* Danger Zone: Delete Group */}
                     {userProfile?.role === 'pt' && (
                         <View style={{ marginTop: Spacing.huge, marginBottom: Spacing.huge }}>
-                            <Text style={[styles.sectionTitle, { color: theme.danger, marginBottom: Spacing.lg - 1 }]}>Danger Zone</Text>
+                            <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: Spacing.md }]}>Delete Group</Text>
                             <Button
                                 variant="destructive"
                                 icon="trash-outline"
                                 label="Delete Group"
                                 onPress={handleDeleteGroup}
                             />
-                            <Text style={{ color: theme.textSecondary, fontSize: 13, textAlign: 'center', marginTop: Spacing.sm + 2 }}>
-                                This will irrevocably cancel all upcoming sessions along with deleting the group itself.
+                            <Text style={[styles.groupMetaText, { color: theme.textSecondary, textAlign: 'center', marginTop: Spacing.sm }]}>
+                                Deletes the group and cancels all its upcoming sessions. This can&apos;t be undone.
                             </Text>
                         </View>
                     )}
@@ -687,14 +592,13 @@ export default function GroupsScreen() {
 
                 <Modal visible={isInviteModalVisible} transparent animationType="fade">
                     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
-                        <View style={[styles.modalContent, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                        <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
                             <Text style={[styles.modalTitle, { color: theme.text }]}>Invite Client</Text>
                             <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>Enter the client's email address</Text>
 
-                            <TextInput
-                                style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                            <TextField
+                                containerStyle={styles.modalInput}
                                 placeholder="client@example.com"
-                                placeholderTextColor={theme.textTertiary}
                                 value={inviteEmail}
                                 onChangeText={setInviteEmail}
                                 autoCapitalize="none"
@@ -702,10 +606,8 @@ export default function GroupsScreen() {
                             />
 
                             <View style={styles.modalActions}>
-                                <TouchableOpacity style={styles.modalCancel} onPress={() => setInviteModalVisible(false)} disabled={inviting}>
-                                    <Text style={[styles.modalCancelText, { color: theme.textSecondary }]}>Cancel</Text>
-                                </TouchableOpacity>
-                                <Button variant="primary" label="Send Invite" onPress={handleInvite} loading={inviting} />
+                                <Button variant="secondary" label="Cancel" onPress={() => setInviteModalVisible(false)} disabled={inviting} style={{ flex: 1 }} />
+                                <Button variant="primary" label="Send Invite" onPress={handleInvite} loading={inviting} style={{ flex: 1 }} />
                             </View>
                         </View>
                     </KeyboardAvoidingView>
@@ -726,8 +628,10 @@ export default function GroupsScreen() {
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
             <View style={styles.headerContainer}>
                 <ScreenHeader
-                    title="Your Groups"
-                    subtitle="Manage group training"
+                    title="Groups"
+                    subtitle="Your group training"
+                    onBack={() => router.navigate('/')}
+                    backLabel="Dashboard"
                     right={
                         <Button variant="primary" size="sm" icon="add" label="New" onPress={() => setCreateModalVisible(true)} />
                     }
@@ -762,24 +666,21 @@ export default function GroupsScreen() {
 
             <Modal visible={isCreateModalVisible} transparent animationType="fade">
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
-                    <View style={[styles.modalContent, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
                         <Text style={[styles.modalTitle, { color: theme.text }]}>Create Group</Text>
                         <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>Give your new training group a name</Text>
 
-                        <TextInput
-                            style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                            placeholder="e.g. Mens 6am Class"
-                            placeholderTextColor={theme.textTertiary}
+                        <TextField
+                            containerStyle={styles.modalInput}
+                            placeholder="e.g. Men's 6am class"
                             value={newGroupName}
                             onChangeText={setNewGroupName}
                             autoCapitalize="words"
                         />
 
                         <View style={styles.modalActions}>
-                            <TouchableOpacity style={styles.modalCancel} onPress={() => setCreateModalVisible(false)} disabled={creatingGroup}>
-                                <Text style={[styles.modalCancelText, { color: theme.textSecondary }]}>Cancel</Text>
-                            </TouchableOpacity>
-                            <Button variant="primary" label="Create" onPress={handleCreateGroup} loading={creatingGroup} />
+                            <Button variant="secondary" label="Cancel" onPress={() => setCreateModalVisible(false)} disabled={creatingGroup} style={{ flex: 1 }} />
+                            <Button variant="primary" label="Create" onPress={handleCreateGroup} loading={creatingGroup} style={{ flex: 1 }} />
                         </View>
                     </View>
                 </KeyboardAvoidingView>
@@ -799,41 +700,25 @@ const styles = StyleSheet.create({
     container: { flex: 1 },
     headerContainer: { paddingHorizontal: Spacing.xl, paddingTop: Spacing.sm },
     groupNameText: { ...Typography.headline },
-    groupMetaText: { ...Typography.subhead, marginTop: 4 },
+    groupMetaText: { ...Typography.footnote, fontWeight: '400', marginTop: 2 },
     separator: { height: StyleSheet.hairlineWidth },
 
+    groupRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+    groupIcon: { width: 36, height: 36, borderRadius: Radii.pill, alignItems: 'center', justifyContent: 'center' },
+    buttonRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md },
+
     // Details
-    backButton: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radii.pill },
-    backButtonText: { fontWeight: '600', fontSize: 14 },
     sectionTitle: { ...Typography.title3 },
-    listItemText: { ...Typography.bodyMedium },
-    listItemSub: { ...Typography.footnote, marginTop: 2 },
+    listItemText: { ...Typography.headline },
+    listItemSub: { ...Typography.footnote, fontWeight: '400', marginTop: 2 },
 
     // Modal
-    modalOverlay: { flex: 1, justifyContent: 'center', padding: Spacing.xl },
-    modalContent: { padding: Spacing.xxl, borderRadius: Radii.xl, borderWidth: 1 },
-    modalTitle: { ...Typography.title2, marginBottom: 6 },
-    modalSubtitle: { ...Typography.subhead, marginBottom: Spacing.xl },
-    input: { padding: Spacing.lg, borderRadius: Radii.lg, borderWidth: 1, fontSize: 16, marginBottom: Spacing.xxl },
-    modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: Spacing.md },
-    modalCancel: { paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md, justifyContent: 'center' },
-    modalCancelText: { fontWeight: '600', fontSize: 16 },
+    modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl },
+    modalContent: { width: '100%', maxWidth: 400, padding: Spacing.xl, borderRadius: Radii.xl, ...Shadows.lg },
+    modalTitle: { ...Typography.title3, marginBottom: Spacing.xs },
+    modalSubtitle: { ...Typography.subhead, fontWeight: '400', marginBottom: Spacing.lg },
+    modalInput: { marginBottom: Spacing.xl },
+    modalActions: { flexDirection: 'row', gap: Spacing.sm },
 
-    // Booking Slots
-    dateSelectorContainer: { borderBottomWidth: StyleSheet.hairlineWidth },
-    monthLabel: { fontSize: 14, fontWeight: '600', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 2 },
-    dateSelector: { paddingHorizontal: 15, paddingVertical: 12, gap: 8 },
-    dateCard: { paddingVertical: 10, paddingHorizontal: 8, borderRadius: Radii.pill, alignItems: 'center', minWidth: 54 },
-    dateCardSelected: { shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
-    dayText: { fontSize: 11, textTransform: 'uppercase', fontWeight: '600', marginBottom: 4 },
-    dateText: { fontSize: 20, fontWeight: '500' },
-    slotsContainer: { padding: 16, paddingBottom: 40 },
-    slotsList: { borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
-    slotRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16 },
-    slotTimeContainer: { width: 70 },
-    slotTime: { fontSize: 17, fontWeight: '600', letterSpacing: -0.4 },
-    slotTextUnavailable: { textDecorationLine: 'line-through' },
-    slotDetailsContainer: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingRight: 10 },
-    slotDuration: { fontSize: 15, fontWeight: '600' },
-    slotChevron: { width: 20, alignItems: 'flex-end' },
+    slotsContainer: { padding: Spacing.xl, paddingBottom: Spacing.huge },
 });

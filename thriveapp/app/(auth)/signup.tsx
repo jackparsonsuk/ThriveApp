@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import Head from 'expo-router/head';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
@@ -11,12 +11,29 @@ import { getGlobalSettings } from '../../services/settingsService';
 import { getAllPTs, assignClientToPt } from '../../services/bookingService';
 import { Button } from '@/components/ui';
 
+const getSignUpErrorMessage = (code?: string, fallback?: string): string => {
+    switch (code) {
+        case 'auth/email-already-in-use':
+            return 'An account with that email already exists. Try logging in instead.';
+        case 'auth/invalid-email':
+            return "That email address doesn't look right.";
+        case 'auth/weak-password':
+            return 'Please choose a password with at least 6 characters.';
+        case 'auth/network-request-failed':
+            return 'Network error. Please check your connection and try again.';
+        default:
+            return fallback || 'Could not create your account. Please try again.';
+    }
+};
+
 export default function SignUpScreen() {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [signupCode, setSignupCode] = useState('');
     const [codeError, setCodeError] = useState('');
+    // Shown inline: Alert.alert is a no-op on web, so errors used to vanish there
+    const [formError, setFormError] = useState('');
     const [loading, setLoading] = useState(false);
     const router = useRouter();
     const colorScheme = useColorScheme() ?? 'light';
@@ -24,13 +41,14 @@ export default function SignUpScreen() {
 
     const handleSignUp = async () => {
         if (!name || !email || !password || !signupCode) {
-            Alert.alert('Error', 'Please fill in all fields (including the signup code)');
+            setFormError('Please fill in every field, including the sign-up code.');
             return;
         }
 
         try {
             setLoading(true);
             setCodeError('');
+            setFormError('');
 
             const trimmedCode = signupCode.trim();
 
@@ -70,7 +88,7 @@ export default function SignUpScreen() {
 
             // The context will automatically redirect upon successful login
         } catch (error: any) {
-            Alert.alert('Sign Up Error', error.message || 'Failed to create account');
+            setFormError(getSignUpErrorMessage(error?.code, error?.message));
         } finally {
             setLoading(false);
         }
@@ -137,6 +155,12 @@ export default function SignUpScreen() {
                     ) : null}
                 </View>
 
+                {formError ? (
+                    <View style={[styles.errorBox, { backgroundColor: theme.dangerMuted, borderColor: theme.danger }]} accessibilityRole="alert">
+                        <Text style={[styles.errorBoxText, { color: theme.danger }]}>{formError}</Text>
+                    </View>
+                ) : null}
+
                 <Button variant="primary" label="Sign Up" onPress={handleSignUp} loading={loading} style={{ marginTop: Spacing.sm }} />
 
                 <TouchableOpacity
@@ -151,6 +175,15 @@ export default function SignUpScreen() {
 }
 
 const styles = StyleSheet.create({
+    errorBox: {
+        borderWidth: StyleSheet.hairlineWidth,
+        borderRadius: Radii.md,
+        padding: Spacing.md,
+    },
+    errorBoxText: {
+        ...Typography.footnote,
+        textAlign: 'center',
+    },
     container: {
         flexGrow: 1,
         justifyContent: 'center',
@@ -168,6 +201,9 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
     form: {
+        width: '100%',
+        maxWidth: 420,
+        alignSelf: 'center',
         gap: 15,
     },
     input: {

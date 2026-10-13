@@ -1,17 +1,15 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, FlatList, ViewToken } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { View, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { getGymBookingsForDate, getPTBookingsForDate, checkSlotAvailability, createBooking, getUserProfile, UserProfile, getPersonAllBookingsForDate, getClientsForPt, Booking } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter, useFocusEffect } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
-import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
+import { Colors, Spacing, bookingTypeColor } from '@/constants/theme';
 import { BOOKING_WINDOW_DAYS } from '@/constants/config';
-import { useMouseDragScroll } from '@/hooks/useMouseDragScroll';
-import { ScreenHeader, EmptyState } from '@/components/ui';
+import { ScreenHeader, EmptyState, DateStrip, SlotList, SlotItem } from '@/components/ui';
 
 const GYM_OPEN_HOUR = 7;
 const GYM_CLOSE_HOUR = 20;
@@ -28,20 +26,6 @@ export default function GymBookingScreen() {
     const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean; attendees: number; conflictType?: string; conflictBookingId?: string; conflictBookingType?: string; }[]>([]);
     const [loading, setLoading] = useState(false);
     const [bookingLoading, setBookingLoading] = useState(false);
-    const flatListRef = useRef<FlatList>(null);
-    const [hasInitialScrolled, setHasInitialScrolled] = useState(false);
-    const { onScroll: onMouseDragScroll, dragProps } = useMouseDragScroll(flatListRef);
-    const [visibleMonth, setVisibleMonth] = useState(format(new Date(), 'MMMM yyyy'));
-
-    const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
-        if (viewableItems.length > 0) {
-            const middleItem = viewableItems[Math.floor(viewableItems.length / 2)];
-            if (middleItem?.item) {
-                setVisibleMonth(format(middleItem.item as Date, 'MMMM yyyy'));
-            }
-        }
-    }, []);
-    const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
 
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState<{
@@ -57,7 +41,7 @@ export default function GymBookingScreen() {
     const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
     // Generate the next BOOKING_WINDOW_DAYS days for the selector
-    const dates = Array.from({ length: BOOKING_WINDOW_DAYS }).map((_, i) => addDays(startOfDay(new Date()), i));
+    const dates = useMemo(() => Array.from({ length: BOOKING_WINDOW_DAYS }).map((_, i) => addDays(startOfDay(new Date()), i)), []);
 
     useEffect(() => {
         if (user) {
@@ -78,21 +62,6 @@ export default function GymBookingScreen() {
         fetchAvailability();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedDate, userProfile]));
-
-    useEffect(() => {
-        const index = dates.findIndex(d => d.getTime() === selectedDate.getTime());
-        if (index !== -1 && (index > 0 || hasInitialScrolled)) {
-            const timer = setTimeout(() => {
-                flatListRef.current?.scrollToIndex({
-                    index,
-                    animated: true,
-                    viewPosition: 0.5
-                });
-                setHasInitialScrolled(true);
-            }, 100);
-            return () => clearTimeout(timer);
-        }
-    }, [selectedDate]);
 
     const fetchAvailability = async () => {
         setLoading(true);
@@ -268,175 +237,65 @@ export default function GymBookingScreen() {
     const canGym = userProfile?.canBookGym ?? true;
     const isGated = !profileLoading && !canGym;
 
+    const slotItems: SlotItem[] = availableSlots.map(slot => {
+        const groupColor = slot.conflictBookingId === 'admin-block' ? theme.textTertiary : bookingTypeColor(theme, slot.conflictBookingType);
+        if (!slot.available) {
+            return {
+                key: slot.time.toISOString(),
+                time: slot.time,
+                title: slot.conflictType === 'Full' ? 'Full' : (slot.conflictType || 'Unavailable'),
+                tone: slot.conflictType === 'Full' ? 'danger' : 'muted',
+                available: false,
+                groupId: slot.conflictBookingId,
+                groupColor,
+            };
+        }
+        return {
+            key: slot.time.toISOString(),
+            time: slot.time,
+            title: slot.isNextAvailable ? `Until ${format(addMinutes(slot.time, 60), 'HH:mm')}` : '15 minutes only',
+            tone: slot.isNextAvailable ? 'default' : 'warning',
+            meta: slot.attendees > 0 ? `${slot.attendees}/4 booked` : undefined,
+            available: true,
+            groupId: slot.conflictBookingId,
+            groupColor,
+        };
+    });
+
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
             <View style={styles.headerContainer}>
-                <ScreenHeader title="Gym Session" subtitle="Select a date and time to train" />
+                <ScreenHeader title="Book the Gym" subtitle="Pick a start time — sessions are an hour" onBack={() => router.navigate('/')} backLabel="Dashboard" />
             </View>
 
-            <View
-                style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }, isGated && { display: 'none' }]}
-                {...dragProps}
-            >
-                <Text style={[styles.monthLabel, { color: theme.text }]}>{visibleMonth}</Text>
-                <FlatList
-                    ref={flatListRef}
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.dateSelector}
-                    data={dates}
-                    keyExtractor={(_, index) => index.toString()}
-                    onScroll={onMouseDragScroll}
-                    scrollEventThrottle={16}
-                    onViewableItemsChanged={onViewableItemsChanged}
-                    viewabilityConfig={viewabilityConfig}
-                    getItemLayout={(_, index) => ({
-                        length: 62, // minWidth (54) + gap (8)
-                        offset: 62 * index,
-                        index,
-                    })}
-                    onScrollToIndexFailed={(info) => {
-                        setTimeout(() => {
-                            flatListRef.current?.scrollToIndex({ index: info.index, animated: false });
-                        }, 100);
-                    }}
-                    renderItem={({ item: date }) => {
-                        const isSelected = selectedDate.getTime() === date.getTime();
-                        return (
-                            <TouchableOpacity
-                                style={[
-                                    styles.dateCard,
-                                    { backgroundColor: isSelected ? theme.tint : 'transparent' },
-                                    isSelected && { ...styles.dateCardSelected, shadowColor: theme.tint },
-                                ]}
-                                onPress={() => setSelectedDate(date)}
-                            >
-                                <Text style={[styles.dayText, { color: isSelected ? theme.onTint : theme.textSecondary }]}>
-                                    {format(date, 'EEE')}
-                                </Text>
-                                <Text style={[styles.dateText, { color: isSelected ? theme.onTint : theme.text }]}>
-                                    {format(date, 'd')}
-                                </Text>
-                            </TouchableOpacity>
-                        );
-                    }}
-                />
-            </View>
+            {!isGated && <DateStrip dates={dates} selectedDate={selectedDate} onSelect={setSelectedDate} />}
 
             {isGated ? (
                 <View style={styles.gatedContainer}>
                     <EmptyState
                         icon="lock-closed-outline"
-                        title="Gym Access Required"
-                        subtitle="Contact your PT to get gym access. You can still book 1-to-1 sessions from the PT screen."
+                        title="Gym access needed"
+                        subtitle="Ask your PT to turn on gym access. You can still book 1-to-1 sessions from the PT screen."
                     />
                 </View>
-            ) : null}
-
-            <ScrollView contentContainerStyle={styles.slotsContainer} style={isGated ? { display: 'none' } : undefined}>
-                {loading || profileLoading ? (
-                    <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
-                ) : availableSlots.length === 0 ? (
-                    <Text style={[styles.noSlotsText, { color: theme.textSecondary }]}>No more slots available for this day.</Text>
-                ) : (
-                    <View style={[styles.slotsList, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                        {availableSlots.map((slot, index) => {
-                            const isLast = index === availableSlots.length - 1;
-
-                            // Grouping outline logic
-                            const hasGroup = !!slot.conflictBookingId;
-                            const prevSlot = hasGroup && index > 0 ? availableSlots[index - 1] : null;
-                            const nextSlot = hasGroup && index < availableSlots.length - 1 ? availableSlots[index + 1] : null;
-
-                            const isFirstInBlock = hasGroup && prevSlot?.conflictBookingId !== slot.conflictBookingId;
-                            const isLastInBlock = hasGroup && nextSlot?.conflictBookingId !== slot.conflictBookingId;
-                            const isMiddleInBlock = hasGroup && !isFirstInBlock && !isLastInBlock;
-
-                            let outlineStyle: any = {};
-                            if (hasGroup) {
-                                const bookingColors: Record<string, string> = {
-                                    pt_block: theme.tint,
-                                    pt: theme.success,
-                                    gym: theme.info,
-                                    group: '#8B5CF6',
-                                    block: theme.textTertiary
-                                };
-                                const groupColor = bookingColors[slot.conflictBookingType ?? ''] || theme.tint;
-
-                                outlineStyle = {
-                                    borderColor: groupColor,
-                                    borderLeftWidth: 2,
-                                    borderRightWidth: 2,
-                                };
-                                if (isFirstInBlock) {
-                                    outlineStyle.borderTopWidth = 2;
-                                    outlineStyle.borderTopLeftRadius = Radii.sm;
-                                    outlineStyle.borderTopRightRadius = Radii.sm;
-                                    outlineStyle.marginTop = 4;
-                                }
-                                if (isLastInBlock) {
-                                    outlineStyle.borderBottomWidth = 2;
-                                    outlineStyle.borderBottomLeftRadius = Radii.sm;
-                                    outlineStyle.borderBottomRightRadius = Radii.sm;
-                                    outlineStyle.marginBottom = 4;
-                                }
-                            }
-
-                            return (
-                                <View key={index}>
-                                    <TouchableOpacity
-                                        style={[
-                                            styles.slotRow,
-                                            !slot.available && { backgroundColor: theme.cardAlt, opacity: 0.7 },
-                                            outlineStyle
-                                        ]}
-                                        disabled={!slot.available || bookingLoading}
-                                        onPress={() => handleBookSlot(slot)}
-                                    >
-                                        <View style={styles.slotTimeContainer}>
-                                            <Text style={[
-                                                styles.slotTime,
-                                                { color: slot.available ? theme.text : theme.textSecondary },
-                                                !slot.available && styles.slotTextUnavailable
-                                            ]}>
-                                                {format(slot.time, 'HH:mm')}
-                                            </Text>
-                                        </View>
-
-                                        <View style={styles.slotDetailsContainer}>
-                                            {slot.available ? (
-                                                <>
-                                                    <Text style={[styles.slotDuration, { color: theme.tint }]}>
-                                                        {slot.isNextAvailable ? '1 Hour' : '15 Mins'}
-                                                    </Text>
-                                                    <View style={styles.slotRightInfo}>
-                                                        <Text style={[styles.slotAttendees, { color: theme.textSecondary }]}>
-                                                            {slot.attendees} / 4 Booked
-                                                        </Text>
-                                                    </View>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Text style={[styles.slotFullText, { color: slot.conflictType === 'Full' ? theme.danger : theme.textSecondary }]}>
-                                                        {slot.conflictType || 'Full'}
-                                                    </Text>
-                                                </>
-                                            )}
-                                        </View>
-
-                                        <View style={styles.slotChevron}>
-                                            {slot.available && (
-                                                <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} opacity={0.5} />
-                                            )}
-                                        </View>
-                                    </TouchableOpacity>
-                                    {(!isLast && !(hasGroup && !isLastInBlock)) && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
-                                </View>
-                            );
-                        })}
-                    </View>
-                )}
-            </ScrollView>
+            ) : (
+                <ScrollView contentContainerStyle={styles.slotsContainer}>
+                    {loading || profileLoading ? (
+                        <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
+                    ) : slotItems.length === 0 ? (
+                        <EmptyState icon="time-outline" title="No times left today" subtitle="Pick another day above." />
+                    ) : (
+                        <SlotList
+                            slots={slotItems}
+                            disabled={bookingLoading}
+                            onPress={item => {
+                                const slot = availableSlots.find(s => s.time.getTime() === item.time.getTime());
+                                if (slot) handleBookSlot(slot);
+                            }}
+                        />
+                    )}
+                </ScrollView>
+            )}
 
             <CustomAlert
                 visible={alertConfig.visible}
@@ -461,109 +320,14 @@ const styles = StyleSheet.create({
     },
     headerContainer: {
         paddingHorizontal: Spacing.xl,
-        paddingTop: Spacing.sm,
-    },
-    dateSelectorContainer: {
-        borderBottomWidth: StyleSheet.hairlineWidth,
-    },
-    monthLabel: {
-        ...Typography.footnote,
-        fontWeight: '600',
-        paddingHorizontal: Spacing.xl,
-        paddingTop: Spacing.sm,
-        paddingBottom: 2,
-    },
-    dateSelector: {
-        paddingHorizontal: 15,
-        paddingVertical: Spacing.md,
-        gap: Spacing.sm,
-    },
-    dateCard: {
-        paddingVertical: Spacing.sm + 2,
-        paddingHorizontal: Spacing.sm,
-        borderRadius: Radii.pill,
-        alignItems: 'center',
-        minWidth: 54,
-    },
-    dateCardSelected: {
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 4,
-    },
-    dayText: {
-        ...Typography.caption2,
-        textTransform: 'uppercase',
-        marginBottom: 4,
-    },
-    dateText: {
-        fontSize: 20,
-        fontWeight: '500',
     },
     slotsContainer: {
-        padding: Spacing.lg,
-        paddingBottom: 40,
-    },
-    slotsList: {
-        borderRadius: Radii.lg,
-        borderWidth: StyleSheet.hairlineWidth,
-        overflow: 'hidden',
-    },
-    slotRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 14,
-        paddingHorizontal: Spacing.lg,
-    },
-    slotTimeContainer: {
-        width: 70,
-    },
-    slotTime: {
-        ...Typography.headline,
-    },
-    slotTextUnavailable: {
-        textDecorationLine: 'line-through',
-    },
-    slotDetailsContainer: {
-        flex: 1,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingRight: Spacing.sm,
-    },
-    slotDuration: {
-        ...Typography.subhead,
-        fontWeight: '600',
-    },
-    slotAttendees: {
-        ...Typography.footnote,
-        fontWeight: '400',
-    },
-    slotRightInfo: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.sm,
-    },
-    slotFullText: {
-        ...Typography.subhead,
-    },
-    slotChevron: {
-        width: 20,
-        alignItems: 'flex-end',
-    },
-    separator: {
-        height: StyleSheet.hairlineWidth,
-        marginLeft: Spacing.lg,
-    },
-    noSlotsText: {
-        textAlign: 'center',
-        ...Typography.body,
-        marginTop: 50,
+        padding: Spacing.xl,
+        paddingBottom: Spacing.huge,
     },
     gatedContainer: {
         flex: 1,
         justifyContent: 'center',
         padding: Spacing.xl,
-        marginTop: 20,
     },
 });

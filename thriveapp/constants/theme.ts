@@ -16,6 +16,7 @@ export const Colors = {
     background: '#F2F2F7', // iOS Grouped Background Light
     card: '#FFFFFF',       // Card Background Light
     cardAlt: '#F7F7F9',    // Nested/inset surface on top of a card
+    fill: '#E8E8ED',       // Neutral control fill (secondary buttons, chips) — visible on both background and card
     tint: tintColorLight,
     tintMuted: 'rgba(242, 97, 34, 0.12)',
     icon: '#6B6B70',       // Secondary text/icon
@@ -28,6 +29,7 @@ export const Colors = {
     dangerMuted: 'rgba(229, 72, 77, 0.1)',
     warning: '#C77800',
     info: '#3E7BFA',
+    purple: '#7C5CFA',
     onTint: '#FFFFFF',
   },
   dark: {
@@ -37,6 +39,7 @@ export const Colors = {
     background: '#000000', // iOS Pure Black Background Dark
     card: '#1C1C1E',       // Card Background/Grouped Background Dark
     cardAlt: '#242426',    // Nested/inset surface on top of a card
+    fill: '#2C2C2E',       // Neutral control fill (secondary buttons, chips)
     tint: tintColorDark,
     tintMuted: 'rgba(255, 122, 61, 0.16)',
     icon: '#A0A0A6',       // Secondary text/icon
@@ -49,8 +52,28 @@ export const Colors = {
     dangerMuted: 'rgba(255, 99, 105, 0.16)',
     warning: '#E5A339',
     info: '#6E9EFF',
+    purple: '#9B87FF',
     onTint: '#FFFFFF',
   },
+};
+
+export type ThemeColors = typeof Colors.light;
+
+type BookingKind = 'gym' | 'pt' | 'group' | 'block' | 'pt_block';
+
+/**
+ * One colour per kind of booking, used everywhere a booking type is colour-coded
+ * (analytics, slot outlines, badges) so "gym" never changes colour between screens.
+ */
+export const bookingTypeColor = (theme: ThemeColors, type?: string): string => {
+  const map: Record<BookingKind, string> = {
+    gym: theme.info,
+    pt: theme.tint,
+    group: theme.purple,
+    block: theme.textTertiary,
+    pt_block: theme.textTertiary,
+  };
+  return map[type as BookingKind] ?? theme.textTertiary;
 };
 
 export const Spacing = {

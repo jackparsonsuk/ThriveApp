@@ -16,6 +16,7 @@ interface ButtonProps {
   loading?: boolean;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
+  accessibilityLabel?: string;
 }
 
 export default function Button({
@@ -27,39 +28,49 @@ export default function Button({
   loading = false,
   disabled = false,
   style,
+  accessibilityLabel,
 }: ButtonProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
 
   const variants: Record<ButtonVariant, { bg: string; fg: string }> = {
     primary: { bg: theme.tint, fg: theme.onTint },
-    secondary: { bg: theme.cardAlt, fg: theme.text },
+    secondary: { bg: theme.fill, fg: theme.text },
     tint: { bg: theme.tintMuted, fg: theme.tint },
     destructive: { bg: theme.dangerMuted, fg: theme.danger },
-    ghost: { bg: 'transparent', fg: theme.text },
+    ghost: { bg: 'transparent', fg: theme.tint },
     onTint: { bg: 'rgba(255,255,255,0.2)', fg: '#ffffff' },
   };
-  const { bg, fg } = variants[variant];
   const isDisabled = disabled || loading;
+  // A dimmed brand colour reads as muddy brown on dark backgrounds, so a disabled
+  // button switches to the neutral fill instead of just fading out. Loading keeps
+  // its colour so the spinner stays on the button the user just pressed.
+  const { bg, fg } = disabled && variant !== 'ghost' && variant !== 'onTint'
+    ? { bg: theme.fill, fg: theme.textTertiary }
+    : variants[variant];
 
   return (
     <TouchableOpacity
       style={[
         styles.base,
         size === 'sm' ? styles.sm : styles.md,
-        { backgroundColor: bg, opacity: isDisabled ? 0.5 : 1 },
+        { backgroundColor: bg },
+        disabled && (variant === 'ghost' || variant === 'onTint') && { opacity: 0.5 },
         style,
       ]}
       onPress={onPress}
       disabled={isDisabled}
       activeOpacity={0.75}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
     >
       {loading ? (
         <ActivityIndicator size="small" color={fg} />
       ) : (
         <>
-          {icon && <Ionicons name={icon} size={size === 'sm' ? 14 : 18} color={fg} style={{ marginRight: Spacing.xs }} />}
-          <Text style={[size === 'sm' ? styles.textSm : styles.textMd, { color: fg }]}>{label}</Text>
+          {icon && <Ionicons name={icon} size={size === 'sm' ? 15 : 18} color={fg} style={{ marginRight: Spacing.xs + 2 }} />}
+          <Text style={[size === 'sm' ? styles.textSm : styles.textMd, { color: fg }]} numberOfLines={1}>{label}</Text>
         </>
       )}
     </TouchableOpacity>
@@ -74,17 +85,18 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
   },
   md: {
-    paddingVertical: Spacing.md,
+    minHeight: 48,
     paddingHorizontal: Spacing.xl,
   },
   sm: {
-    paddingVertical: Spacing.xs + 2,
-    paddingHorizontal: Spacing.md,
+    minHeight: 36,
+    paddingHorizontal: Spacing.lg - 2,
   },
   textMd: {
     ...Typography.headline,
   },
   textSm: {
-    ...Typography.caption,
+    ...Typography.footnote,
+    fontWeight: '600',
   },
 });

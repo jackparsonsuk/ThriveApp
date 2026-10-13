@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, FlatList, Alert, Switch, ViewToken } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile, getAllUsers, getUserProfile, updateUserProfile, getBookingsForDateRange, getPTBookingsForInstructor, getUserBookings, getAllPTs, isUserActive } from '../../services/bookingService';
@@ -9,17 +9,19 @@ import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
 import { useRouter } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
+import { Colors, Radii, Spacing, Typography, bookingTypeColor } from '@/constants/theme';
 import { BOOKING_WINDOW_DAYS } from '@/constants/config';
-import { useMouseDragScroll } from '@/hooks/useMouseDragScroll';
-import { ScreenHeader, EmptyState, Badge, Button } from '@/components/ui';
+import { ScreenHeader, EmptyState, Badge, Button, Card, Avatar, ChipGroup, DateStrip, IconButton, ListContainer, ListRow, SectionHeader, SegmentedControl, StatBox, TextField, Toggle } from '@/components/ui';
 
 type BookingTypeBadgeProps = { type: string };
 const BookingTypeBadge = ({ type }: BookingTypeBadgeProps) => {
     if (type === 'pt') return <Badge label="PT" tone="tint" />;
-    if (type === 'group') return <Badge label="GROUP" tone="info" />;
-    return <Badge label={type.toUpperCase()} tone="neutral" />;
+    if (type === 'group') return <Badge label="Group" tone="info" />;
+    return <Badge label={type === 'gym' ? 'Gym' : type} tone="neutral" />;
 };
+
+// How many rows a "by client" breakdown shows before "Show all"
+const BREAKDOWN_PREVIEW = 5;
 
 // Operating hours
 const OPEN_HOUR = 7;
@@ -33,9 +35,11 @@ export default function AdminScreen() {
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
     const [activeTab, setActiveTab] = useState<AdminTab>('schedule');
-    const flatListRef = useRef<FlatList>(null);
-    const scheduleRef = useRef<FlatList>(null);
-    const [hasScrolledToToday, setHasScrolledToToday] = useState(false);
+    const scheduleRef = useRef<ScrollView>(null);
+    // y position of each timeline row, recorded as they lay out, so we can scroll to "now"
+    const rowOffsets = useRef<Record<number, number>>({});
+    const timelineTop = useRef(0);
+    const [timelineLaidOut, setTimelineLaidOut] = useState(false);
     const [userRole, setUserRole] = useState<string>('');
     
     // History Tab State
@@ -54,19 +58,10 @@ export default function AdminScreen() {
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
     const [dailyBookings, setDailyBookings] = useState<(Booking & { user?: UserProfile })[]>([]);
     const [loading, setLoading] = useState(false);
-    const { onScroll: onMouseDragScroll, dragProps } = useMouseDragScroll(flatListRef);
-    const [visibleMonth, setVisibleMonth] = useState(format(new Date(), 'MMMM yyyy'));
     const [adminBlockDuration, setAdminBlockDuration] = useState<15 | 30 | 60>(15);
 
-    const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
-        if (viewableItems.length > 0) {
-            const middleItem = viewableItems[Math.floor(viewableItems.length / 2)];
-            if (middleItem?.item) {
-                setVisibleMonth(format(middleItem.item as Date, 'MMMM yyyy'));
-            }
-        }
-    }, []);
-    const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
+    const [historyBreakdownExpanded, setHistoryBreakdownExpanded] = useState(false);
+    const [memberBreakdownExpanded, setMemberBreakdownExpanded] = useState(false);
 
     // Members State
     const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
@@ -115,16 +110,6 @@ export default function AdminScreen() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedDate, activeTab, historyDate]);
 
-    useEffect(() => {
-        if (activeTab === 'schedule' && !hasScrolledToToday) {
-            const timer = setTimeout(() => {
-                flatListRef.current?.scrollToIndex({ index: 7, animated: false });
-                setHasScrolledToToday(true);
-            }, 100);
-            return () => clearTimeout(timer);
-        }
-    }, [activeTab, hasScrolledToToday]);
-
     const scheduleBlocks = useMemo(() => {
         const blocks = [];
         let currentTime = setMinutes(setHours(selectedDate, OPEN_HOUR), 0);
@@ -140,7 +125,8 @@ export default function AdminScreen() {
     }, [selectedDate, dailyBookings]);
 
     useEffect(() => {
-        if (activeTab === 'schedule' && isToday(selectedDate) && scheduleBlocks.length > 0) {
+        // Wait for the list to mount (it's replaced by a spinner while loading)
+        if (activeTab === 'schedule' && !loading && timelineLaidOut && isToday(selectedDate) && scheduleBlocks.length > 0) {
             const now = new Date();
             const totalMinutesFromStart = (now.getHours() - OPEN_HOUR) * 60 + now.getMinutes();
             let blockIndex = Math.floor(totalMinutesFromStart / 15);
@@ -149,18 +135,18 @@ export default function AdminScreen() {
             if (blockIndex < 0) blockIndex = 0;
             if (blockIndex >= scheduleBlocks.length) blockIndex = scheduleBlocks.length - 1;
 
+            // Land with the previous half hour still visible for context
+            const targetIndex = Math.max(0, blockIndex - 2);
             if (blockIndex > 0) {
+                // Rows report their layout after the container does, so give them a beat
                 const timer = setTimeout(() => {
-                    scheduleRef.current?.scrollToIndex({ 
-                        index: blockIndex, 
-                        animated: true,
-                        viewPosition: 0 
-                    });
-                }, 600);
+                    const y = rowOffsets.current[targetIndex];
+                    if (y !== undefined) scheduleRef.current?.scrollTo({ y: timelineTop.current + y, animated: true });
+                }, 150);
                 return () => clearTimeout(timer);
             }
         }
-    }, [selectedDate, activeTab, scheduleBlocks.length]);
+    }, [selectedDate, activeTab, scheduleBlocks.length, loading, timelineLaidOut]);
 
     useEffect(() => {
         if (user) {
@@ -172,6 +158,7 @@ export default function AdminScreen() {
 
     const fetchSchedule = async () => {
         setLoading(true);
+        setTimelineLaidOut(false);
         try {
             const bookings = await getAllBookingsForDate(selectedDate);
             setDailyBookings(bookings);
@@ -277,10 +264,11 @@ export default function AdminScreen() {
 
     const handleSaveSignupCode = async () => {
         if (!signupCode.trim()) {
-            Alert.alert('Error', 'Signup code cannot be empty');
-            return;
+            // Alert.alert does nothing on web, so use the in-app alert
+            setAlertConfig({ visible: true, title: 'Code Needed', message: 'The sign-up code cannot be empty.' });
+            return false;
         }
-        
+
         setSavingCode(true);
         try {
             await updateGlobalSettings({ signupCode: signupCode.trim() });
@@ -290,6 +278,7 @@ export default function AdminScreen() {
                 message: 'Signup code updated successfully.',
                 isDestructive: false
             });
+            return true;
         } catch (error) {
             console.error('Error saving signup code:', error);
             setAlertConfig({
@@ -298,6 +287,7 @@ export default function AdminScreen() {
                 message: 'Failed to update signup code. Check permissions.',
                 isDestructive: false
             });
+            return false;
         } finally {
             setSavingCode(false);
         }
@@ -398,126 +388,161 @@ export default function AdminScreen() {
         }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     }, [allUsers, searchQuery, roleFilter, statusFilter]);
 
+    const roleTone = (role: string) => (role === 'admin' ? 'info' : role === 'pt' ? 'tint' : 'neutral') as 'info' | 'tint' | 'neutral';
+    const roleLabel = (role: string) => (role === 'pt' ? 'PT' : role.charAt(0).toUpperCase() + role.slice(1));
+
+    // Rounded top on the first row and bottom on the last, so a FlatList of rows reads as one grouped card
+    const groupedRowStyle = (index: number, count: number) => [
+        styles.groupedRow,
+        { backgroundColor: theme.card, borderColor: theme.border },
+        index === 0 && styles.groupedRowFirst,
+        index === count - 1 && styles.groupedRowLast,
+    ];
+
     const renderSchedule = () => {
         const now = new Date();
         const viewingToday = isToday(selectedDate);
         const isPastDate = isBefore(selectedDate, startOfDay(now));
+        const bookedCount = dailyBookings.filter(b => b.type !== 'block').length;
+        const blockedCount = scheduleBlocks.filter(block => block.bookings.some((b: Booking) => b.type === 'block')).length;
 
         return (
             <View style={{ flex: 1 }}>
                 {loading ? (
                     <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
                 ) : (
-                    <FlatList
+                    <ScrollView
                         ref={scheduleRef}
-                        data={scheduleBlocks}
-                        keyExtractor={(_, index) => index.toString()}
                         contentContainerStyle={styles.scheduleContainer}
-                        initialNumToRender={20}
-                        onScrollToIndexFailed={(info) => {
-                            setTimeout(() => {
-                                scheduleRef.current?.scrollToIndex({ index: info.index, animated: false });
-                            }, 100);
-                        }}
-                        renderItem={({ item: block }) => {
-                            const hasBlock = block.bookings.some((b: Booking) => b.type === 'block');
+                    >
+                            <View style={styles.scheduleHeader}>
+                                <Text style={[styles.scheduleSummary, { color: theme.textSecondary }]}>
+                                    {bookedCount === 0 ? 'Nothing booked' : `${bookedCount} booking${bookedCount === 1 ? '' : 's'}`}
+                                    {blockedCount > 0 ? ` · ${blockedCount} slot${blockedCount === 1 ? '' : 's'} blocked` : ''}
+                                </Text>
+                                {!isPastDate && (
+                                    <ChipGroup
+                                        options={[
+                                            { value: 15 as const, label: '15m' },
+                                            { value: 30 as const, label: '30m' },
+                                            { value: 60 as const, label: '1h' },
+                                        ]}
+                                        value={adminBlockDuration}
+                                        onChange={setAdminBlockDuration}
+                                    />
+                                )}
+                            </View>
+                        <View
+                            onLayout={e => {
+                                timelineTop.current = e.nativeEvent.layout.y;
+                                setTimelineLaidOut(true);
+                            }}
+                        >
+                        {scheduleBlocks.map((block, index) => {
+                            const blockBooking = block.bookings.find((b: Booking) => b.type === 'block');
                             const blockEnd = addMinutes(block.time, 15);
                             const isPastSlot = isPastDate || (viewingToday && blockEnd <= now);
+                            const isNow = viewingToday && block.time <= now && blockEnd > now;
+                            const isHour = block.time.getMinutes() === 0;
+                            const people = block.bookings.filter((b: Booking) => b.type !== 'block') as (Booking & { user?: UserProfile; instructorName?: string })[];
+                            // A booking is listed in full on the slot it starts in; later slots it
+                            // runs through just carry a muted "still here" line instead of repeating it.
+                            const starting = people.filter(b => b.startTime >= block.time);
+                            const continuing = people.filter(b => b.startTime < block.time);
+                            const groupName = blockBooking?.reason?.startsWith('Group Session')
+                                ? blockBooking.reason.replace('Group Session: ', '')
+                                : null;
 
                             return (
-                                <View style={[styles.timeBlock, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                                    <View style={[styles.timeHeader, { borderBottomColor: theme.border }]}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                            <Text style={[styles.timeText, { color: theme.text }]}>{format(block.time, 'HH:mm')}</Text>
-                                            {viewingToday && block.time <= now && blockEnd > now && (
-                                                <View style={{ backgroundColor: theme.tint, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                                    <Text style={{ color: theme.onTint, fontSize: 10, fontWeight: '700' }}>NOW</Text>
-                                                </View>
-                                            )}
-                                        </View>
-                                        {!hasBlock ? (
-                                            !isPastSlot && (
-                                                <TouchableOpacity style={[styles.blockBtn, { borderColor: theme.tint }]} onPress={() => handleBlockSlot(block.time)}>
-                                                    <Ionicons name="lock-closed" size={14} color={theme.tint} />
-                                                    <Text style={[styles.blockBtnText, { color: theme.tint }]}>Block Slot</Text>
-                                                </TouchableOpacity>
-                                            )
-                                        ) : (
-                                            <TouchableOpacity
-                                                style={[styles.blockedBadge, { backgroundColor: theme.dangerMuted, borderColor: theme.danger }, isPastSlot && { opacity: 0.7 }]}
-                                                onPress={() => {
-                                                    if (isPastSlot) return;
-                                                    const blockBooking = block.bookings.find((b: Booking) => b.type === 'block');
-                                                    if (blockBooking && blockBooking.id) {
-                                                        handleCancelBooking(blockBooking.id, 'this blocked slot');
-                                                    }
-                                                }}
-                                            >
-                                                <Ionicons name="lock-open" size={14} color={theme.danger} />
-                                                <Text style={[styles.blockedText, { color: theme.danger }]}>{isPastSlot ? 'BLOCKED' : 'UNBLOCK'}</Text>
-                                            </TouchableOpacity>
-                                        )}
+                                <View
+                                    key={block.time.toISOString()}
+                                    onLayout={e => { rowOffsets.current[index] = e.nativeEvent.layout.y; }}
+                                    style={[
+                                        ...groupedRowStyle(index, scheduleBlocks.length),
+                                        styles.timelineRow,
+                                        isHour && index > 0 && { borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth },
+                                        isNow && { backgroundColor: theme.tintMuted },
+                                    ]}
+                                >
+                                    {isNow && <View style={[styles.nowBar, { backgroundColor: theme.tint }]} />}
+                                    <View style={styles.timelineTime}>
+                                        <Text
+                                            style={[
+                                                isHour ? styles.timeHour : styles.timeQuarter,
+                                                { color: isNow ? theme.tint : isHour ? theme.text : theme.textTertiary },
+                                                isPastSlot && !isNow && { color: theme.textTertiary },
+                                            ]}
+                                        >
+                                            {format(block.time, 'HH:mm')}
+                                        </Text>
+                                        {isNow && <Text style={[styles.nowLabel, { color: theme.tint }]}>Now</Text>}
                                     </View>
-                                    <View style={styles.attendeesList}>
-                                        {block.bookings.length === 0 && !hasBlock && (
-                                            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No one booked.</Text>
-                                        )}
-                                        {(() => {
-                                            const groupBlock = block.bookings.find((b: Booking) => b.type === 'block' && b.reason?.includes('Group Session'));
-                                            if (groupBlock) {
-                                                const groupName = groupBlock.reason?.replace('Group Session: ', '') || 'Group Session';
-                                                return (
-                                                    <View style={[styles.attendeeCard, { borderBottomColor: theme.border }]}>
-                                                        <View style={styles.attendeeInfo}>
-                                                            <Text style={[styles.attendeeName, { color: theme.text, fontStyle: 'italic' }]}>
-                                                                (Blocked, {groupName})
-                                                            </Text>
-                                                        </View>
-                                                        {!isPastSlot && (
-                                                            <TouchableOpacity onPress={() => handleCancelBooking(groupBlock.id!, groupName)}>
-                                                                <Ionicons name="close-circle" size={24} color={theme.textSecondary} />
-                                                            </TouchableOpacity>
-                                                        )}
-                                                    </View>
-                                                );
-                                            }
 
-                                            return block.bookings.map((b: Booking & { user?: UserProfile }) => {
-                                                if (b.type === 'block') return null;
-                                                const userName = b.user?.name || b.user?.email || 'Unknown Client';
-                                                return (
-                                                    <View key={b.id} style={[styles.attendeeCard, { borderBottomColor: theme.border }]}>
-                                                        <View style={styles.attendeeInfo}>
-                                                            <Text style={[styles.attendeeName, { color: theme.text }]}>{userName}</Text>
-                                                            <View style={styles.badgeContainer}>
-                                                                {b.type === 'pt' ? (
-                                                                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                                                                        <Badge label="PT Session" tone="tint" />
-                                                                        {(b as any).instructorName && (
-                                                                            <Text style={{ fontSize: 13, fontWeight: '500', color: theme.textSecondary }}>
-                                                                                with {(b as any).instructorName}
-                                                                            </Text>
-                                                                        )}
-                                                                    </View>
-                                                                ) : (
-                                                                    <BookingTypeBadge type={b.type} />
-                                                                )}
-                                                            </View>
-                                                        </View>
-                                                        {!isPastSlot && (
-                                                            <TouchableOpacity onPress={() => handleCancelBooking(b.id!, userName)}>
-                                                                <Ionicons name="close-circle" size={24} color={theme.textSecondary} />
-                                                            </TouchableOpacity>
-                                                        )}
+                                    <View style={[styles.timelineBody, isPastSlot && !isNow && { opacity: 0.55 }]}>
+                                        {blockBooking && (
+                                            <View style={[styles.blockedPill, { backgroundColor: theme.dangerMuted }]}>
+                                                <Ionicons name="lock-closed" size={12} color={theme.danger} />
+                                                <Text style={[styles.blockedText, { color: theme.danger }]} numberOfLines={1}>
+                                                    {groupName ? `Group: ${groupName}` : 'Blocked'}
+                                                </Text>
+                                            </View>
+                                        )}
+                                        {starting.map(b => {
+                                            const userName = b.user?.name || b.user?.email || 'Unknown Client';
+                                            const typeLabel = b.type === 'pt'
+                                                ? (b.instructorName ? `PT with ${b.instructorName}` : 'PT')
+                                                : b.type === 'group' ? 'Group' : 'Gym';
+                                            return (
+                                                <View key={b.id} style={styles.personRow}>
+                                                    <View style={[styles.typeDot, { backgroundColor: bookingTypeColor(theme, b.type) }]} />
+                                                    <View style={{ flex: 1 }}>
+                                                        <Text style={[styles.personName, { color: theme.text }]} numberOfLines={1}>{userName}</Text>
+                                                        <Text style={[styles.personMeta, { color: theme.textSecondary }]} numberOfLines={1}>
+                                                            {typeLabel} · until {format(b.endTime, 'HH:mm')}
+                                                        </Text>
                                                     </View>
-                                                );
-                                            });
-                                        })()}
+                                                    {!isPastSlot && (
+                                                        <IconButton
+                                                            icon="close"
+                                                            size={30}
+                                                            accessibilityLabel={`Cancel booking for ${userName}`}
+                                                            onPress={() => handleCancelBooking(b.id!, userName)}
+                                                        />
+                                                    )}
+                                                </View>
+                                            );
+                                        })}
+                                        {continuing.length > 0 && (
+                                            <Text style={[styles.personMeta, { color: theme.textTertiary }]} numberOfLines={1}>
+                                                Still in: {continuing.map(b => b.user?.name?.split(' ')[0] || 'Client').join(', ')}
+                                            </Text>
+                                        )}
                                     </View>
+
+                                    {!isPastSlot && (
+                                        blockBooking ? (
+                                            <IconButton
+                                                icon="lock-open-outline"
+                                                tone="danger"
+                                                size={32}
+                                                accessibilityLabel={`Unblock ${format(block.time, 'HH:mm')}`}
+                                                onPress={() => blockBooking.id && handleCancelBooking(blockBooking.id, groupName ?? 'this blocked slot')}
+                                            />
+                                        ) : (
+                                            <IconButton
+                                                icon="lock-closed-outline"
+                                                tone="subtle"
+                                                size={32}
+                                                accessibilityLabel={`Block ${format(block.time, 'HH:mm')}`}
+                                                onPress={() => handleBlockSlot(block.time)}
+                                            />
+                                        )
+                                    )}
                                 </View>
                             );
-                        }}
-                    />
+                        })}
+                        </View>
+                    </ScrollView>
                 )}
             </View>
         );
@@ -551,21 +576,45 @@ export default function AdminScreen() {
         }
     };
 
+    // "Mark Flynn — 43 sessions" style list, trimmed to the top few until asked for more
+    const renderBreakdown = (rows: [string, number][], expanded: boolean, onToggle: () => void) => {
+        const visible = expanded ? rows : rows.slice(0, BREAKDOWN_PREVIEW);
+        return (
+            <>
+                <View style={[styles.divider, { backgroundColor: theme.border }]} />
+                <Text style={[styles.breakdownHeading, { color: theme.textSecondary }]}>By client</Text>
+                <View style={{ gap: Spacing.sm }}>
+                    {visible.map(([name, count]) => (
+                        <View key={name} style={styles.breakdownRow}>
+                            <Text style={[styles.breakdownName, { color: theme.text }]} numberOfLines={1}>{name}</Text>
+                            <Text style={[styles.breakdownCount, { color: theme.textSecondary }]}>{count}</Text>
+                        </View>
+                    ))}
+                </View>
+                {rows.length > BREAKDOWN_PREVIEW && (
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        label={expanded ? 'Show fewer' : `Show all ${rows.length} clients`}
+                        onPress={onToggle}
+                        style={{ alignSelf: 'flex-start', marginTop: Spacing.sm, paddingHorizontal: 0 }}
+                    />
+                )}
+            </>
+        );
+    };
+
     const renderMemberDetail = () => {
         if (!selectedMember) return null;
 
         const now = new Date();
-        
-        // Calculate completed bookings (startTime < now)
         const completed = memberBookings.filter(b => b.status === 'confirmed' && b.startTime < now);
         const upcoming = memberBookings.filter(b => b.status === 'confirmed' && b.startTime >= now).sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 
-        // Stats calculations
         const ptCount = completed.filter(b => b.type === 'pt').length;
         const gymCount = completed.filter(b => b.type === 'gym').length;
         const groupCount = completed.filter(b => b.type === 'group').length;
 
-        // PT client breakdown
         const clientBreakdown = new Map<string, number>();
         if (selectedMember.role === 'pt' || selectedMember.role === 'admin') {
             completed.forEach(b => {
@@ -574,173 +623,116 @@ export default function AdminScreen() {
                 clientBreakdown.set(clientName, (clientBreakdown.get(clientName) ?? 0) + 1);
             });
         }
-        const ptClientBreakdownList = Array.from(clientBreakdown.entries())
-            .sort((a, b) => b[1] - a[1]);
+        const ptClientBreakdownList = Array.from(clientBreakdown.entries()).sort((a, b) => b[1] - a[1]);
 
         return (
-            <ScrollView style={styles.membersContainer} contentContainerStyle={{ paddingBottom: 40 }}>
-                <TouchableOpacity onPress={() => setSelectedMember(null)} style={styles.backRow}>
+            <ScrollView contentContainerStyle={styles.tabPage}>
+                <TouchableOpacity onPress={() => setSelectedMember(null)} style={styles.backRow} accessibilityRole="button">
                     <Ionicons name="chevron-back" size={20} color={theme.tint} />
                     <Text style={[styles.backText, { color: theme.tint }]}>Members</Text>
                 </TouchableOpacity>
-                
-                {/* Profile Detail Card */}
-                <View style={[styles.memberDetailCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                    <View style={[styles.avatar, { backgroundColor: theme.tintMuted, width: 60, height: 60, borderRadius: 30, marginBottom: 12, marginRight: 0 }]}>
-                        <Text style={[styles.avatarText, { color: theme.tint, fontSize: 24 }]}>{(selectedMember.name || selectedMember.email).charAt(0).toUpperCase()}</Text>
-                    </View>
-                    <Text style={[styles.memberName, { color: theme.text, fontSize: 20, marginBottom: 4 }]}>{selectedMember.name || 'No Name'}</Text>
-                    <Text style={[styles.memberEmail, { color: theme.textSecondary, marginBottom: 12 }]}>{selectedMember.email}</Text>
-                    <View style={[styles.roleBadge, { backgroundColor: selectedMember.role === 'admin' ? theme.danger : selectedMember.role === 'pt' ? theme.tint : theme.textTertiary, marginBottom: 20 }]}>
-                        <Text style={[styles.roleBadgeText, { color: theme.onTint }]}>{selectedMember.role.toUpperCase()}</Text>
-                    </View>
-                </View>
 
-                {/* Membership status — a filing switch, not an access control */}
-                {selectedMember.id !== user?.uid && (
-                    <View style={[styles.settingsCard, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 16 }]}>
-                        <View style={styles.settingRow}>
-                            <View style={styles.settingInfo}>
-                                <Text style={[styles.settingLabel, { color: theme.text }]}>Active Member</Text>
+                <Card style={styles.memberDetailCard}>
+                    <Avatar name={selectedMember.name || selectedMember.email} size={56} />
+                    <Text style={[styles.memberDetailName, { color: theme.text }]}>{selectedMember.name || 'No name'}</Text>
+                    <Text style={[styles.rowSubtitle, { color: theme.textSecondary }]}>{selectedMember.email}</Text>
+                    <View style={styles.badgeRow}>
+                        <Badge label={roleLabel(selectedMember.role)} tone={roleTone(selectedMember.role)} />
+                        {!isUserActive(selectedMember) && <Badge label="Inactive" tone="neutral" />}
+                    </View>
+                </Card>
+
+                <ListContainer style={{ marginTop: Spacing.lg }}>
+                    {selectedMember.id !== user?.uid && (
+                        <ListRow isLast={selectedMember.role !== 'client'} style={styles.settingRow}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.settingLabel, { color: theme.text }]}>Active member</Text>
                                 <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                                    Turn off to move this member to the Inactive tab. Their history, login and bookings stay as they are.
+                                    Turn off to file them under Inactive. History, login and bookings stay as they are.
                                 </Text>
                             </View>
-                            <Switch
-                                value={isUserActive(selectedMember)}
-                                onValueChange={(val) => handleToggleActiveStatus(selectedMember, val)}
-                                trackColor={{ false: theme.border, true: theme.tint }}
-                            />
-                        </View>
-                    </View>
-                )}
-
-                {/* Client settings (Gym Access) */}
-                {selectedMember.role === 'client' && (
-                    <View style={[styles.settingsCard, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 16 }]}>
-                        <View style={styles.settingRow}>
-                            <View style={styles.settingInfo}>
-                                <Text style={[styles.settingLabel, { color: theme.text }]}>Gym Access</Text>
-                                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>Allow this client to independently book gym sessions.</Text>
+                            <Toggle value={isUserActive(selectedMember)} onValueChange={(val) => handleToggleActiveStatus(selectedMember, val)} accessibilityLabel="Active member" />
+                        </ListRow>
+                    )}
+                    {selectedMember.role === 'client' && (
+                        <ListRow isLast style={styles.settingRow}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.settingLabel, { color: theme.text }]}>Gym access</Text>
+                                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>Let this client book gym sessions on their own.</Text>
                             </View>
-                            <Switch
-                                value={selectedMember.canBookGym ?? true}
-                                onValueChange={(val) => handleToggleGymAccess(selectedMember, val)}
-                                trackColor={{ false: theme.border, true: theme.tint }}
-                            />
-                        </View>
-                    </View>
-                )}
+                            <Toggle value={selectedMember.canBookGym ?? true} onValueChange={(val) => handleToggleGymAccess(selectedMember, val)} accessibilityLabel="Gym access" />
+                        </ListRow>
+                    )}
+                </ListContainer>
 
-                {/* Engagement Report Header */}
-                <Text style={[styles.reportHeading, { color: theme.text, marginTop: 24, marginBottom: 12 }]}>
-                    Activity & Engagement
-                </Text>
+                <SectionHeader title="Activity" style={{ marginTop: Spacing.xxl }} />
 
                 {memberHistoryLoading ? (
-                    <ActivityIndicator size="small" color={theme.tint} style={{ marginTop: 10 }} />
+                    <ActivityIndicator size="small" color={theme.tint} />
                 ) : (
-                    <View style={{ gap: 16 }}>
-                        {/* Clients stats grid */}
+                    <View style={{ gap: Spacing.lg }}>
                         {selectedMember.role === 'client' && (
-                            <View style={styles.statsReportGrid}>
-                                <View style={[styles.statsReportCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                                    <Text style={[styles.statsReportValue, { color: theme.text }]}>{ptCount}</Text>
-                                    <Text style={[styles.statsReportLabel, { color: theme.textSecondary }]}>PT Sessions</Text>
-                                </View>
-                                <View style={[styles.statsReportCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                                    <Text style={[styles.statsReportValue, { color: theme.text }]}>{groupCount}</Text>
-                                    <Text style={[styles.statsReportLabel, { color: theme.textSecondary }]}>Group Classes</Text>
-                                </View>
-                                <View style={[styles.statsReportCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                                    <Text style={[styles.statsReportValue, { color: theme.text }]}>{gymCount}</Text>
-                                    <Text style={[styles.statsReportLabel, { color: theme.textSecondary }]}>Gym Bookings</Text>
-                                </View>
+                            <View style={styles.statsRow}>
+                                <StatBox icon="body-outline" value={ptCount} label="PT sessions" />
+                                <StatBox icon="people-outline" value={groupCount} label="Group classes" />
+                                <StatBox icon="barbell-outline" value={gymCount} label="Gym sessions" />
                             </View>
                         )}
 
-                        {/* PT stats card */}
                         {(selectedMember.role === 'pt' || selectedMember.role === 'admin') && (
-                            <View style={[styles.summaryCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                                <Text style={[styles.summaryTitle, { color: theme.textSecondary }]}>Total Sessions Conducted</Text>
-                                <Text style={[styles.summaryValue, { color: theme.text, fontSize: 28, marginTop: 4 }]}>
-                                    {completed.length}
-                                </Text>
-
-                                {ptClientBreakdownList.length > 0 && (
-                                    <>
-                                        <View style={[styles.summaryDivider, { backgroundColor: theme.border, marginVertical: 12 }]} />
-                                        <Text style={[styles.breakdownHeadingText, { color: theme.text }]}>Breakdown by Client:</Text>
-                                        <View style={{ marginTop: 8, gap: 6 }}>
-                                            {ptClientBreakdownList.map(([clientName, count]) => (
-                                                <View key={clientName} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <Text style={{ fontSize: 13, fontWeight: '500', color: theme.text }}>{clientName}</Text>
-                                                    <View style={{ backgroundColor: theme.tintMuted, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 }}>
-                                                        <Text style={{ fontSize: 12, fontWeight: '700', color: theme.tint }}>{count} session{count !== 1 ? 's' : ''}</Text>
-                                                    </View>
-                                                </View>
-                                            ))}
-                                        </View>
-                                    </>
-                                )}
-                            </View>
+                            <Card>
+                                <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Sessions run</Text>
+                                <Text style={[styles.summaryValue, { color: theme.text }]}>{completed.length}</Text>
+                                {ptClientBreakdownList.length > 0 && renderBreakdown(ptClientBreakdownList, memberBreakdownExpanded, () => setMemberBreakdownExpanded(v => !v))}
+                            </Card>
                         )}
 
-                        {/* Next upcoming session for Client */}
                         {selectedMember.role === 'client' && upcoming.length > 0 && (
-                            <View style={[styles.nextSessionReportCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                                <Ionicons name="calendar" size={20} color={theme.tint} />
-                                <View style={{ flex: 1, marginLeft: 12 }}>
-                                    <Text style={{ fontSize: 10, fontWeight: '700', color: theme.textSecondary, textTransform: 'uppercase' }}>Next Booking</Text>
-                                    <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text, marginTop: 2 }}>
-                                        {format(upcoming[0].startTime, 'EEEE, d MMMM')}
-                                    </Text>
-                                    <Text style={{ fontSize: 13, color: theme.textSecondary, marginTop: 2 }}>
-                                        {format(upcoming[0].startTime, 'HH:mm')} - {format(upcoming[0].endTime, 'HH:mm')}
+                            <Card style={styles.nextCard}>
+                                <View style={[styles.nextIcon, { backgroundColor: theme.tintMuted }]}>
+                                    <Ionicons name="calendar-outline" size={18} color={theme.tint} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Next booking</Text>
+                                    <Text style={[styles.rowTitle, { color: theme.text }]}>{format(upcoming[0].startTime, 'EEEE d MMMM')}</Text>
+                                    <Text style={[styles.rowSubtitle, { color: theme.textSecondary }]}>
+                                        {format(upcoming[0].startTime, 'HH:mm')}–{format(upcoming[0].endTime, 'HH:mm')}
                                     </Text>
                                 </View>
-                            </View>
+                            </Card>
                         )}
 
-                        {/* Recent Session History List */}
                         <View>
-                            <Text style={[styles.subReportHeading, { color: theme.text, marginBottom: 8 }]}>
-                                Past Sessions
-                            </Text>
+                            <Text style={[styles.breakdownHeading, { color: theme.textSecondary }]}>Recent sessions</Text>
                             {completed.length === 0 ? (
-                                <EmptyState icon="time-outline" title="No completed sessions recorded." compact />
+                                <EmptyState icon="time-outline" title="No completed sessions yet." compact />
                             ) : (
-                                <View style={{ gap: 8 }}>
-                                    {completed.slice(0, 10).map((b) => {
+                                <ListContainer>
+                                    {completed.slice(0, 10).map((b, i, arr) => {
                                         let nameLabel = '';
                                         if (selectedMember.role === 'client') {
                                             const ptProfile = b.ptId ? allUsers.find(u => u.id === b.ptId) : undefined;
-                                            nameLabel = ptProfile ? `with ${ptProfile.name}` : 'Gym Booking';
+                                            nameLabel = ptProfile ? `With ${ptProfile.name}` : 'Gym session';
                                         } else {
                                             const clientProfile = allUsers.find(u => u.id === b.userId);
-                                            nameLabel = clientProfile ? `with ${clientProfile.name}` : 'Unknown Client';
+                                            nameLabel = clientProfile ? `With ${clientProfile.name}` : 'Unknown client';
                                         }
-
                                         return (
-                                            <View key={b.id} style={[styles.historyRowCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                                            <ListRow key={b.id} isLast={i === arr.length - 1} style={styles.listRow}>
                                                 <View style={{ flex: 1 }}>
-                                                    <Text style={[styles.historyClientName, { color: theme.text }]}>
-                                                        {nameLabel}
-                                                    </Text>
-                                                    <Text style={[styles.historyTime, { color: theme.textSecondary }]}>
-                                                        {format(b.startTime, 'EEEE, d MMM')} · {format(b.startTime, 'HH:mm')}
+                                                    <Text style={[styles.rowTitle, { color: theme.text }]}>{nameLabel}</Text>
+                                                    <Text style={[styles.rowSubtitle, { color: theme.textSecondary }]}>
+                                                        {format(b.startTime, 'EEE d MMM')} · {format(b.startTime, 'HH:mm')}
                                                     </Text>
                                                 </View>
                                                 <BookingTypeBadge type={b.type} />
-                                            </View>
+                                            </ListRow>
                                         );
                                     })}
-                                    {completed.length > 10 && (
-                                        <Text style={{ textAlign: 'center', fontSize: 13, color: theme.textSecondary, marginTop: 8 }}>
-                                            Showing last 10 sessions.
-                                        </Text>
-                                    )}
-                                </View>
+                                </ListContainer>
+                            )}
+                            {completed.length > 10 && (
+                                <Text style={[styles.footnote, { color: theme.textTertiary }]}>Showing the last 10 sessions.</Text>
                             )}
                         </View>
                     </View>
@@ -751,217 +743,168 @@ export default function AdminScreen() {
 
     const renderMembers = () => {
         if (selectedMember) return renderMemberDetail();
+        const activeCount = allUsers.filter(isUserActive).length;
         return (
-        <View style={styles.membersContainer}>
-            <View style={styles.searchBarContainer}>
-                <Ionicons name="search" size={20} color={theme.textSecondary} style={styles.searchIcon} />
-                <TextInput
-                    style={[styles.searchInput, { color: theme.text, backgroundColor: theme.card, borderColor: theme.border }]}
-                    placeholder="Search members..."
-                    placeholderTextColor={theme.textTertiary}
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                />
-            </View>
-
-            <View style={[styles.statusTabs, { backgroundColor: theme.cardAlt, borderColor: theme.border }]}>
-                {(['active', 'inactive'] as const).map((status) => {
-                    const isSelected = statusFilter === status;
-                    const count = allUsers.filter(u => isUserActive(u) === (status === 'active')).length;
-                    return (
-                        <TouchableOpacity
-                            key={status}
-                            onPress={() => setStatusFilter(status)}
-                            style={[styles.statusTab, isSelected && { backgroundColor: theme.tint }]}
-                        >
-                            <Text style={[styles.statusTabText, { color: isSelected ? theme.onTint : theme.textSecondary }]}>
-                                {status === 'active' ? 'Active' : 'Inactive'} ({count})
-                            </Text>
-                        </TouchableOpacity>
-                    );
-                })}
-            </View>
-
-            <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.roleFilters}
-                contentContainerStyle={styles.roleFiltersContent}
-            >
-                {['all', 'client', 'pt', 'admin'].map((role) => (
-                    <TouchableOpacity
-                        key={role}
-                        onPress={() => setRoleFilter(role as any)}
-                        style={[
-                            styles.roleFilterBtn,
-                            { borderColor: theme.border },
-                            roleFilter === role && { backgroundColor: theme.tint, borderColor: theme.tint }
+            <View style={styles.membersContainer}>
+                <View style={styles.membersControls}>
+                    <TextField
+                        icon="search"
+                        placeholder="Search by name or email"
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                    />
+                    <SegmentedControl
+                        options={[
+                            { value: 'active', label: `Active (${activeCount})` },
+                            { value: 'inactive', label: `Inactive (${allUsers.length - activeCount})` },
                         ]}
-                    >
-                        <Text style={[styles.roleFilterText, { color: roleFilter === role ? theme.onTint : theme.textSecondary }]}>
-                            {role.charAt(0).toUpperCase() + role.slice(1)}s
-                        </Text>
-                    </TouchableOpacity>
-                ))}
-            </ScrollView>
-
-            {membersLoading ? (
-                <View style={{ flex: 1, justifyContent: 'center' }}>
-                    <ActivityIndicator size="large" color={theme.tint} />
+                        value={statusFilter}
+                        onChange={setStatusFilter}
+                    />
+                    <ChipGroup
+                        options={[
+                            { value: 'all', label: 'Everyone' },
+                            { value: 'client', label: 'Clients' },
+                            { value: 'pt', label: 'PTs' },
+                            { value: 'admin', label: 'Admins' },
+                        ]}
+                        value={roleFilter}
+                        onChange={setRoleFilter}
+                    />
                 </View>
-            ) : (
-                <FlatList
-                    data={filteredUsers}
-                    keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => (
-                        <TouchableOpacity
-                            style={[styles.memberCard, { backgroundColor: theme.card, borderColor: theme.border }]}
-                            onPress={() => setSelectedMember(item)}
-                        >
-                            <View style={[styles.avatar, { backgroundColor: theme.tintMuted }]}>
-                                <Text style={[styles.avatarText, { color: theme.tint }]}>{(item.name || item.email).charAt(0).toUpperCase()}</Text>
-                            </View>
-                            <View style={styles.memberInfo}>
-                                <Text style={[styles.memberName, { color: theme.text }]}>{item.name || 'No Name'}</Text>
-                                <Text style={[styles.memberEmail, { color: theme.textSecondary }]}>{item.email}</Text>
-                                <View style={styles.memberBadgeContainer}>
-                                    <View style={[styles.roleBadge, { backgroundColor: item.role === 'admin' ? theme.danger : item.role === 'pt' ? theme.tint : theme.textTertiary }]}>
-                                        <Text style={[styles.roleBadgeText, { color: theme.onTint }]}>{item.role.toUpperCase()}</Text>
-                                    </View>
-                                    {!isUserActive(item) && (
-                                        <View style={[styles.roleBadge, { backgroundColor: theme.cardAlt, marginLeft: 6 }]}>
-                                            <Text style={[styles.roleBadgeText, { color: theme.textSecondary }]}>INACTIVE</Text>
-                                        </View>
-                                    )}
+
+                {membersLoading ? (
+                    <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 40 }} />
+                ) : (
+                    <FlatList
+                        data={filteredUsers}
+                        keyExtractor={(item) => item.id}
+                        contentContainerStyle={styles.listContent}
+                        keyboardShouldPersistTaps="handled"
+                        renderItem={({ item, index }) => (
+                            <TouchableOpacity
+                                style={[...groupedRowStyle(index, filteredUsers.length), styles.memberRow]}
+                                onPress={() => setSelectedMember(item)}
+                                activeOpacity={0.6}
+                                accessibilityRole="button"
+                            >
+                                <Avatar name={item.name || item.email} size={36} />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={[styles.rowTitle, { color: theme.text }]} numberOfLines={1}>{item.name || 'No name'}</Text>
+                                    <Text style={[styles.rowSubtitle, { color: theme.textSecondary }]} numberOfLines={1}>{item.email}</Text>
                                 </View>
-                            </View>
-                            <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
-                        </TouchableOpacity>
-                    )}
-                    ListEmptyComponent={<EmptyState icon="people-outline" title={statusFilter === 'active' ? 'No active members found.' : 'No inactive members.'} compact />}
-                    contentContainerStyle={{ paddingBottom: 20 }}
-                    style={{ flex: 1 }}
-                />
-            )}
-        </View>
+                                {item.role !== 'client' && <Badge label={roleLabel(item.role)} tone={roleTone(item.role)} />}
+                                <Ionicons name="chevron-forward" size={18} color={theme.textTertiary} />
+                            </TouchableOpacity>
+                        )}
+                        ListEmptyComponent={<EmptyState icon="people-outline" title={searchQuery ? 'No one matches that search.' : statusFilter === 'active' ? 'No active members.' : 'No inactive members.'} compact />}
+                    />
+                )}
+            </View>
         );
     };
 
     const renderSettings = () => (
-        <ScrollView style={styles.settingsContainer} contentContainerStyle={{ paddingBottom: 40 }}>
+        <ScrollView contentContainerStyle={styles.tabPage} keyboardShouldPersistTaps="handled">
             {loading ? (
                 <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
             ) : (
-                <View style={styles.settingsSection}>
-                    <Text style={[styles.sectionTitle, { color: theme.text }]}>Global Settings</Text>
-                    <View style={[styles.settingsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                        <View style={styles.settingRow}>
-                            <View style={styles.settingInfo}>
-                                <Text style={[styles.settingLabel, { color: theme.text }]}>Signup Code</Text>
-                                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                                    Required for new client registrations. Give this code to clients so they can sign up.
-                                </Text>
-                            </View>
-                            {!isEditingSignupCode && (
-                                <Button variant="secondary" size="sm" icon="pencil" label="Edit" onPress={() => setIsEditingSignupCode(true)} />
-                            )}
-                        </View>
-
+                <>
+                    <SectionHeader title="Sign-up Code" />
+                    <Card>
+                        <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                            New clients need this code to create an account.
+                        </Text>
                         {isEditingSignupCode ? (
-                            <View style={styles.inputContainer}>
-                                <TextInput
-                                    style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]}
+                            <>
+                                <TextField
                                     value={signupCode}
                                     onChangeText={setSignupCode}
-                                    placeholder="Enter signup code"
-                                    placeholderTextColor={theme.textTertiary}
+                                    placeholder="Enter a sign-up code"
                                     autoCapitalize="none"
+                                    autoCorrect={false}
+                                    containerStyle={{ marginTop: Spacing.md }}
                                 />
-
-                                <Button
-                                    variant="secondary"
-                                    label="Cancel"
-                                    onPress={() => {
-                                        setIsEditingSignupCode(false);
-                                        setSignupCode(globalSettings?.signupCode || '');
-                                    }}
-                                    disabled={savingCode}
-                                />
-
-                                <Button
-                                    variant="primary"
-                                    label="Save"
-                                    onPress={async () => {
-                                        await handleSaveSignupCode();
-                                        setIsEditingSignupCode(false);
-                                    }}
-                                    disabled={savingCode || signupCode === globalSettings?.signupCode}
-                                    loading={savingCode}
-                                />
-                            </View>
+                                <View style={styles.buttonRow}>
+                                    <Button
+                                        variant="secondary"
+                                        label="Cancel"
+                                        onPress={() => {
+                                            setIsEditingSignupCode(false);
+                                            setSignupCode(globalSettings?.signupCode || '');
+                                        }}
+                                        disabled={savingCode}
+                                        style={{ flex: 1 }}
+                                    />
+                                    <Button
+                                        variant="primary"
+                                        label="Save"
+                                        onPress={async () => {
+                                            const saved = await handleSaveSignupCode();
+                                            if (saved) setIsEditingSignupCode(false);
+                                        }}
+                                        disabled={savingCode || signupCode === globalSettings?.signupCode}
+                                        loading={savingCode}
+                                        style={{ flex: 1 }}
+                                    />
+                                </View>
+                            </>
                         ) : (
-                            <View style={[styles.codeDisplayBox, { backgroundColor: theme.cardAlt, borderColor: theme.border }]}>
-                                <Text style={[styles.codeText, { color: theme.text }]}>
+                            <View style={[styles.codeDisplay, { backgroundColor: theme.cardAlt, borderColor: theme.border }]}>
+                                <Text style={[styles.codeText, { color: theme.text }]} selectable numberOfLines={1}>
                                     {globalSettings?.signupCode || 'No code set'}
                                 </Text>
+                                <Button variant="secondary" size="sm" icon="pencil" label="Change" onPress={() => setIsEditingSignupCode(true)} />
                             </View>
                         )}
-                    </View>
+                    </Card>
 
-                    {/* App Announcement Banner Section */}
-                    <View style={[styles.settingsCard, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 20 }]}>
+                    <SectionHeader title="Announcement" style={{ marginTop: Spacing.xxl }} />
+                    <Card>
                         <View style={styles.settingRow}>
-                            <View style={styles.settingInfo}>
-                                <Text style={[styles.settingLabel, { color: theme.text }]}>App Announcement</Text>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.settingLabel, { color: theme.text }]}>Show on dashboard</Text>
                                 <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                                    A global message displayed as a banner on every user&apos;s dashboard.
+                                    Everyone sees this message at the top of their dashboard.
                                 </Text>
                             </View>
-                            <Switch
-                                value={showAnnouncement}
-                                onValueChange={handleToggleAnnouncement}
-                                trackColor={{ false: theme.border, true: theme.tint }}
-                            />
+                            <Toggle value={showAnnouncement} onValueChange={handleToggleAnnouncement} accessibilityLabel="Show announcement" />
                         </View>
-
-                        <View style={[styles.inputContainer, { marginTop: 10 }]}>
-                            <TextInput
-                                style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text, minHeight: 80, textAlignVertical: 'top' }]}
-                                value={announcementText}
-                                onChangeText={setAnnouncementText}
-                                placeholder="E.g., Gym closed for maintenance this Friday."
-                                placeholderTextColor={theme.textTertiary}
-                                multiline
-                            />
-                        </View>
-
+                        <TextField
+                            value={announcementText}
+                            onChangeText={setAnnouncementText}
+                            placeholder="E.g. The gym is closed for maintenance this Friday."
+                            multiline
+                            containerStyle={{ marginTop: Spacing.md }}
+                        />
                         <Button
                             variant="primary"
-                            label="Save Announcement"
+                            label="Save Message"
                             onPress={handleSaveAnnouncement}
                             disabled={savingAnnouncement || announcementText === (globalSettings?.announcementText || '')}
                             loading={savingAnnouncement}
-                            style={{ marginTop: 15, alignSelf: 'flex-start' }}
+                            style={{ marginTop: Spacing.md }}
                         />
-                    </View>
-                </View>
+                    </Card>
+                </>
             )}
         </ScrollView>
     );
 
     const renderHistory = () => {
         const now = new Date();
-        
-        // 1. First layer of filtering: lock to PT if current user is a PT
+
+        // 1. Lock to the PT's own sessions, or the chosen trainer for admins
         let activeBookings = historyBookings.filter(b => b.status === 'confirmed' && b.startTime < now);
-        
         if (userRole === 'pt') {
             activeBookings = activeBookings.filter(b => b.ptId === user?.uid);
         } else if (userRole === 'admin' && historyPtFilter !== 'all') {
             activeBookings = activeBookings.filter(b => b.ptId === historyPtFilter);
         }
 
-        // 2. Second layer of filtering: search query
+        // 2. Search by client
         const mappedBookings = activeBookings.map(b => {
             const clientProfile = allUsers.find(u => u.id === b.userId);
             const ptProfile = b.ptId ? allUsers.find(u => u.id === b.ptId) : undefined;
@@ -973,272 +916,122 @@ export default function AdminScreen() {
             };
         });
 
-        const filtered = mappedBookings.filter(b => {
-            const query = historySearchQuery.toLowerCase();
-            return b.clientName.toLowerCase().includes(query) || 
-                   (b.clientEmail && b.clientEmail.toLowerCase().includes(query));
-        }).sort((a, b) => b.startTime.getTime() - a.startTime.getTime()); // Descending (most recent first)
+        const query = historySearchQuery.toLowerCase();
+        const filtered = mappedBookings
+            .filter(b => b.clientName.toLowerCase().includes(query) || (b.clientEmail && b.clientEmail.toLowerCase().includes(query)))
+            .sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
 
-        // 3. Compute stats
-        const totalCount = filtered.length;
+        // 3. Totals
         const ptCount = filtered.filter(b => b.type === 'pt').length;
         const groupCount = filtered.filter(b => b.type === 'group').length;
         const gymCount = filtered.filter(b => b.type === 'gym').length;
 
-        // Breakdown by client
-        const clientCounts = new Map<string, { count: number; email?: string }>();
-        filtered.forEach(b => {
-            const current = clientCounts.get(b.clientName) ?? { count: 0, email: b.clientEmail };
-            clientCounts.set(b.clientName, { count: current.count + 1, email: b.clientEmail });
-        });
-        const clientBreakdownList = Array.from(clientCounts.entries())
-            .sort((a, b) => b[1].count - a[1].count);
+        const clientCounts = new Map<string, number>();
+        filtered.forEach(b => clientCounts.set(b.clientName, (clientCounts.get(b.clientName) ?? 0) + 1));
+        const clientBreakdownList = Array.from(clientCounts.entries()).sort((a, b) => b[1] - a[1]);
 
         return (
-            <View style={{ flex: 1, padding: 16 }}>
-                {/* Date Navigator */}
-                <View style={[styles.historyMonthSelector, { borderColor: theme.border, backgroundColor: theme.card }]}>
-                    <TouchableOpacity 
-                        style={styles.monthArrow} 
-                        onPress={() => setHistoryDate(prev => subMonths(prev, 1))}
-                    >
-                        <Ionicons name="chevron-back" size={20} color={theme.text} />
-                    </TouchableOpacity>
-                    <Text style={[styles.historyMonthText, { color: theme.text }]}>
-                        {format(historyDate, 'MMMM yyyy')}
-                    </Text>
-                    <TouchableOpacity 
-                        style={styles.monthArrow} 
-                        onPress={() => setHistoryDate(prev => addMonths(prev, 1))}
-                    >
-                        <Ionicons name="chevron-forward" size={20} color={theme.text} />
-                    </TouchableOpacity>
-                </View>
+            <FlatList
+                data={historyLoading ? [] : filtered}
+                keyExtractor={(item, i) => item.id || String(i)}
+                contentContainerStyle={styles.tabPage}
+                keyboardShouldPersistTaps="handled"
+                ListHeaderComponent={
+                    <View style={{ gap: Spacing.md, marginBottom: Spacing.lg }}>
+                        <View style={[styles.monthSelector, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                            <IconButton icon="chevron-back" size={34} accessibilityLabel="Previous month" onPress={() => setHistoryDate(prev => subMonths(prev, 1))} />
+                            <Text style={[styles.monthText, { color: theme.text }]}>{format(historyDate, 'MMMM yyyy')}</Text>
+                            <IconButton icon="chevron-forward" size={34} accessibilityLabel="Next month" onPress={() => setHistoryDate(prev => addMonths(prev, 1))} />
+                        </View>
 
-                {/* PT Filter (Admin only) */}
-                {userRole === 'admin' && (
-                    <View style={{ marginBottom: 12 }}>
-                        <ScrollView 
-                            horizontal 
-                            showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
-                        >
-                            <TouchableOpacity
-                                style={[
-                                    styles.ptChip,
-                                    { borderColor: theme.border, backgroundColor: theme.card },
-                                    historyPtFilter === 'all' && { backgroundColor: theme.tint, borderColor: theme.tint }
-                                ]}
-                                onPress={() => setHistoryPtFilter('all')}
-                            >
-                                <Text style={[styles.ptChipText, { color: historyPtFilter === 'all' ? theme.onTint : theme.textSecondary }]}>
-                                    All Trainers
-                                </Text>
-                            </TouchableOpacity>
-                            {ptsList.map(pt => (
-                                <TouchableOpacity
-                                    key={pt.id}
-                                    style={[
-                                        styles.ptChip,
-                                        { borderColor: theme.border, backgroundColor: theme.card },
-                                        historyPtFilter === pt.id && { backgroundColor: theme.tint, borderColor: theme.tint }
-                                    ]}
-                                    onPress={() => setHistoryPtFilter(pt.id)}
-                                >
-                                    <Text style={[styles.ptChipText, { color: historyPtFilter === pt.id ? theme.onTint : theme.textSecondary }]}>
-                                        {pt.name || pt.email}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
+                        {userRole === 'admin' && (
+                            <ChipGroup
+                                scroll
+                                options={[{ value: 'all', label: 'All trainers' }, ...ptsList.map(pt => ({ value: pt.id, label: pt.name || pt.email }))]}
+                                value={historyPtFilter}
+                                onChange={setHistoryPtFilter}
+                            />
+                        )}
+
+                        <TextField
+                            icon="search"
+                            placeholder="Filter by client"
+                            value={historySearchQuery}
+                            onChangeText={setHistorySearchQuery}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                        />
+
+                        {historyLoading ? (
+                            <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 30 }} />
+                        ) : (
+                            <Card>
+                                <View style={styles.summaryTop}>
+                                    <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Completed sessions</Text>
+                                    <Text style={[styles.summaryValue, { color: theme.text }]}>{filtered.length}</Text>
+                                </View>
+                                <View style={styles.summaryTypes}>
+                                    {[
+                                        { label: 'PT', count: ptCount, type: 'pt' },
+                                        { label: 'Group', count: groupCount, type: 'group' },
+                                        { label: 'Gym', count: gymCount, type: 'gym' },
+                                    ].map(t => (
+                                        <View key={t.type} style={styles.summaryType}>
+                                            <View style={[styles.typeDot, { backgroundColor: bookingTypeColor(theme, t.type) }]} />
+                                            <Text style={[styles.summaryTypeText, { color: theme.textSecondary }]}>
+                                                {t.label} <Text style={{ color: theme.text, fontWeight: '700' }}>{t.count}</Text>
+                                            </Text>
+                                        </View>
+                                    ))}
+                                </View>
+                                {clientBreakdownList.length > 0 && renderBreakdown(clientBreakdownList, historyBreakdownExpanded, () => setHistoryBreakdownExpanded(v => !v))}
+                            </Card>
+                        )}
+
+                        {!historyLoading && filtered.length > 0 && (
+                            <Text style={[styles.breakdownHeading, { color: theme.textSecondary, marginTop: Spacing.sm, marginBottom: 0 }]}>Sessions</Text>
+                        )}
+                    </View>
+                }
+                renderItem={({ item, index }) => (
+                    <View style={[...groupedRowStyle(index, filtered.length), styles.memberRow]}>
+                        <View style={{ flex: 1 }}>
+                            <Text style={[styles.rowTitle, { color: theme.text }]} numberOfLines={1}>{item.clientName}</Text>
+                            <Text style={[styles.rowSubtitle, { color: theme.textSecondary }]}>
+                                {format(item.startTime, 'EEE d MMM')} · {format(item.startTime, 'HH:mm')}–{format(item.endTime, 'HH:mm')}
+                                {userRole === 'admin' && item.type === 'pt' ? ` · ${item.instructorName}` : ''}
+                            </Text>
+                        </View>
+                        <BookingTypeBadge type={item.type} />
                     </View>
                 )}
-
-                {/* Client Search */}
-                <View style={styles.searchBarContainer}>
-                    <Ionicons name="search" size={18} color={theme.textSecondary} style={styles.searchIcon} />
-                    <TextInput
-                        style={[styles.searchInput, { color: theme.text, backgroundColor: theme.card, borderColor: theme.border }]}
-                        placeholder="Filter by client..."
-                        placeholderTextColor={theme.textTertiary}
-                        value={historySearchQuery}
-                        onChangeText={setHistorySearchQuery}
-                    />
-                </View>
-
-                {historyLoading ? (
-                    <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 30 }} />
-                ) : (
-                    <FlatList
-                        data={filtered}
-                        keyExtractor={(item) => item.id || Math.random().toString()}
-                        ListHeaderComponent={
-                            <View style={{ marginBottom: 16 }}>
-                                {/* Summary Card */}
-                                <View style={[styles.summaryCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                                    <View style={styles.summaryHeader}>
-                                        <Text style={[styles.summaryTitle, { color: theme.textSecondary }]}>Completed Sessions</Text>
-                                        <Text style={[styles.summaryValue, { color: theme.text }]}>{totalCount}</Text>
-                                    </View>
-                                    <View style={[styles.summaryDivider, { backgroundColor: theme.border }]} />
-                                    <View style={styles.summaryBreakdown}>
-                                        <Text style={[styles.summaryBreakdownText, { color: theme.textSecondary }]}>
-                                            PT: <Text style={{ color: theme.text, fontWeight: '700' }}>{ptCount}</Text>
-                                        </Text>
-                                        <Text style={[styles.summaryBreakdownText, { color: theme.textSecondary }]}>
-                                            Group: <Text style={{ color: theme.text, fontWeight: '700' }}>{groupCount}</Text>
-                                        </Text>
-                                        <Text style={[styles.summaryBreakdownText, { color: theme.textSecondary }]}>
-                                            Gym: <Text style={{ color: theme.text, fontWeight: '700' }}>{gymCount}</Text>
-                                        </Text>
-                                    </View>
-
-                                    {/* Client breakdown inside summary */}
-                                    {clientBreakdownList.length > 0 && (
-                                        <>
-                                            <View style={[styles.summaryDivider, { backgroundColor: theme.border, marginVertical: 10 }]} />
-                                            <Text style={[styles.breakdownHeadingText, { color: theme.text }]}>Breakdown by Client:</Text>
-                                            <View style={{ marginTop: 6, gap: 4 }}>
-                                                {clientBreakdownList.map(([clientName, breakdownData]) => (
-                                                    <View key={clientName} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <Text style={{ fontSize: 13, fontWeight: '500', color: theme.text }}>{clientName}</Text>
-                                                        <View style={{ backgroundColor: theme.tintMuted, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 }}>
-                                                            <Text style={{ fontSize: 12, fontWeight: '700', color: theme.tint }}>{breakdownData.count} session{breakdownData.count !== 1 ? 's' : ''}</Text>
-                                                        </View>
-                                                    </View>
-                                                ))}
-                                            </View>
-                                        </>
-                                    )}
-                                </View>
-                            </View>
-                        }
-                        renderItem={({ item }) => (
-                            <View style={[styles.historyRowCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={[styles.historyClientName, { color: theme.text }]}>
-                                        {item.clientName}
-                                    </Text>
-                                    <Text style={[styles.historyTime, { color: theme.textSecondary }]}>
-                                        {format(item.startTime, 'EEEE, d MMM')} · {format(item.startTime, 'HH:mm')} - {format(item.endTime, 'HH:mm')}
-                                    </Text>
-                                    {userRole === 'admin' && (
-                                        <Text style={[styles.historyInstructor, { color: theme.textSecondary }]}>
-                                            Trainer: {item.instructorName}
-                                        </Text>
-                                    )}
-                                </View>
-                                <BookingTypeBadge type={item.type} />
-                            </View>
-                        )}
-                        ListEmptyComponent={<EmptyState icon="calendar-outline" title="No completed bookings found." />}
-                        contentContainerStyle={{ paddingBottom: 40 }}
-                    />
-                )}
-            </View>
+                ListEmptyComponent={historyLoading ? null : <EmptyState icon="calendar-outline" title="No completed sessions this month." compact />}
+            />
         );
     };
 
+    const tabs: { value: AdminTab; label: string }[] = [
+        { value: 'schedule', label: 'Schedule' },
+        { value: 'history', label: 'History' },
+        ...(userRole === 'admin'
+            ? [{ value: 'members' as const, label: 'Members' }, { value: 'settings' as const, label: 'Settings' }]
+            : []),
+    ];
+
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-            <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-                <View style={styles.headerTop}>
-                    <Text style={[styles.title, { color: theme.text }]}>Admin Panel</Text>
-                    {userRole === 'admin' && (
-                        <Button variant="primary" size="sm" icon="stats-chart" label="Analytics" onPress={() => router.push('/analytics')} />
-                    )}
-                </View>
-
-                <View style={styles.tabContainer}>
-                    <TouchableOpacity
-                        onPress={() => setActiveTab('schedule')}
-                        style={[styles.tab, activeTab === 'schedule' && { borderBottomColor: theme.tint }]}
-                    >
-                        <Text style={[styles.tabText, { color: activeTab === 'schedule' ? theme.text : theme.textSecondary }]}>Schedule</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        onPress={() => setActiveTab('history')}
-                        style={[styles.tab, activeTab === 'history' && { borderBottomColor: theme.tint }]}
-                    >
-                        <Text style={[styles.tabText, { color: activeTab === 'history' ? theme.text : theme.textSecondary }]}>History</Text>
-                    </TouchableOpacity>
-                    {userRole === 'admin' && (
-                        <>
-                            <TouchableOpacity
-                                onPress={() => setActiveTab('members')}
-                                style={[styles.tab, activeTab === 'members' && { borderBottomColor: theme.tint }]}
-                            >
-                                <Text style={[styles.tabText, { color: activeTab === 'members' ? theme.text : theme.textSecondary }]}>Members</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                onPress={() => setActiveTab('settings')}
-                                style={[styles.tab, activeTab === 'settings' && { borderBottomColor: theme.tint }]}
-                            >
-                                <Text style={[styles.tabText, { color: activeTab === 'settings' ? theme.text : theme.textSecondary }]}>Settings</Text>
-                            </TouchableOpacity>
-                        </>
-                    )}
-                </View>
+            <View style={styles.header}>
+                <ScreenHeader
+                    title="Admin"
+                    right={userRole === 'admin' ? (
+                        <Button variant="tint" size="sm" icon="stats-chart" label="Analytics" onPress={() => router.push('/analytics')} />
+                    ) : undefined}
+                />
+                <SegmentedControl options={tabs} value={activeTab} onChange={setActiveTab} />
             </View>
 
             {activeTab === 'schedule' && (
-                <View 
-                    style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}
-                    {...dragProps}
-                >
-                <Text style={[styles.monthLabel, { color: theme.text }]}>{visibleMonth}</Text>
-                    <FlatList
-                        ref={flatListRef}
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.dateSelector}
-                        data={dates}
-                        keyExtractor={(_, i) => i.toString()}
-                        onScroll={onMouseDragScroll}
-                        scrollEventThrottle={16}
-                        onViewableItemsChanged={onViewableItemsChanged}
-                        viewabilityConfig={viewabilityConfig}
-                        initialNumToRender={15}
-                        onScrollToIndexFailed={(info) => {
-                            setTimeout(() => {
-                                flatListRef.current?.scrollToIndex({ index: info.index, animated: false });
-                            }, 100);
-                        }}
-                        getItemLayout={(_, index) => ({
-                            length: 62, // minWidth (54) + gap (8)
-                            offset: 62 * index,
-                            index,
-                        })}
-                        renderItem={({ item: date }) => {
-                            const isSelected = selectedDate.getTime() === date.getTime();
-                            return (
-                                <TouchableOpacity
-                                    style={[styles.dateCard, { backgroundColor: isSelected ? theme.tint : 'transparent' }, isSelected && { ...styles.dateCardSelected, shadowColor: theme.tint }]}
-                                    onPress={() => setSelectedDate(date)}
-                                >
-                                    <Text style={[styles.dayText, { color: isSelected ? theme.onTint : theme.textSecondary }]}>{format(date, 'EEE')}</Text>
-                                    <Text style={[styles.dateText, { color: isSelected ? theme.onTint : theme.text }]}>{format(date, 'd')}</Text>
-                                </TouchableOpacity>
-                            );
-                        }}
-                    />
-                    <View style={styles.durationPickerRow}>
-                        <Text style={[styles.durationPickerLabel, { color: theme.textSecondary }]}>Block duration:</Text>
-                        {([15, 30, 60] as const).map((d) => {
-                            const isActive = adminBlockDuration === d;
-                            const label = d === 60 ? '1 hr' : `${d}m`;
-                            return (
-                                <TouchableOpacity
-                                    key={d}
-                                    style={[styles.durationChip, { borderColor: theme.border }, isActive && { backgroundColor: theme.tint, borderColor: theme.tint }]}
-                                    onPress={() => setAdminBlockDuration(d)}
-                                >
-                                    <Text style={[styles.durationChipText, { color: isActive ? theme.onTint : theme.textSecondary }]}>{label}</Text>
-                                </TouchableOpacity>
-                            );
-                        })}
-                    </View>
-                </View>
+                <DateStrip dates={dates} selectedDate={selectedDate} onSelect={setSelectedDate} />
             )}
 
             {activeTab === 'schedule' && renderSchedule()}
@@ -1262,195 +1055,141 @@ export default function AdminScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    header: { paddingHorizontal: 20, paddingTop: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-    headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-    title: { ...Typography.largeTitle },
-    tabContainer: { flexDirection: 'row', gap: 20 },
-    tab: { paddingVertical: 10, borderBottomWidth: 3, borderBottomColor: 'transparent' },
-    tabText: { fontSize: 16, fontWeight: '700' },
-    dateSelectorContainer: { borderBottomWidth: StyleSheet.hairlineWidth },
-    monthLabel: { fontSize: 14, fontWeight: '600', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 2 },
-    durationPickerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, paddingBottom: 10, paddingTop: 4, gap: 6 },
-    durationPickerLabel: { fontSize: 13, fontWeight: '600', marginRight: 4 },
-    durationChip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: Radii.pill, borderWidth: 1 },
-    durationChipText: { fontSize: 13, fontWeight: '600' },
-    dateSelector: { paddingHorizontal: 15, paddingVertical: 12, gap: 8 },
-    dateCard: { paddingVertical: 10, paddingHorizontal: 8, borderRadius: Radii.pill, alignItems: 'center', minWidth: 54 },
-    dateCardSelected: { shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
-    dayText: { fontSize: 11, textTransform: 'uppercase', fontWeight: '600', marginBottom: 4 },
-    dateText: { fontSize: 20, fontWeight: '500' },
-    scheduleContainer: { padding: 16, paddingBottom: 40 },
-    timeBlock: { borderRadius: Radii.lg, marginBottom: 15, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
-    timeHeader: { padding: 14, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    timeText: { fontSize: 18, fontWeight: '700', letterSpacing: -0.4 },
-    blockBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radii.pill, borderWidth: 1 },
-    blockBtnText: { fontSize: 13, fontWeight: '700', marginLeft: 6, textTransform: 'uppercase' },
-    blockedBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999, borderWidth: 1 },
-    blockedText: { fontSize: 12, fontWeight: '700', marginLeft: 4 },
-    attendeesList: { padding: 10 },
-    emptyText: { fontStyle: 'italic', padding: 10 },
-    attendeeCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderBottomWidth: StyleSheet.hairlineWidth },
-    attendeeInfo: { flex: 1 },
-    attendeeName: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
-    badgeContainer: { flexDirection: 'row', gap: 6 },
-    membersContainer: { flex: 1, padding: 16 },
-    searchBarContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-    searchIcon: { position: 'absolute', left: 12, zIndex: 1 },
-    searchInput: { flex: 1, height: 44, borderRadius: Radii.md, borderWidth: StyleSheet.hairlineWidth, paddingLeft: 40, paddingRight: 15, fontSize: 16 },
-    statusTabs: { flexDirection: 'row', borderWidth: StyleSheet.hairlineWidth, borderRadius: Radii.md, padding: 3, marginBottom: 12 },
-    statusTab: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: Radii.sm },
-    statusTabText: { fontSize: 14, fontWeight: '600' },
-    roleFilters: { flexDirection: 'row', marginBottom: 15, maxHeight: 60 },
-    roleFiltersContent: { paddingVertical: 5 },
-    roleFilterBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radii.pill, borderWidth: 1, marginRight: 8, justifyContent: 'center' },
-    roleFilterText: { fontSize: 14, fontWeight: '600' },
-    memberCard: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, marginBottom: 10 },
-    avatar: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-    avatarText: { fontSize: 18, fontWeight: '700' },
-    memberInfo: { flex: 1 },
-    memberName: { fontSize: 16, fontWeight: '700' },
-    memberEmail: { fontSize: 14, marginBottom: 4 },
-    memberBadgeContainer: { flexDirection: 'row' },
-    roleBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
-    roleBadgeText: { fontSize: 10, fontWeight: '700' },
-    settingsContainer: { flex: 1, padding: 16 },
-    settingsSection: { marginBottom: 30 },
-    sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12, marginLeft: 4 },
-    settingsCard: { borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, padding: 16 },
-    settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-    settingInfo: { flex: 1 },
-    settingLabel: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
-    settingDescription: { fontSize: 13 },
-    inputContainer: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    input: { flex: 1, borderWidth: StyleSheet.hairlineWidth, borderRadius: Radii.md, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16 },
-    codeDisplayBox: { padding: 16, borderRadius: Radii.md, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
-    codeText: { fontSize: 24, fontWeight: '700', letterSpacing: 2 },
-    backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 4 },
-    backText: { fontSize: 16, fontWeight: '600' },
-    memberDetailCard: { borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, padding: 20, alignItems: 'center' },
-    
-    // HISTORY TAB & REPORT STYLES
-    historyMonthSelector: {
+    header: {
+        paddingHorizontal: Spacing.xl,
+        paddingBottom: Spacing.md,
+    },
+    tabPage: {
+        padding: Spacing.xl,
+        paddingBottom: Spacing.huge,
+    },
+    listContent: {
+        paddingHorizontal: Spacing.xl,
+        paddingBottom: Spacing.huge,
+    },
+
+    // Shared row bits
+    rowTitle: { ...Typography.headline },
+    rowSubtitle: { ...Typography.footnote, fontWeight: '400', marginTop: 2 },
+    footnote: { ...Typography.footnote, fontWeight: '400', textAlign: 'center', marginTop: Spacing.sm },
+    groupedRow: {
+        borderLeftWidth: StyleSheet.hairlineWidth,
+        borderRightWidth: StyleSheet.hairlineWidth,
+    },
+    groupedRowFirst: {
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopLeftRadius: Radii.lg,
+        borderTopRightRadius: Radii.lg,
+    },
+    groupedRowLast: {
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomLeftRadius: Radii.lg,
+        borderBottomRightRadius: Radii.lg,
+    },
+    listRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+    typeDot: { width: 8, height: 8, borderRadius: Radii.pill },
+    divider: { height: StyleSheet.hairlineWidth, marginVertical: Spacing.md },
+    buttonRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md },
+
+    // Schedule timeline
+    scheduleContainer: { paddingHorizontal: Spacing.xl, paddingBottom: Spacing.huge },
+    scheduleHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderRadius: Radii.lg,
-        borderWidth: StyleSheet.hairlineWidth,
-        marginBottom: 12,
+        flexWrap: 'wrap',
+        gap: Spacing.sm,
+        paddingVertical: Spacing.md,
     },
-    monthArrow: {
-        padding: 4,
+    scheduleSummary: { ...Typography.footnote },
+    timelineRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        minHeight: 44,
+        paddingVertical: Spacing.xs + 2,
+        paddingLeft: Spacing.lg,
+        paddingRight: Spacing.md,
+        gap: Spacing.md,
     },
-    historyMonthText: {
-        fontSize: 16,
-        fontWeight: '700',
-    },
-    ptChip: {
-        paddingHorizontal: 16,
-        paddingVertical: 8,
+    nowBar: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3 },
+    timelineTime: { width: 48 },
+    timeHour: { ...Typography.subhead, fontWeight: '700', fontVariant: ['tabular-nums'] },
+    timeQuarter: { ...Typography.footnote, fontWeight: '400', fontVariant: ['tabular-nums'] },
+    nowLabel: { ...Typography.caption2, textTransform: 'uppercase' },
+    timelineBody: { flex: 1, gap: Spacing.xs + 2 },
+    blockedPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        gap: Spacing.xs,
+        paddingHorizontal: Spacing.sm + 2,
+        paddingVertical: 3,
         borderRadius: Radii.pill,
-        borderWidth: 1,
-        justifyContent: 'center',
     },
-    ptChipText: {
-        fontSize: 13,
-        fontWeight: '700',
+    blockedText: { ...Typography.caption },
+    personRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+    personName: { ...Typography.subhead, fontWeight: '600' },
+    personMeta: { ...Typography.footnote, fontWeight: '400' },
+
+    // Members
+    membersContainer: { flex: 1 },
+    membersControls: { padding: Spacing.xl, paddingBottom: Spacing.lg, gap: Spacing.md },
+    memberRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.md,
     },
-    summaryCard: {
+    backRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: Spacing.md, marginLeft: -Spacing.xs },
+    backText: { ...Typography.body },
+    memberDetailCard: { alignItems: 'center', gap: Spacing.xs },
+    memberDetailName: { ...Typography.title3, marginTop: Spacing.sm },
+    badgeRow: { flexDirection: 'row', gap: Spacing.xs + 2, marginTop: Spacing.sm },
+    statsRow: { flexDirection: 'row', gap: Spacing.sm },
+    nextCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+    nextIcon: { width: 40, height: 40, borderRadius: Radii.pill, alignItems: 'center', justifyContent: 'center' },
+
+    // Settings
+    settingRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+    settingLabel: { ...Typography.headline, marginBottom: 2 },
+    settingDescription: { ...Typography.footnote, fontWeight: '400', lineHeight: 18 },
+    codeDisplay: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+        marginTop: Spacing.md,
+        paddingLeft: Spacing.lg,
+        paddingRight: Spacing.sm,
+        paddingVertical: Spacing.sm,
+        borderRadius: Radii.md,
+        borderWidth: StyleSheet.hairlineWidth,
+    },
+    codeText: { ...Typography.headline, flex: 1, letterSpacing: 0.5 },
+
+    // History
+    monthSelector: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: Spacing.sm,
         borderRadius: Radii.lg,
         borderWidth: StyleSheet.hairlineWidth,
-        padding: 16,
     },
-    summaryHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    summaryTitle: {
-        fontSize: 14,
-        fontWeight: '600',
+    monthText: { ...Typography.headline },
+    summaryTop: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+    summaryLabel: { ...Typography.footnote },
+    summaryValue: { ...Typography.title1, fontVariant: ['tabular-nums'] },
+    summaryTypes: { flexDirection: 'row', gap: Spacing.lg, marginTop: Spacing.sm },
+    summaryType: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs + 2 },
+    summaryTypeText: { ...Typography.footnote, fontWeight: '400' },
+    breakdownHeading: {
+        ...Typography.caption,
         textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginBottom: Spacing.sm,
     },
-    summaryValue: {
-        fontSize: 24,
-        fontWeight: '700',
-    },
-    summaryDivider: {
-        height: StyleSheet.hairlineWidth,
-        marginVertical: 8,
-    },
-    summaryBreakdown: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-    },
-    summaryBreakdownText: {
-        fontSize: 13,
-        fontWeight: '500',
-    },
-    breakdownHeadingText: {
-        fontSize: 14,
-        fontWeight: '700',
-        marginTop: 6,
-    },
-    historyRowCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: 12,
-        borderRadius: Radii.lg,
-        borderWidth: StyleSheet.hairlineWidth,
-        marginBottom: 8,
-    },
-    historyClientName: {
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    historyTime: {
-        fontSize: 13,
-        marginTop: 2,
-    },
-    historyInstructor: {
-        fontSize: 12,
-        marginTop: 2,
-        fontStyle: 'italic',
-    },
-    reportHeading: {
-        fontSize: 18,
-        fontWeight: '700',
-    },
-    statsReportGrid: {
-        flexDirection: 'row',
-        gap: 8,
-    },
-    statsReportCard: {
-        flex: 1,
-        paddingVertical: 12,
-        alignItems: 'center',
-        borderRadius: Radii.md,
-        borderWidth: StyleSheet.hairlineWidth,
-    },
-    statsReportValue: {
-        fontSize: 20,
-        fontWeight: '700',
-    },
-    statsReportLabel: {
-        fontSize: 10,
-        fontWeight: '600',
-        marginTop: 2,
-        textAlign: 'center',
-    },
-    nextSessionReportCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 12,
-        borderRadius: Radii.md,
-        borderWidth: StyleSheet.hairlineWidth,
-    },
-    subReportHeading: {
-        fontSize: 15,
-        fontWeight: '700',
-        marginTop: 8,
-    },
+    breakdownRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.md },
+    breakdownName: { ...Typography.subhead, fontWeight: '400', flex: 1 },
+    breakdownCount: { ...Typography.subhead, fontWeight: '600', fontVariant: ['tabular-nums'] },
 });

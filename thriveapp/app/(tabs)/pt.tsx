@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, Dimensions, FlatList, ViewToken, Switch, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, Booking, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession, getGymBookingsForDate, checkSlotAvailability, getPendingPTRequestsForPT, updateBookingStatus, getUserPendingBookings, cancelBooking, getPersonAllBookingsForDate, updateWorkingHours, updateUserProfile, isUserActive, WorkingHours } from '../../services/bookingService';
@@ -9,19 +9,14 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
+import { Colors, Radii, Shadows, Spacing, Typography, bookingTypeColor } from '@/constants/theme';
 import { BOOKING_WINDOW_DAYS, PT_AVAILABILITY_WINDOW_DAYS } from '@/constants/config';
-import { useMouseDragScroll } from '@/hooks/useMouseDragScroll';
 import * as Clipboard from 'expo-clipboard';
-import { ScreenHeader, SectionHeader, EmptyState, Badge, Button, ListContainer, ListRow } from '@/components/ui';
+import { ScreenHeader, SectionHeader, EmptyState, Badge, Button, ListContainer, ListRow, Card, Avatar, Chip, ChipGroup, DateStrip, IconButton, SegmentedControl, SlotList, SlotItem, TextField, Toggle } from '@/components/ui';
 
 // Assuming PT operating hours
 const PT_OPEN_HOUR = 7;
 const PT_CLOSE_HOUR = 20;
-
-const SectionDivider = ({ theme }: { theme: any }) => (
-    <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.border, marginVertical: 30, marginHorizontal: 20 }} />
-);
 
 export default function PTBookingScreen() {
     const { user } = useAuth();
@@ -55,10 +50,6 @@ export default function PTBookingScreen() {
     const [clientPendingSessions, setClientPendingSessions] = useState<Booking[]>([]);
     const [clientPendingLoading, setClientPendingLoading] = useState(false);
     const [cancellingSessionId, setCancellingSessionId] = useState<string | null>(null);
-    const flatListRef = useRef<FlatList>(null);
-    const [hasInitialScrolled, setHasInitialScrolled] = useState(false);
-    const { onScroll: onMouseDragScroll, dragProps } = useMouseDragScroll(flatListRef);
-    const [visibleMonth, setVisibleMonth] = useState(format(new Date(), 'MMMM yyyy'));
 
     // Client's Assigned PT State
     const [assignedPtData, setAssignedPtData] = useState<UserProfile | null>(null);
@@ -74,6 +65,9 @@ export default function PTBookingScreen() {
     // Active clients are the working list; inactive ones are parked out of the way
     // but stay one tap from coming back.
     const [clientListTab, setClientListTab] = useState<'active' | 'inactive'>('active');
+
+    // The PT home is split into tabs so requests and clients aren't buried under setup
+    const [ptTab, setPtTab] = useState<'clients' | 'schedule' | 'training'>('clients');
 
     // Working hours editor (PT role)
     const [isEditingHours, setIsEditingHours] = useState(false);
@@ -99,15 +93,6 @@ export default function PTBookingScreen() {
         return Array.from({ length: windowDays }).map((_, i) => addDays(startOfDay(new Date()), i));
     }, [isManagingAvailability]);
 
-    const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
-        if (viewableItems.length > 0) {
-            const middleItem = viewableItems[Math.floor(viewableItems.length / 2)];
-            if (middleItem?.item) {
-                setVisibleMonth(format(middleItem.item as Date, 'MMMM yyyy'));
-            }
-        }
-    }, []);
-    const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
 
     useEffect(() => {
         if (user) {
@@ -132,21 +117,6 @@ export default function PTBookingScreen() {
 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedDate, userProfile, user, selectedClientForBooking, isManagingAvailability]);
-
-    useEffect(() => {
-        const index = dates.findIndex(d => d.getTime() === selectedDate.getTime());
-        if (index !== -1 && (index > 0 || hasInitialScrolled)) {
-            const timer = setTimeout(() => {
-                flatListRef.current?.scrollToIndex({ 
-                    index, 
-                    animated: true, 
-                    viewPosition: 0.5 
-                });
-                setHasInitialScrolled(true);
-            }, 100);
-            return () => clearTimeout(timer);
-        }
-    }, [selectedDate]);
 
     useEffect(() => {
         // Anyone with a trainer can have their own pending requests — PTs included
@@ -358,13 +328,6 @@ export default function PTBookingScreen() {
     };
 
     const ptFirstName = assignedPtData?.name?.split(' ')[0] || 'Your PT';
-
-    // Declared above the render branches so every branch can use it
-    const backButton = (onPress: () => void) => (
-        <TouchableOpacity onPress={onPress} style={[styles.backButton, { backgroundColor: theme.cardAlt }]}>
-            <Text style={[styles.backButtonText, { color: theme.text }]}>Back</Text>
-        </TouchableOpacity>
-    );
 
     const openHoursEditor = () => {
         setHoursDraft(effectiveWorkingHours(userProfile?.workingHours));
@@ -816,372 +779,384 @@ export default function PTBookingScreen() {
         }
     };
 
-    if ((userProfile?.role === 'pt' || userProfile?.role === 'admin') && !selectedClientForBooking && !isManagingAvailability && !isBookingOwnPt) {
+    const isPtOrAdmin = userProfile?.role === 'pt' || userProfile?.role === 'admin';
+    const goToDashboard = () => router.navigate('/');
+
+    const alertElement = (
+        <CustomAlert
+            visible={alertConfig.visible}
+            title={alertConfig.title}
+            message={alertConfig.message}
+            isDestructive={alertConfig.isError && !!alertConfig.onConfirm}
+            onClose={() => {
+                closeAlert();
+                // Only bounce back to the dashboard after a client booking — a PT
+                // blocking out several slots in a row wants to stay where they are.
+                if (alertConfig.isSuccess && selectedClientForBooking) {
+                    router.push('/(tabs)');
+                }
+            }}
+            onConfirm={alertConfig.onConfirm}
+        />
+    );
+
+    // ── PT / admin home: requests, clients, hours and their own training ──
+    if (isPtOrAdmin && !selectedClientForBooking && !isManagingAvailability && !isBookingOwnPt) {
         const ptCode = user?.uid ? user.uid.substring(0, 6).toUpperCase() : '------';
-        return (
-            <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-                <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-                    <View style={styles.headerContainer}>
-                        <ScreenHeader title="Your PT Code" subtitle="Share this with your clients" />
-                    </View>
-                    <View style={[styles.slotsContainer, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: Spacing.xl }]}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm }}>
-                            <View style={[styles.ptCodeCard, { backgroundColor: theme.card, borderColor: theme.tint, shadowColor: theme.tint }]}>
-                                <Text style={[styles.ptCodeText, { color: theme.text }]}>{ptCode}</Text>
-                            </View>
-                            <TouchableOpacity
-                                style={{
-                                    marginLeft: Spacing.lg,
-                                    padding: Spacing.md + 2,
-                                    backgroundColor: theme.tint,
-                                    borderRadius: Radii.pill,
-                                    justifyContent: 'center',
-                                    alignItems: 'center',
-                                    shadowColor: theme.tint,
-                                    shadowOffset: { width: 0, height: 4 },
-                                    shadowOpacity: 0.3,
-                                    shadowRadius: 8,
-                                    elevation: 4,
-                                }}
-                                onPress={async () => {
-                                    await Clipboard.setStringAsync(ptCode);
-                                    setAlertConfig({
-                                        visible: true,
-                                        title: 'Copied!',
-                                        message: 'Your PT Code has been copied.',
-                                        isSuccess: true
-                                    });
-                                }}
-                            >
-                                <Ionicons name="copy-outline" size={24} color={theme.onTint} />
-                            </TouchableOpacity>
-                        </View>
-                        <Text style={[styles.noPtSubText, { color: theme.textSecondary, textAlign: 'center', marginTop: Spacing.xxl + 1 }]}>
-                            Ask your client to enter this 6-character code in their app to automatically assign them to you.
+        const now = new Date();
+        // Requests whose time has already passed can't be approved any more, so they
+        // sit apart and only offer a way to clear them.
+        const openRequests = pendingRequests.filter(r => r.startTime > now);
+        const expiredRequests = pendingRequests.filter(r => r.startTime <= now);
+
+        const renderRequestRow = (req: Booking & { clientName: string }, isLast: boolean, expired: boolean) => (
+            <ListRow key={req.id} isLast={isLast}>
+                <View style={styles.requestHeader}>
+                    <Avatar name={req.clientName} size={36} />
+                    <View style={{ flex: 1 }}>
+                        <Text style={[styles.rowTitle, { color: theme.text }]}>{req.clientName}</Text>
+                        <Text style={[styles.rowSubtitle, { color: theme.textSecondary }]}>
+                            {format(req.startTime, 'EEE d MMM')} · {format(req.startTime, 'HH:mm')}–{format(req.endTime, 'HH:mm')}
                         </Text>
                     </View>
-
-                    <View style={styles.clientsSection}>
-                        <SectionHeader title="Client Requests" />
-                        {pendingLoading ? (
-                            <ActivityIndicator size="small" color={theme.tint} style={{ marginTop: 20 }} />
-                        ) : pendingRequests.length === 0 ? (
-                            <EmptyState icon="hourglass-outline" title="No clients are waiting on you." compact />
-                        ) : (
-                            <ListContainer>
-                                {pendingRequests.map((req, index) => {
-                                    const isLast = index === pendingRequests.length - 1;
-                                    return (
-                                        <ListRow key={req.id} isLast={isLast} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: Spacing.sm + 2 }}>
-                                            <View style={{ flex: 1 }}>
-                                                <Text style={[styles.clientName, { color: theme.text }]}>{req.clientName}</Text>
-                                                <Text style={[styles.clientEmail, { color: theme.textSecondary }]}>
-                                                    {format(req.startTime, 'EEE, MMM d')} • {format(req.startTime, 'HH:mm')} - {format(req.endTime, 'HH:mm')}
-                                                </Text>
-                                            </View>
-                                            <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
-                                                <Button variant="primary" size="sm" label="Approve" onPress={() => handleApproveRequest(req.id!, req.clientName)} />
-                                                <Button variant="destructive" size="sm" label="Decline" onPress={() => handleDeclineRequest(req.id!, req.clientName)} />
-                                            </View>
-                                        </ListRow>
-                                    );
-                                })}
-                            </ListContainer>
-                        )}
+                    {expired && <Badge label="Expired" tone="neutral" />}
+                </View>
+                {expired ? (
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        label="Dismiss"
+                        onPress={() => handleDeclineRequest(req.id!, req.clientName)}
+                        style={styles.requestActionSingle}
+                    />
+                ) : (
+                    <View style={styles.requestActions}>
+                        <Button variant="secondary" size="sm" label="Decline" onPress={() => handleDeclineRequest(req.id!, req.clientName)} style={{ flex: 1 }} />
+                        <Button variant="primary" size="sm" icon="checkmark" label="Approve" onPress={() => handleApproveRequest(req.id!, req.clientName)} style={{ flex: 1 }} />
                     </View>
+                )}
+            </ListRow>
+        );
 
-                    <SectionDivider theme={theme} />
-
-                    <View style={styles.clientsSection}>
-                        <SectionHeader title="Your Clients" />
-
-                        <View style={[styles.clientTabs, { backgroundColor: theme.cardAlt, borderColor: theme.border }]}>
-                            {(['active', 'inactive'] as const).map((tab) => {
-                                const isSelected = clientListTab === tab;
-                                const count = tab === 'active' ? activeClients.length : inactiveClients.length;
-                                return (
-                                    <TouchableOpacity
-                                        key={tab}
-                                        onPress={() => setClientListTab(tab)}
-                                        style={[styles.clientTab, isSelected && { backgroundColor: theme.tint }]}
-                                    >
-                                        <Text style={[styles.clientTabText, { color: isSelected ? theme.onTint : theme.textSecondary }]}>
-                                            {tab === 'active' ? 'Active' : 'Inactive'} ({count})
-                                        </Text>
-                                    </TouchableOpacity>
-                                );
-                            })}
-                        </View>
-
-                        {clientsLoading ? (
-                            <ActivityIndicator size="small" color={theme.tint} style={{ marginTop: 20 }} />
-                        ) : visibleClients.length > 0 ? (
-                            <ListContainer>
-                                {visibleClients.map((client, index) => {
-                                    const isLast = index === visibleClients.length - 1;
-                                    const active = isUserActive(client);
-                                    return (
-                                        <ListRow key={client.id} isLast={isLast} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                            <View style={{ flex: 1 }}>
-                                                <Text style={[styles.clientName, { color: theme.text }]}>{client.name}</Text>
-                                                <Text style={[styles.clientEmail, { color: theme.textSecondary }]}>{client.email}</Text>
-                                            </View>
-                                            <View style={styles.clientRowActions}>
-                                                <Button variant="primary" size="sm" label="Book" onPress={() => setSelectedClientForBooking(client)} />
-                                                <TouchableOpacity
-                                                    onPress={() => handleSetClientActive(client, !active)}
-                                                    style={[styles.clientStatusBtn, { borderColor: theme.border }]}
-                                                    accessibilityRole="button"
-                                                    accessibilityLabel={active ? `Move ${client.name} to Inactive` : `Move ${client.name} to Active`}
-                                                >
-                                                    <Ionicons
-                                                        name={active ? 'archive-outline' : 'arrow-undo-outline'}
-                                                        size={18}
-                                                        color={theme.textSecondary}
-                                                    />
-                                                </TouchableOpacity>
-                                            </View>
-                                        </ListRow>
-                                    );
-                                })}
-                            </ListContainer>
-                        ) : (
-                            <EmptyState
-                                icon="people-outline"
-                                title={
-                                    clients.length === 0
-                                        ? "You don't have any clients assigned yet."
-                                        : clientListTab === 'active'
-                                            ? 'No active clients — check the Inactive tab.'
-                                            : 'No inactive clients.'
-                                }
-                                compact
-                            />
-                        )}
-                        <Button
-                            variant="secondary"
-                            label="Manage My Availability"
-                            onPress={() => setIsManagingAvailability(true)}
-                            style={{ alignSelf: 'center', marginTop: Spacing.xxl + 1 }}
-                        />
-                    </View>
-
-                    <SectionDivider theme={theme} />
-
-                    <View style={styles.clientsSection}>
-                        <SectionHeader title="Working Hours" />
-                        <Text style={[styles.hoursIntro, { color: theme.textSecondary }]}>
-                            Clients can only request sessions inside these hours. Block out individual days under Manage My Availability.
-                        </Text>
-
-                        {!userProfile?.workingHours && !isEditingHours && (
-                            <View style={[styles.hoursNotice, { backgroundColor: theme.tintMuted, borderColor: theme.tint }]}>
-                                <Ionicons name="information-circle-outline" size={18} color={theme.tint} style={{ marginRight: Spacing.sm }} />
-                                <Text style={[styles.hoursNoticeText, { color: theme.text }]}>
-                                    You haven&apos;t set your hours yet, so clients can request any day from 07:00 to 20:00.
-                                </Text>
-                            </View>
-                        )}
-
+        const clientsTab = (
+            <>
+                <View style={styles.section}>
+                    <SectionHeader title={openRequests.length > 0 ? `Requests (${openRequests.length})` : 'Requests'} />
+                    {pendingLoading && pendingRequests.length === 0 ? (
+                        <ActivityIndicator size="small" color={theme.tint} />
+                    ) : openRequests.length === 0 ? (
+                        <EmptyState icon="checkmark-circle-outline" title="You're all caught up." compact />
+                    ) : (
                         <ListContainer>
-                            {DAY_ORDER.map((day, index) => {
-                                const source = isEditingHours ? hoursDraft : effectiveWorkingHours(userProfile?.workingHours);
-                                const hours = source[day];
-                                return (
-                                    <ListRow
-                                        key={day}
-                                        isLast={index === DAY_ORDER.length - 1}
-                                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-                                    >
-                                        <Text style={[styles.hoursDayLabel, { color: theme.text }]}>{DAY_LABELS[Number(day)]}</Text>
+                            {openRequests.map((req, i) => renderRequestRow(req, i === openRequests.length - 1, false))}
+                        </ListContainer>
+                    )}
+                    {expiredRequests.length > 0 && (
+                        <>
+                            <Text style={[styles.subheading, { color: theme.textSecondary }]}>Missed — time has passed</Text>
+                            <ListContainer>
+                                {expiredRequests.map((req, i) => renderRequestRow(req, i === expiredRequests.length - 1, true))}
+                            </ListContainer>
+                        </>
+                    )}
+                </View>
 
-                                        {isEditingHours ? (
-                                            <View style={styles.hoursRowControls}>
-                                                {hours ? (
-                                                    <View style={styles.hoursChipRow}>
-                                                        <TouchableOpacity
-                                                            style={[styles.timeChip, { borderColor: theme.border, backgroundColor: theme.cardAlt }]}
-                                                            onPress={() => setTimePicker({ day, field: 'start' })}
-                                                        >
-                                                            <Text style={[styles.timeChipText, { color: theme.text }]}>{hours.start}</Text>
-                                                        </TouchableOpacity>
-                                                        <Text style={{ color: theme.textTertiary }}>–</Text>
-                                                        <TouchableOpacity
-                                                            style={[styles.timeChip, { borderColor: theme.border, backgroundColor: theme.cardAlt }]}
-                                                            onPress={() => setTimePicker({ day, field: 'end' })}
-                                                        >
-                                                            <Text style={[styles.timeChipText, { color: theme.text }]}>{hours.end}</Text>
-                                                        </TouchableOpacity>
-                                                    </View>
-                                                ) : (
-                                                    <Text style={[styles.hoursValue, { color: theme.textTertiary }]}>Not working</Text>
-                                                )}
-                                                <Switch
-                                                    value={!!hours}
-                                                    onValueChange={(enabled) => toggleWorkingDay(day, enabled)}
-                                                    trackColor={{ false: theme.border, true: theme.tint }}
-                                                    thumbColor="#ffffff"
-                                                />
-                                            </View>
-                                        ) : (
-                                            <Text style={[styles.hoursValue, { color: hours ? theme.textSecondary : theme.textTertiary }]}>
-                                                {formatWorkingDay(hours)}
-                                            </Text>
+                <View style={styles.section}>
+                    <SectionHeader title="Clients" />
+                    <SegmentedControl
+                        options={[
+                            { value: 'active', label: `Active (${activeClients.length})` },
+                            { value: 'inactive', label: `Inactive (${inactiveClients.length})` },
+                        ]}
+                        value={clientListTab}
+                        onChange={setClientListTab}
+                        style={{ marginBottom: Spacing.md }}
+                    />
+                    {clientsLoading && clients.length === 0 ? (
+                        <ActivityIndicator size="small" color={theme.tint} />
+                    ) : visibleClients.length > 0 ? (
+                        <ListContainer>
+                            {visibleClients.map((client, index) => {
+                                const active = isUserActive(client);
+                                return (
+                                    <ListRow key={client.id} isLast={index === visibleClients.length - 1} style={styles.clientRow}>
+                                        <Avatar name={client.name} size={36} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.rowTitle, { color: theme.text }]} numberOfLines={1}>{client.name}</Text>
+                                            <Text style={[styles.rowSubtitle, { color: theme.textSecondary }]} numberOfLines={1}>{client.email}</Text>
+                                        </View>
+                                        {active && (
+                                            <Button variant="tint" size="sm" label="Book" onPress={() => setSelectedClientForBooking(client)} />
                                         )}
+                                        <IconButton
+                                            icon={active ? 'archive-outline' : 'arrow-undo-outline'}
+                                            size={36}
+                                            accessibilityLabel={active ? `Move ${client.name} to Inactive` : `Move ${client.name} back to Active`}
+                                            onPress={() => handleSetClientActive(client, !active)}
+                                        />
                                     </ListRow>
                                 );
                             })}
                         </ListContainer>
+                    ) : (
+                        <EmptyState
+                            icon="people-outline"
+                            title={
+                                clients.length === 0
+                                    ? 'No clients yet — share your code below.'
+                                    : clientListTab === 'active'
+                                        ? 'No active clients.'
+                                        : 'No inactive clients.'
+                            }
+                            compact
+                        />
+                    )}
+                    {clientListTab === 'active' && activeClients.length > 0 && (
+                        <Text style={[styles.hint, { color: theme.textTertiary }]}>
+                            The archive button moves a client to Inactive. Their history and bookings are kept.
+                        </Text>
+                    )}
+                </View>
 
-                        {isEditingHours ? (
-                            <View style={styles.hoursActions}>
-                                <Button variant="secondary" label="Cancel" onPress={() => setIsEditingHours(false)} style={{ flex: 1 }} />
-                                <Button variant="primary" label="Save Hours" onPress={handleSaveWorkingHours} loading={savingHours} style={{ flex: 1 }} />
+                <View style={styles.section}>
+                    <SectionHeader title="Add a Client" />
+                    <Card>
+                        <View style={styles.codeRow}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.codeLabel, { color: theme.textSecondary }]}>Your PT code</Text>
+                                <Text style={[styles.codeValue, { color: theme.text }]} selectable>{ptCode}</Text>
                             </View>
-                        ) : (
                             <Button
-                                variant="secondary"
-                                label="Edit Working Hours"
-                                onPress={openHoursEditor}
-                                style={{ alignSelf: 'center', marginTop: Spacing.lg }}
+                                variant="tint"
+                                size="sm"
+                                icon="copy-outline"
+                                label="Copy"
+                                onPress={async () => {
+                                    await Clipboard.setStringAsync(ptCode);
+                                    setAlertConfig({ visible: true, title: 'Copied', message: 'Your PT code is on the clipboard.', isSuccess: true });
+                                }}
                             />
-                        )}
-                    </View>
+                        </View>
+                        <Text style={[styles.codeHelp, { color: theme.textSecondary }]}>
+                            Clients enter this code in the app to link their account to you.
+                        </Text>
+                    </Card>
+                </View>
+            </>
+        );
 
-                    <SectionDivider theme={theme} />
+        const scheduleTab = (
+            <>
+                <View style={styles.section}>
+                    <SectionHeader title="Time Off" />
+                    <Card style={styles.linkCard}>
+                        <View style={[styles.linkIcon, { backgroundColor: theme.tintMuted }]}>
+                            <Ionicons name="calendar-outline" size={20} color={theme.tint} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={[styles.rowTitle, { color: theme.text }]}>Block out time</Text>
+                            <Text style={[styles.rowSubtitle, { color: theme.textSecondary }]}>Holidays, appointments, one-off days off</Text>
+                        </View>
+                        <Button variant="secondary" size="sm" label="Open" onPress={() => setIsManagingAvailability(true)} />
+                    </Card>
+                </View>
 
-                    <View style={styles.clientsSection}>
-                        <SectionHeader title="Your Own Training" />
-
-                        {userProfile?.assignedPtId ? (
-                            assignedPtData ? (
-                                <ListContainer>
-                                    <ListRow isLast style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={[styles.clientName, { color: theme.text }]}>Trainer: {assignedPtData.name}</Text>
-                                            <Text style={[styles.clientEmail, { color: theme.textSecondary }]}>Book your own 1-to-1 sessions here.</Text>
-                                        </View>
-                                        <Button variant="primary" size="sm" label="Book" onPress={() => setIsBookingOwnPt(true)} />
-                                    </ListRow>
-                                </ListContainer>
-                            ) : (
-                                <ActivityIndicator size="small" color={theme.tint} />
-                            )
-                        ) : (
-                            <View>
-                                <Text style={[styles.noPtSubText, { color: theme.textSecondary }]}>You don't have a Personal Trainer yet.</Text>
-                                <TextInput
-                                    style={[styles.codeInput, {
-                                        backgroundColor: theme.card,
-                                        borderColor: theme.border,
-                                        color: theme.text,
-                                        fontSize: 22,
-                                        padding: Spacing.md,
-                                        height: 56,
-                                        marginTop: Spacing.lg - 1,
-                                        letterSpacing: ptCodeInput.length > 0 ? 6 : 1,
-                                    }]}
-                                    placeholder="PT Code"
-                                    placeholderTextColor={theme.textTertiary}
-                                    value={ptCodeInput}
-                                    onChangeText={(text) => setPtCodeInput(text.toUpperCase())}
-                                    maxLength={6}
-                                    autoCapitalize="characters"
-                                />
-                                <Button
-                                    variant="primary"
-                                    label="Assign My PT"
-                                    onPress={handleAssignPT}
-                                    disabled={!ptCodeInput || ptCodeInput.length < 6}
-                                    loading={assigningLoading}
-                                    style={{ marginTop: Spacing.sm + 2, maxWidth: 300, width: '100%' }}
-                                />
-                            </View>
-                        )}
-                    </View>
-
-                    <Modal
-                        transparent
-                        animationType="fade"
-                        visible={!!timePicker}
-                        onRequestClose={() => setTimePicker(null)}
-                    >
-                        <TouchableOpacity
-                            style={[styles.pickerOverlay, { backgroundColor: theme.overlay }]}
-                            activeOpacity={1}
-                            onPress={() => setTimePicker(null)}
-                        >
-                            <View style={[styles.pickerBox, { backgroundColor: theme.card }]}>
-                                <Text style={[styles.pickerTitle, { color: theme.text }]}>
-                                    {timePicker ? `${DAY_LABELS[Number(timePicker.day)]} ${timePicker.field === 'start' ? 'start' : 'finish'}` : ''}
-                                </Text>
-                                <ScrollView style={{ maxHeight: 320 }}>
-                                    {TIME_OPTIONS.map(option => {
-                                        const current = timePicker ? hoursDraft[timePicker.day as keyof WorkingHours]?.[timePicker.field] : undefined;
-                                        const isSelected = current === option;
-                                        return (
-                                            <TouchableOpacity
-                                                key={option}
-                                                style={[styles.pickerOption, isSelected && { backgroundColor: theme.tintMuted }]}
-                                                onPress={() => {
-                                                    if (timePicker) setWorkingTime(timePicker.day, timePicker.field, option);
-                                                    setTimePicker(null);
-                                                }}
-                                            >
-                                                <Text style={[styles.pickerOptionText, { color: isSelected ? theme.tint : theme.text }]}>{option}</Text>
-                                                {isSelected && <Ionicons name="checkmark" size={18} color={theme.tint} />}
-                                            </TouchableOpacity>
-                                        );
-                                    })}
-                                </ScrollView>
-                            </View>
-                        </TouchableOpacity>
-                    </Modal>
-
-                    <CustomAlert
-                        visible={alertConfig.visible}
-                        title={alertConfig.title}
-                        message={alertConfig.message}
-                        onClose={closeAlert}
-                        onConfirm={alertConfig.onConfirm}
+                <View style={styles.section}>
+                    <SectionHeader
+                        title="Working Hours"
+                        action={!isEditingHours ? <Button variant="ghost" size="sm" icon="pencil" label="Edit" onPress={openHoursEditor} /> : undefined}
                     />
+                    <Text style={[styles.hint, styles.hintTop, { color: theme.textSecondary }]}>
+                        Clients can only request sessions inside these hours.
+                    </Text>
+
+                    {!userProfile?.workingHours && !isEditingHours && (
+                        <View style={[styles.notice, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                            <Ionicons name="information-circle-outline" size={18} color={theme.tint} />
+                            <Text style={[styles.noticeText, { color: theme.text }]}>
+                                You haven&apos;t set your hours yet, so clients can request any day from 07:00 to 20:00.
+                            </Text>
+                        </View>
+                    )}
+
+                    <ListContainer>
+                        {DAY_ORDER.map((day, index) => {
+                            const source = isEditingHours ? hoursDraft : effectiveWorkingHours(userProfile?.workingHours);
+                            const hours = source[day];
+                            return (
+                                <ListRow key={day} isLast={index === DAY_ORDER.length - 1} style={styles.hoursRow}>
+                                    <Text style={[styles.hoursDay, { color: theme.text }]}>{DAY_LABELS[Number(day)]}</Text>
+                                    {isEditingHours ? (
+                                        <View style={styles.hoursControls}>
+                                            {hours ? (
+                                                <View style={styles.hoursChips}>
+                                                    <Chip label={hours.start} onPress={() => setTimePicker({ day, field: 'start' })} />
+                                                    <Text style={{ color: theme.textTertiary }}>–</Text>
+                                                    <Chip label={hours.end} onPress={() => setTimePicker({ day, field: 'end' })} />
+                                                </View>
+                                            ) : (
+                                                <Text style={[styles.hoursValue, { color: theme.textTertiary }]}>Off</Text>
+                                            )}
+                                            <Toggle
+                                                value={!!hours}
+                                                onValueChange={(enabled) => toggleWorkingDay(day, enabled)}
+                                                accessibilityLabel={`Working on ${DAY_LABELS[Number(day)]}`}
+                                            />
+                                        </View>
+                                    ) : (
+                                        <Text style={[styles.hoursValue, { color: hours ? theme.textSecondary : theme.textTertiary }]}>
+                                            {formatWorkingDay(hours)}
+                                        </Text>
+                                    )}
+                                </ListRow>
+                            );
+                        })}
+                    </ListContainer>
+
+                    {isEditingHours && (
+                        <View style={styles.buttonRow}>
+                            <Button variant="secondary" label="Cancel" onPress={() => setIsEditingHours(false)} style={{ flex: 1 }} />
+                            <Button variant="primary" label="Save Hours" onPress={handleSaveWorkingHours} loading={savingHours} style={{ flex: 1 }} />
+                        </View>
+                    )}
+                </View>
+            </>
+        );
+
+        const trainingTab = (
+            <View style={styles.section}>
+                <SectionHeader title="Your Own Training" />
+                {userProfile?.assignedPtId ? (
+                    assignedPtData ? (
+                        <Card style={styles.linkCard}>
+                            <Avatar name={assignedPtData.name} size={40} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.rowTitle, { color: theme.text }]}>{assignedPtData.name}</Text>
+                                <Text style={[styles.rowSubtitle, { color: theme.textSecondary }]}>Your trainer</Text>
+                            </View>
+                            <Button variant="primary" size="sm" label="Book" onPress={() => setIsBookingOwnPt(true)} />
+                        </Card>
+                    ) : (
+                        <ActivityIndicator size="small" color={theme.tint} />
+                    )
+                ) : (
+                    <Card>
+                        <Text style={[styles.rowTitle, { color: theme.text }]}>Train with another PT</Text>
+                        <Text style={[styles.rowSubtitle, { color: theme.textSecondary, marginBottom: Spacing.lg }]}>
+                            Enter their 6-character code to book your own sessions with them.
+                        </Text>
+                        <TextField
+                            placeholder="PT code"
+                            value={ptCodeInput}
+                            onChangeText={(text) => setPtCodeInput(text.toUpperCase())}
+                            maxLength={6}
+                            autoCapitalize="characters"
+                            autoCorrect={false}
+                            // Spaced-out letters suit the code but make the placeholder hard to read
+                            style={[styles.codeInput, ptCodeInput.length > 0 && styles.codeInputFilled]}
+                        />
+                        <Button
+                            variant="primary"
+                            label="Link Trainer"
+                            onPress={handleAssignPT}
+                            disabled={ptCodeInput.length < 6}
+                            loading={assigningLoading}
+                            style={{ marginTop: Spacing.md }}
+                        />
+                    </Card>
+                )}
+            </View>
+        );
+
+        return (
+            <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+                <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
+                    <ScreenHeader title="Personal Training" onBack={goToDashboard} backLabel="Dashboard" />
+                    <SegmentedControl
+                        options={[
+                            { value: 'clients', label: openRequests.length > 0 ? `Clients · ${openRequests.length}` : 'Clients' },
+                            { value: 'schedule', label: 'Schedule' },
+                            { value: 'training', label: 'My Training' },
+                        ]}
+                        value={ptTab}
+                        onChange={setPtTab}
+                        style={{ marginBottom: Spacing.xxl }}
+                    />
+                    {ptTab === 'clients' && clientsTab}
+                    {ptTab === 'schedule' && scheduleTab}
+                    {ptTab === 'training' && trainingTab}
                 </ScrollView>
+
+                <Modal transparent animationType="fade" visible={!!timePicker} onRequestClose={() => setTimePicker(null)}>
+                    <TouchableOpacity
+                        style={[styles.pickerOverlay, { backgroundColor: theme.overlay }]}
+                        activeOpacity={1}
+                        onPress={() => setTimePicker(null)}
+                    >
+                        <View style={[styles.pickerBox, { backgroundColor: theme.card }]}>
+                            <Text style={[styles.pickerTitle, { color: theme.text }]}>
+                                {timePicker ? `${DAY_LABELS[Number(timePicker.day)]} ${timePicker.field === 'start' ? 'start' : 'finish'}` : ''}
+                            </Text>
+                            <ScrollView style={{ maxHeight: 320 }}>
+                                {TIME_OPTIONS.map(option => {
+                                    const current = timePicker ? hoursDraft[timePicker.day as keyof WorkingHours]?.[timePicker.field] : undefined;
+                                    const isSelected = current === option;
+                                    return (
+                                        <TouchableOpacity
+                                            key={option}
+                                            style={[styles.pickerOption, isSelected && { backgroundColor: theme.tintMuted }]}
+                                            onPress={() => {
+                                                if (timePicker) setWorkingTime(timePicker.day, timePicker.field, option);
+                                                setTimePicker(null);
+                                            }}
+                                        >
+                                            <Text style={[styles.pickerOptionText, { color: isSelected ? theme.tint : theme.text }]}>{option}</Text>
+                                            {isSelected && <Ionicons name="checkmark" size={18} color={theme.tint} />}
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
+                        </View>
+                    </TouchableOpacity>
+                </Modal>
+
+                {alertElement}
             </SafeAreaView>
         );
     }
 
+    // ── Client without a trainer: link one with their code ──
     if (userProfile?.role === 'client' && !userProfile.assignedPtId) {
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-                <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-                        <View style={[styles.ptConnectContainer, { minHeight: Dimensions.get('window').height * 0.75 }]}>
-                            {/* Icon */}
-                            <View style={[styles.ptConnectIconWrap, { backgroundColor: theme.tintMuted }]}>
-                                <Ionicons name="person-add-outline" size={40} color={theme.tint} />
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+                    <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
+                        <ScreenHeader title="Personal Training" onBack={goToDashboard} backLabel="Dashboard" />
+                        <View style={styles.connect}>
+                            <View style={[styles.connectIcon, { backgroundColor: theme.tintMuted }]}>
+                                <Ionicons name="person-add-outline" size={32} color={theme.tint} />
                             </View>
-
-                            <Text style={[styles.ptConnectTitle, { color: theme.text }]}>Connect with a PT</Text>
-                            <Text style={[styles.ptConnectSubtitle, { color: theme.textSecondary }]}>
-                                Enter the 6-character code provided by your Thrive Coach.
+                            <Text style={[styles.connectTitle, { color: theme.text }]}>Connect with your PT</Text>
+                            <Text style={[styles.connectSubtitle, { color: theme.textSecondary }]}>
+                                Enter the 6-character code your Thrive coach gave you.
                             </Text>
 
-                            {/* OTP-style character boxes */}
+                            {/* OTP-style character boxes over a hidden input */}
                             <TouchableOpacity
                                 activeOpacity={1}
                                 onPress={() => ptCodeInputRef.current?.focus()}
                                 style={styles.otpRow}
+                                accessibilityLabel="PT code"
                             >
                                 {Array.from({ length: 6 }).map((_, i) => {
                                     const char = ptCodeInput[i] || '';
-                                    const isFilled = !!char;
+                                    const isCurrent = i === Math.min(ptCodeInput.length, 5);
                                     return (
                                         <View
                                             key={i}
                                             style={[
                                                 styles.otpBox,
-                                                { backgroundColor: theme.card, borderColor: isFilled ? theme.tint : theme.border },
-                                                isFilled && { shadowColor: theme.tint, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 3 }
+                                                { backgroundColor: theme.card, borderColor: char || isCurrent ? theme.tint : theme.border },
                                             ]}
                                         >
                                             <Text style={[styles.otpChar, { color: theme.text }]}>{char}</Text>
@@ -1195,480 +1170,223 @@ export default function PTBookingScreen() {
                                     onChangeText={(text) => setPtCodeInput(text.toUpperCase())}
                                     maxLength={6}
                                     autoCapitalize="characters"
+                                    autoCorrect={false}
                                     autoFocus
                                 />
                             </TouchableOpacity>
 
                             <Button
                                 variant="primary"
-                                label="Connect to Trainer"
+                                label="Connect"
                                 onPress={handleAssignPT}
-                                disabled={!ptCodeInput || ptCodeInput.length < 6}
+                                disabled={ptCodeInput.length < 6}
                                 loading={assigningLoading}
-                                style={{ width: '100%', shadowColor: theme.tint, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 4 }}
+                                style={{ alignSelf: 'stretch' }}
                             />
                         </View>
-                    </KeyboardAvoidingView>
-                </ScrollView>
-                <CustomAlert visible={alertConfig.visible} title={alertConfig.title} message={alertConfig.message} onClose={closeAlert} onConfirm={alertConfig.onConfirm} />
+                    </ScrollView>
+                </KeyboardAvoidingView>
+                {alertElement}
             </SafeAreaView>
         );
     }
 
+    // ── Client (or PT with their own trainer) requesting a session ──
     if (userProfile?.role === 'client' || isBookingOwnPt) {
-        const bookableSlots = ptSlots.filter(s => s.available);
+        const bookableCount = ptSlots.filter(s => s.available).length;
+        const slotItems: SlotItem[] = ptSlots.map(slot => ({
+            key: slot.time.toISOString(),
+            time: slot.time,
+            title: slot.available ? `Until ${format(slot.endTime, 'HH:mm')}` : (slot.reason ?? 'Unavailable'),
+            available: slot.available,
+            tone: slot.available ? 'default' : 'muted',
+        }));
 
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
                 <View style={styles.headerContainer}>
                     <ScreenHeader
                         title={assignedPtData ? `Book with ${ptFirstName}` : 'Your PT'}
-                        subtitle="Pick a time and send a request"
-                        right={isBookingOwnPt ? backButton(() => setIsBookingOwnPt(false)) : undefined}
+                        subtitle="Pick a time to send a request"
+                        onBack={isBookingOwnPt ? () => setIsBookingOwnPt(false) : goToDashboard}
+                        backLabel={isBookingOwnPt ? 'PT' : 'Dashboard'}
                     />
                 </View>
 
-                <View
-                    style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}
-                    {...dragProps}
-                >
-                    <Text style={[styles.monthLabel, { color: theme.text }]}>{visibleMonth}</Text>
-                    <FlatList
-                        ref={flatListRef}
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.dateSelector}
-                        data={dates}
-                        keyExtractor={(_, index) => index.toString()}
-                        onScroll={onMouseDragScroll}
-                        scrollEventThrottle={16}
-                        onViewableItemsChanged={onViewableItemsChanged}
-                        viewabilityConfig={viewabilityConfig}
-                        getItemLayout={(_, index) => ({ length: 62, offset: 62 * index, index })}
-                        onScrollToIndexFailed={(info) => {
-                            setTimeout(() => {
-                                flatListRef.current?.scrollToIndex({ index: info.index, animated: false });
-                            }, 100);
-                        }}
-                        renderItem={({ item: date }) => {
-                            const isSelected = selectedDate.getTime() === date.getTime();
-                            return (
-                                <TouchableOpacity
-                                    style={[
-                                        styles.dateCard,
-                                        { backgroundColor: isSelected ? theme.tint : 'transparent' },
-                                        isSelected && { ...styles.dateCardSelected, shadowColor: theme.tint }
-                                    ]}
-                                    onPress={() => setSelectedDate(date)}
-                                >
-                                    <Text style={[styles.dayText, { color: isSelected ? theme.onTint : theme.textSecondary }]}>
-                                        {format(date, 'EEE')}
-                                    </Text>
-                                    <Text style={[styles.dateText, { color: isSelected ? theme.onTint : theme.text }]}>
-                                        {format(date, 'd')}
-                                    </Text>
-                                </TouchableOpacity>
-                            );
-                        }}
-                    />
-                </View>
+                <DateStrip dates={dates} selectedDate={selectedDate} onSelect={setSelectedDate} />
 
-                <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-                    <View style={styles.slotsContainer}>
-                        {loading || ptSlotsLoading ? (
-                            <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
-                        ) : !assignedPtData ? (
-                            <Text style={[styles.noPtText, { color: theme.text, textAlign: 'center', marginTop: 40 }]}>
-                                Failed to load your PT&apos;s details.
+                <ScrollView contentContainerStyle={styles.slotsContainer}>
+                    {loading || ptSlotsLoading ? (
+                        <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
+                    ) : !assignedPtData ? (
+                        <EmptyState icon="alert-circle-outline" title="Couldn't load your PT's details" subtitle="Pull down or come back in a moment." />
+                    ) : !ptDayWindow ? (
+                        <EmptyState
+                            icon="moon-outline"
+                            title={`${ptFirstName} doesn't work ${format(selectedDate, 'EEEE')}s`}
+                            subtitle="Try another day."
+                        />
+                    ) : ptSlots.length === 0 ? (
+                        <EmptyState
+                            icon="time-outline"
+                            title="No more times left today"
+                            subtitle={`${ptFirstName} works ${format(ptDayWindow.start, 'HH:mm')}–${format(ptDayWindow.end, 'HH:mm')} on ${format(selectedDate, 'EEEE')}s.`}
+                        />
+                    ) : (
+                        <>
+                            <Text style={[styles.hint, styles.hintTop, { color: theme.textSecondary }]}>
+                                {bookableCount > 0
+                                    ? `${bookableCount} time${bookableCount === 1 ? '' : 's'} free · ${ptFirstName} works ${format(ptDayWindow.start, 'HH:mm')}–${format(ptDayWindow.end, 'HH:mm')}`
+                                    : `Fully booked · ${ptFirstName} works ${format(ptDayWindow.start, 'HH:mm')}–${format(ptDayWindow.end, 'HH:mm')}`}
                             </Text>
-                        ) : !ptDayWindow ? (
-                            <EmptyState
-                                icon="moon-outline"
-                                title={`${ptFirstName} doesn't work ${format(selectedDate, 'EEEE')}s`}
-                                subtitle="Try another day."
+                            <SlotList
+                                slots={slotItems}
+                                disabled={bookingLoading}
+                                onPress={item => {
+                                    const slot = ptSlots.find(s => s.time.getTime() === item.time.getTime());
+                                    if (slot) handleRequestPtSession(slot);
+                                }}
                             />
-                        ) : ptSlots.length === 0 ? (
-                            <EmptyState
-                                icon="time-outline"
-                                title="No more times left today"
-                                subtitle={`${ptFirstName} works ${format(ptDayWindow.start, 'HH:mm')} – ${format(ptDayWindow.end, 'HH:mm')} on ${format(selectedDate, 'EEEE')}s.`}
-                            />
-                        ) : (
-                            <>
-                                <Text style={[styles.workingHoursHint, { color: theme.textSecondary }]}>
-                                    {bookableSlots.length > 0
-                                        ? `${bookableSlots.length} time${bookableSlots.length === 1 ? '' : 's'} available · ${format(ptDayWindow.start, 'HH:mm')} – ${format(ptDayWindow.end, 'HH:mm')}`
-                                        : `Fully booked · ${format(ptDayWindow.start, 'HH:mm')} – ${format(ptDayWindow.end, 'HH:mm')}`}
-                                </Text>
-                                <View style={[styles.slotsList, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                                    {ptSlots.map((slot, index) => {
-                                        const isLast = index === ptSlots.length - 1;
-                                        return (
-                                            <View key={slot.time.toISOString()}>
-                                                <TouchableOpacity
-                                                    style={[
-                                                        styles.slotRow,
-                                                        !slot.available && { backgroundColor: theme.cardAlt, opacity: 0.7 }
-                                                    ]}
-                                                    disabled={!slot.available || bookingLoading}
-                                                    onPress={() => handleRequestPtSession(slot)}
-                                                >
-                                                    <View style={styles.slotTimeContainer}>
-                                                        <Text style={[
-                                                            styles.slotTime,
-                                                            { color: slot.available ? theme.text : theme.textSecondary },
-                                                            !slot.available && styles.slotTextUnavailable
-                                                        ]}>
-                                                            {format(slot.time, 'HH:mm')}
-                                                        </Text>
-                                                    </View>
+                        </>
+                    )}
 
-                                                    <View style={styles.slotDetailsContainer}>
-                                                        <Text style={[styles.slotDuration, { color: slot.available ? theme.tint : theme.textSecondary }]}>
-                                                            {slot.available ? '1 Hour' : (slot.reason ?? 'Unavailable')}
-                                                        </Text>
-                                                        {slot.available && (
-                                                            <Text style={[styles.slotAttendees, { color: theme.textSecondary }]}>
-                                                                until {format(slot.endTime, 'HH:mm')}
-                                                            </Text>
-                                                        )}
-                                                    </View>
-
-                                                    <View style={styles.slotChevron}>
-                                                        {slot.available && (
-                                                            <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} opacity={0.5} />
-                                                        )}
-                                                    </View>
-                                                </TouchableOpacity>
-                                                {!isLast && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
-                                            </View>
-                                        );
-                                    })}
-                                </View>
-                            </>
-                        )}
-                    </View>
-
-                    {/* Pending session requests */}
-                    <View style={styles.clientsSection}>
-                        <SectionHeader title={`Your Requests to ${ptFirstName}`} />
-                        {clientPendingLoading ? (
-                            <ActivityIndicator size="small" color={theme.tint} style={{ marginTop: 20 }} />
+                    <View style={{ marginTop: Spacing.xxxl }}>
+                        <SectionHeader title="Your Requests" />
+                        {clientPendingLoading && clientPendingSessions.length === 0 ? (
+                            <ActivityIndicator size="small" color={theme.tint} />
                         ) : clientPendingSessions.length === 0 ? (
-                            <EmptyState icon="hourglass-outline" title="You have no requests awaiting approval." compact />
+                            <EmptyState icon="hourglass-outline" title="No requests waiting for approval." compact />
                         ) : (
                             <ListContainer>
-                                {clientPendingSessions.map((session, index) => {
-                                    const isLast = index === clientPendingSessions.length - 1;
-                                    return (
-                                        <ListRow key={session.id} isLast={isLast} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: Spacing.sm + 2 }}>
-                                            <View style={{ flex: 1 }}>
-                                                <Text style={[styles.clientName, { color: theme.text }]}>PT Session Request</Text>
-                                                <Text style={[styles.clientEmail, { color: theme.textSecondary }]}>
-                                                    {format(session.startTime, 'EEE, MMM d')} • {format(session.startTime, 'HH:mm')} - {format(session.endTime, 'HH:mm')}
-                                                </Text>
-                                                <View style={{ marginTop: Spacing.xs }}>
-                                                    <Badge label="Awaiting approval" tone="warning" />
-                                                </View>
+                                {clientPendingSessions.map((session, index) => (
+                                    <ListRow key={session.id} isLast={index === clientPendingSessions.length - 1} style={styles.clientRow}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.rowTitle, { color: theme.text }]}>
+                                                {format(session.startTime, 'EEE d MMM')} · {format(session.startTime, 'HH:mm')}
+                                            </Text>
+                                            <View style={{ marginTop: Spacing.xs }}>
+                                                <Badge label="Awaiting approval" tone="warning" />
                                             </View>
-                                            <Button
-                                                variant="destructive"
-                                                size="sm"
-                                                label="Cancel Request"
-                                                onPress={() => handleCancelPendingSession(session)}
-                                                loading={cancellingSessionId === session.id}
-                                            />
-                                        </ListRow>
-                                    );
-                                })}
+                                        </View>
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            label="Withdraw"
+                                            onPress={() => handleCancelPendingSession(session)}
+                                            loading={cancellingSessionId === session.id}
+                                        />
+                                    </ListRow>
+                                ))}
                             </ListContainer>
                         )}
                     </View>
 
                     {assignedPtData && (
-                        <Text style={[styles.trainerFooter, { color: theme.textTertiary }]}>
-                            Training with {assignedPtData.name} · requests need their approval
+                        <Text style={[styles.hint, styles.footerHint, { color: theme.textTertiary }]}>
+                            Training with {assignedPtData.name}. Requests need their approval.
                         </Text>
                     )}
                 </ScrollView>
-                <CustomAlert visible={alertConfig.visible} title={alertConfig.title} message={alertConfig.message} onClose={closeAlert} onConfirm={alertConfig.onConfirm} />
+                {alertElement}
             </SafeAreaView>
         );
     }
 
+    // ── PT booking a client, or managing their own availability ──
+    const firstName = selectedClientForBooking?.name.split(' ')[0];
+    const frequencyOptions = [
+        { value: 'none' as const, label: 'Once' },
+        { value: 'weekly' as const, label: 'Weekly' },
+        { value: 'bi-weekly' as const, label: 'Fortnightly' },
+        { value: 'monthly' as const, label: 'Monthly' },
+    ];
+
+    const slotItems: SlotItem[] = availableSlots.map(slot => {
+        const base = {
+            key: slot.time.toISOString(),
+            time: slot.time,
+            groupId: slot.conflictBookingId,
+            groupColor: slot.conflictBookingId === 'admin-block' ? theme.textTertiary : bookingTypeColor(theme, slot.conflictBookingType),
+        };
+        if (isManagingAvailability) {
+            return slot.isBlockedByMe
+                ? { ...base, title: 'Blocked · tap to unblock', tone: 'warning' as const, available: true }
+                : { ...base, title: `Block until ${format(addMinutes(slot.time, blockDuration * 60), 'HH:mm')}`, tone: 'muted' as const, available: slot.available };
+        }
+        if (!slot.available) {
+            return { ...base, title: slot.conflictReason ?? 'Booked', tone: 'muted' as const, available: false };
+        }
+        return slot.bookedPtCount === 1
+            ? { ...base, title: 'Shared session · 1 of 2 booked', tone: 'tint' as const, available: true }
+            : { ...base, title: `Until ${format(addMinutes(slot.time, 60), 'HH:mm')}`, available: true };
+    });
+
+    const blockWholeDay = () => {
+        const dayStart = setMinutes(setHours(selectedDate, PT_OPEN_HOUR), 0);
+        const dayEnd = setMinutes(setHours(selectedDate, PT_CLOSE_HOUR), 0);
+        const durationHours = PT_CLOSE_HOUR - PT_OPEN_HOUR;
+        setAlertConfig({
+            visible: true,
+            title: 'Block the Whole Day',
+            message: `Block ${format(dayStart, 'HH:mm')}–${format(dayEnd, 'HH:mm')} on ${format(selectedDate, 'EEE d MMM')}${recurringFrequency !== 'none' ? ` (${frequencyOptions.find(f => f.value === recurringFrequency)?.label.toLowerCase()})` : ''}?`,
+            onConfirm: () => confirmBooking(dayStart, user!.uid, 'pt_block', durationHours * 60)
+        });
+    };
+
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
             <View style={styles.headerContainer}>
-                {(userProfile?.role === 'pt' || userProfile?.role === 'admin') && selectedClientForBooking ? (
+                {selectedClientForBooking ? (
                     <ScreenHeader
-                        title={`Book for ${selectedClientForBooking.name.split(' ')[0]}`}
-                        subtitle="Select a date and time"
-                        right={backButton(() => setSelectedClientForBooking(null))}
+                        title={`Book ${firstName}`}
+                        subtitle="Choose a day and start time"
+                        onBack={() => setSelectedClientForBooking(null)}
+                        backLabel="Clients"
                     />
-                ) : isManagingAvailability ? (
-                    <ScreenHeader title="Availability" right={backButton(() => setIsManagingAvailability(false))} />
                 ) : (
-                    <ScreenHeader title="Book PT Session" subtitle="Select a date and time" />
+                    <ScreenHeader
+                        title="Block Out Time"
+                        subtitle="Tap a time to block it, or a blocked time to free it"
+                        onBack={() => setIsManagingAvailability(false)}
+                        backLabel="Schedule"
+                    />
                 )}
             </View>
 
-            <View
-                style={[styles.dateSelectorContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}
-                {...dragProps}
-            >
-                <Text style={[styles.monthLabel, { color: theme.text }]}>{visibleMonth}</Text>
-                <FlatList
-                    ref={flatListRef}
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.dateSelector}
-                    data={dates}
-                    keyExtractor={(_, index) => index.toString()}
-                    onScroll={onMouseDragScroll}
-                    scrollEventThrottle={16}
-                    onViewableItemsChanged={onViewableItemsChanged}
-                    viewabilityConfig={viewabilityConfig}
-                    getItemLayout={(_, index) => ({
-                        length: 62, // minWidth (54) + gap (8)
-                        offset: 62 * index,
-                        index,
-                    })}
-                    onScrollToIndexFailed={(info) => {
-                        setTimeout(() => {
-                            flatListRef.current?.scrollToIndex({ index: info.index, animated: false });
-                        }, 100);
-                    }}
-                    renderItem={({ item: date }) => {
-                        const isSelected = selectedDate.getTime() === date.getTime();
-                        return (
-                            <TouchableOpacity
-                                style={[
-                                    styles.dateCard,
-                                    { backgroundColor: isSelected ? theme.tint : 'transparent' },
-                                    isSelected && { ...styles.dateCardSelected, shadowColor: theme.tint }
-                                ]}
-                                onPress={() => setSelectedDate(date)}
-                            >
-                                <Text style={[
-                                    styles.dayText,
-                                    { color: isSelected ? theme.onTint : theme.textSecondary }
-                                ]}>
-                                    {format(date, 'EEE')}
-                                </Text>
-                                <Text style={[
-                                    styles.dateText,
-                                    { color: isSelected ? theme.onTint : theme.text }
-                                ]}>
-                                    {format(date, 'd')}
-                                </Text>
-                            </TouchableOpacity>
-                        );
-                    }}
-                />
-            </View>
-
-            {((userProfile?.role === 'pt' || userProfile?.role === 'admin') && selectedClientForBooking && !isManagingAvailability) && (
-                <View style={[styles.frequencyContainer, { borderBottomColor: theme.border }]}>
-                    <Text style={[styles.frequencyLabel, { color: theme.text }]}>Repeat Session:</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.frequencyScroll}>
-                        {['none', 'weekly', 'bi-weekly', 'monthly'].map((freq) => (
-                            <TouchableOpacity
-                                key={freq}
-                                style={[
-                                    styles.freqButton,
-                                    { borderColor: theme.border },
-                                    recurringFrequency === freq && { backgroundColor: theme.tint, borderColor: theme.tint }
-                                ]}
-                                onPress={() => setRecurringFrequency(freq as any)}
-                            >
-                                <Text style={[
-                                    styles.freqButtonText,
-                                    { color: recurringFrequency === freq ? theme.onTint : theme.textSecondary }
-                                ]}>
-                                    {freq === 'none' ? 'No Repeat' : freq === 'bi-weekly' ? 'Bi-Weekly' : freq.charAt(0).toUpperCase() + freq.slice(1)}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
-                    </ScrollView>
-                </View>
-            )}
-
-            {isManagingAvailability && (
-                <View style={[styles.availabilityControls, { borderBottomColor: theme.border }]}>
-                    <View style={styles.controlRow}>
-                        <Text style={[styles.controlLabel, { color: theme.textSecondary }]}>Repeat:</Text>
-                        {['none', 'weekly', 'bi-weekly', 'monthly'].map((freq) => (
-                            <TouchableOpacity
-                                key={freq}
-                                style={[
-                                    styles.controlChip,
-                                    { borderColor: theme.border },
-                                    recurringFrequency === freq && { backgroundColor: theme.tint, borderColor: theme.tint }
-                                ]}
-                                onPress={() => setRecurringFrequency(freq as any)}
-                            >
-                                <Text style={[
-                                    styles.controlChipText,
-                                    { color: recurringFrequency === freq ? theme.onTint : theme.textSecondary }
-                                ]}>
-                                    {freq === 'none' ? 'None' : freq === 'bi-weekly' ? 'Bi-Wk' : freq.charAt(0).toUpperCase() + freq.slice(1)}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                    <View style={styles.controlRow}>
-                        <Text style={[styles.controlLabel, { color: theme.textSecondary }]}>Duration:</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 4 }}>
-                            {[1, 2, 3, 4, 5, 6, 7, 8].map((hours) => (
-                                <TouchableOpacity
-                                    key={hours}
-                                    style={[
-                                        styles.controlChip,
-                                        { borderColor: theme.border },
-                                        blockDuration === hours && { backgroundColor: theme.tint, borderColor: theme.tint }
-                                    ]}
-                                    onPress={() => setBlockDuration(hours)}
-                                >
-                                    <Text style={[
-                                        styles.controlChipText,
-                                        { color: blockDuration === hours ? theme.onTint : theme.textSecondary }
-                                    ]}>
-                                        {hours}h
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
-                        <TouchableOpacity
-                            style={[styles.controlChip, { borderColor: theme.tint, backgroundColor: theme.tintMuted, marginLeft: 4 }]}
-                            onPress={() => {
-                                const dayStart = setMinutes(setHours(selectedDate, PT_OPEN_HOUR), 0);
-                                const dayEnd = setMinutes(setHours(selectedDate, PT_CLOSE_HOUR), 0);
-                                const durationHours = PT_CLOSE_HOUR - PT_OPEN_HOUR;
-                                setAlertConfig({
-                                    visible: true,
-                                    title: 'Block Entire Day',
-                                    message: `Block off the entire day (${format(dayStart, 'HH:mm')} \u2013 ${format(dayEnd, 'HH:mm')}) on ${format(selectedDate, 'EEE, MMM d')}${recurringFrequency !== 'none' ? ' (' + recurringFrequency + ')' : ''}?`,
-                                    onConfirm: () => confirmBooking(dayStart, user!.uid, 'pt_block', durationHours * 60)
-                                });
-                            }}
-                        >
-                            <Ionicons name="calendar" size={12} color={theme.tint} style={{ marginRight: 3 }} />
-                            <Text style={[styles.controlChipText, { color: theme.tint, fontWeight: '700' }]}>All Day</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            )}
+            <DateStrip dates={dates} selectedDate={selectedDate} onSelect={setSelectedDate} />
 
             <ScrollView contentContainerStyle={styles.slotsContainer}>
+                <View style={styles.optionsBlock}>
+                    <ChipGroup label="Repeat" options={frequencyOptions} value={recurringFrequency} onChange={setRecurringFrequency} />
+                    {isManagingAvailability && (
+                        <>
+                            <ChipGroup
+                                label="Block length"
+                                options={[1, 2, 3, 4, 6, 8].map(h => ({ value: h, label: `${h}h` }))}
+                                value={blockDuration}
+                                onChange={setBlockDuration}
+                            />
+                            <Button variant="secondary" size="sm" icon="calendar-outline" label="Block the whole day" onPress={blockWholeDay} style={{ alignSelf: 'flex-start' }} />
+                        </>
+                    )}
+                </View>
                 {loading ? (
                     <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 50 }} />
-                ) : availableSlots.length === 0 ? (
-                    <Text style={[styles.noSlotsText, { color: theme.textSecondary }]}>No more slots available for this day.</Text>
+                ) : slotItems.length === 0 ? (
+                    <EmptyState icon="time-outline" title="No times left today" subtitle="Pick another day above." />
                 ) : (
-                    <View style={[styles.slotsList, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                        {availableSlots.map((slot, index) => {
-                            const isLast = index === availableSlots.length - 1;
-
-                            // Grouping outline logic
-                            const hasGroup = !!slot.conflictBookingId;
-                            const prevSlot = hasGroup && index > 0 ? availableSlots[index - 1] : null;
-                            const nextSlot = hasGroup && index < availableSlots.length - 1 ? availableSlots[index + 1] : null;
-
-                            const isFirstInBlock = hasGroup && prevSlot?.conflictBookingId !== slot.conflictBookingId;
-                            const isLastInBlock = hasGroup && nextSlot?.conflictBookingId !== slot.conflictBookingId;
-                            const isMiddleInBlock = hasGroup && !isFirstInBlock && !isLastInBlock;
-
-                            let outlineStyle: any = {};
-                            if (hasGroup) {
-                                const bookingColors: Record<string, string> = {
-                                    pt_block: theme.tint,
-                                    pt: theme.success,
-                                    gym: theme.info,
-                                    group: '#8B5CF6',
-                                    block: theme.textTertiary
-                                };
-                                const groupColor = bookingColors[slot.conflictBookingType ?? ''] || theme.tint;
-
-                                outlineStyle = {
-                                    borderColor: groupColor,
-                                    borderLeftWidth: 2,
-                                    borderRightWidth: 2,
-                                };
-                                if (isFirstInBlock) {
-                                    outlineStyle.borderTopWidth = 2;
-                                    outlineStyle.borderTopLeftRadius = Radii.sm;
-                                    outlineStyle.borderTopRightRadius = Radii.sm;
-                                    outlineStyle.marginTop = 4;
-                                }
-                                if (isLastInBlock) {
-                                    outlineStyle.borderBottomWidth = 2;
-                                    outlineStyle.borderBottomLeftRadius = Radii.sm;
-                                    outlineStyle.borderBottomRightRadius = Radii.sm;
-                                    outlineStyle.marginBottom = 4;
-                                }
-                            }
-
-                            return (
-                                <View key={index}>
-                                    <TouchableOpacity
-                                        style={[
-                                            styles.slotRow,
-                                            !slot.available && { backgroundColor: theme.cardAlt, opacity: 0.7 },
-                                            outlineStyle
-                                        ]}
-                                        disabled={!slot.available || bookingLoading}
-                                        onPress={() => handleBookSlot(slot)}
-                                    >
-                                        <View style={styles.slotTimeContainer}>
-                                            <Text style={[
-                                                styles.slotTime,
-                                                { color: slot.available ? theme.text : theme.textSecondary },
-                                                !slot.available && styles.slotTextUnavailable
-                                            ]}>
-                                                {format(slot.time, 'HH:mm')}
-                                            </Text>
-                                        </View>
-
-                                        <View style={styles.slotDetailsContainer}>
-                                            <Text style={[styles.slotDuration, { color: slot.available ? theme.tint : theme.textSecondary }]}>
-                                                {slot.available ? (
-                                                    // @ts-ignore
-                                                    slot.isBlockedByMe ? 'Blocked (Tap to unblock)' : (slot.bookedPtCount === 1 ? '1/2 Booked' : '1 Hour')
-                                                ) : (slot.conflictReason ?? 'Booked')}
-                                            </Text>
-                                            {slot.available && !((slot as any).isBlockedByMe) && (
-                                                <Text style={[styles.slotAttendees, { color: theme.textSecondary, fontSize: 13, marginLeft: 10 }]}>
-                                                    {slot.attendees} / 4 Booked
-                                                </Text>
-                                            )}
-                                        </View>
-
-                                        <View style={styles.slotChevron}>
-                                            {slot.available && (
-                                                <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} opacity={0.5} />
-                                            )}
-                                        </View>
-                                    </TouchableOpacity>
-                                    {(!isLast && !(hasGroup && !isLastInBlock)) && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
-                                </View>
-                            );
-                        })}
-                    </View>
+                    <SlotList
+                        slots={slotItems}
+                        disabled={bookingLoading}
+                        onPress={item => {
+                            const slot = availableSlots.find(s => s.time.getTime() === item.time.getTime());
+                            if (slot) handleBookSlot(slot);
+                        }}
+                    />
                 )}
             </ScrollView>
 
-            <CustomAlert
-                visible={alertConfig.visible}
-                title={alertConfig.title}
-                message={alertConfig.message}
-                onClose={() => {
-                    closeAlert();
-                    if (alertConfig.isSuccess) {
-                        router.push('/(tabs)');
-                    }
-                }}
-                onConfirm={alertConfig.onConfirm}
-            />
+            {alertElement}
         </SafeAreaView>
     );
 }
@@ -1677,161 +1395,150 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
+    page: {
+        padding: Spacing.xl,
+        paddingBottom: Spacing.huge,
+    },
     headerContainer: {
         paddingHorizontal: Spacing.xl,
-        paddingTop: Spacing.sm,
     },
-    dateSelectorContainer: {
-        borderBottomWidth: StyleSheet.hairlineWidth,
+    section: {
+        marginBottom: Spacing.xxxl,
     },
-    monthLabel: {
-        fontSize: 13,
-        fontWeight: '600',
-        paddingHorizontal: 20,
-        paddingTop: 8,
-        paddingBottom: 0,
-    },
-    dateSelector: {
-        paddingHorizontal: 15,
-        paddingVertical: 8,
-        gap: 6,
-    },
-    dateCard: {
-        paddingVertical: 8,
-        paddingHorizontal: 6,
-        borderRadius: Radii.pill,
-        alignItems: 'center',
-        minWidth: 48,
-    },
-    dateCardSelected: {
-        shadowColor: '#F26122',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 4,
-    },
-    dayText: {
-        fontSize: 11,
+    subheading: {
+        ...Typography.caption,
         textTransform: 'uppercase',
-        fontWeight: '600',
-        marginBottom: 4,
+        letterSpacing: 0.5,
+        marginTop: Spacing.lg,
+        marginBottom: Spacing.sm,
+        marginLeft: Spacing.xs,
     },
-    dateText: {
-        fontSize: 20,
-        fontWeight: '500',
+    rowTitle: {
+        ...Typography.headline,
     },
-    slotsContainer: {
-        padding: 16,
-        paddingBottom: 40,
-    },
-    slotsList: {
-        borderRadius: Radii.lg,
-        borderWidth: StyleSheet.hairlineWidth,
-        overflow: 'hidden',
-    },
-    slotRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 14,
-        paddingHorizontal: 16,
-    },
-    slotTimeContainer: {
-        width: 70,
-    },
-    slotTime: {
-        fontSize: 17,
-        fontWeight: '600',
-        letterSpacing: -0.4,
-    },
-    slotTextUnavailable: {
-        textDecorationLine: 'line-through',
-    },
-    slotDetailsContainer: {
-        flex: 1,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingRight: 10,
-    },
-    slotDuration: {
-        fontSize: 15,
-        fontWeight: '600',
-        // Longer reasons ("… has less than one hour available") wrap instead of
-        // running past the chevron.
-        flexShrink: 1,
-    },
-    slotAttendees: {
-        fontSize: 14,
-        fontWeight: '400',
-    },
-    slotChevron: {
-        width: 20,
-        alignItems: 'flex-end',
-    },
-    separator: {
-        height: StyleSheet.hairlineWidth,
-        marginLeft: 16,
-    },
-    noSlotsText: {
-        textAlign: 'center',
-        fontSize: 16,
-        marginTop: 50,
-    },
-    noPtText: {
-        fontSize: 18,
-        fontWeight: '600',
-        textAlign: 'center',
-        paddingHorizontal: 20,
-    },
-    hoursIntro: {
+    rowSubtitle: {
         ...Typography.footnote,
-        marginTop: -Spacing.xs,
+        fontWeight: '400',
+        marginTop: 2,
+    },
+    hint: {
+        ...Typography.footnote,
+        fontWeight: '400',
+        lineHeight: 18,
+        marginTop: Spacing.sm,
+        marginHorizontal: Spacing.xs,
+    },
+    hintTop: {
+        marginTop: 0,
         marginBottom: Spacing.md,
+    },
+    footerHint: {
+        textAlign: 'center',
+        marginTop: Spacing.xxl,
+    },
+    requestHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+    },
+    requestActions: {
+        flexDirection: 'row',
+        gap: Spacing.sm,
+        marginTop: Spacing.md,
+    },
+    requestActionSingle: {
+        marginTop: Spacing.md,
+        alignSelf: 'flex-start',
+    },
+    clientRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+        paddingVertical: Spacing.md,
+    },
+    codeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+    },
+    codeLabel: {
+        ...Typography.footnote,
+    },
+    codeValue: {
+        ...Typography.title1,
+        letterSpacing: 4,
+        marginTop: 2,
+        fontVariant: ['tabular-nums'],
+    },
+    codeHelp: {
+        ...Typography.footnote,
+        fontWeight: '400',
+        marginTop: Spacing.md,
         lineHeight: 18,
     },
-    hoursNotice: {
+    codeInput: {
+        textAlign: 'center',
+    },
+    codeInputFilled: {
+        letterSpacing: 6,
+        fontWeight: '700',
+        fontSize: 20,
+    },
+    linkCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+    },
+    linkIcon: {
+        width: 40,
+        height: 40,
+        borderRadius: Radii.pill,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    notice: {
         flexDirection: 'row',
         alignItems: 'flex-start',
+        gap: Spacing.sm,
         padding: Spacing.md,
         borderRadius: Radii.md,
         borderWidth: StyleSheet.hairlineWidth,
         marginBottom: Spacing.md,
     },
-    hoursNoticeText: {
+    noticeText: {
         ...Typography.footnote,
+        fontWeight: '400',
         flex: 1,
         lineHeight: 18,
     },
-    hoursDayLabel: {
+    hoursRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        minHeight: 52,
+        paddingVertical: Spacing.sm,
+    },
+    hoursDay: {
         ...Typography.subhead,
         fontWeight: '600',
-        width: 86,
     },
     hoursValue: {
         ...Typography.subhead,
+        fontWeight: '400',
+        fontVariant: ['tabular-nums'],
     },
-    hoursRowControls: {
+    hoursControls: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: Spacing.sm,
         flexShrink: 1,
     },
-    hoursChipRow: {
+    hoursChips: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: Spacing.xs,
     },
-    timeChip: {
-        paddingVertical: 4,
-        paddingHorizontal: Spacing.sm,
-        borderRadius: Radii.sm,
-        borderWidth: StyleSheet.hairlineWidth,
-    },
-    timeChipText: {
-        ...Typography.footnote,
-        fontWeight: '600',
-    },
-    hoursActions: {
+    buttonRow: {
         flexDirection: 'row',
         gap: Spacing.md,
         marginTop: Spacing.lg,
@@ -1843,14 +1550,11 @@ const styles = StyleSheet.create({
         padding: Spacing.xl,
     },
     pickerBox: {
-        width: Platform.OS === 'web' ? 320 : '80%',
+        width: '100%',
+        maxWidth: 320,
         borderRadius: Radii.xl,
         paddingVertical: Spacing.lg,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 16,
-        elevation: 8,
+        ...Shadows.lg,
     },
     pickerTitle: {
         ...Typography.headline,
@@ -1866,98 +1570,55 @@ const styles = StyleSheet.create({
     },
     pickerOptionText: {
         ...Typography.body,
+        fontVariant: ['tabular-nums'],
     },
-    workingHoursHint: {
-        ...Typography.footnote,
+    slotsContainer: {
+        padding: Spacing.xl,
+        paddingBottom: Spacing.huge,
+    },
+    optionsBlock: {
+        gap: Spacing.lg,
+        marginBottom: Spacing.xxl,
+    },
+    connect: {
+        alignItems: 'center',
+        paddingTop: Spacing.xxl,
+    },
+    connectIcon: {
+        width: 72,
+        height: 72,
+        borderRadius: Radii.pill,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: Spacing.xl,
+    },
+    connectTitle: {
+        ...Typography.title1,
+        textAlign: 'center',
         marginBottom: Spacing.sm,
-        marginLeft: 4,
     },
-    trainerFooter: {
-        ...Typography.footnote,
+    connectSubtitle: {
+        ...Typography.body,
         textAlign: 'center',
-        marginTop: Spacing.xxl,
-        paddingHorizontal: Spacing.xl,
-    },
-    noPtSubText: {
-        fontSize: 14,
-        marginTop: 10,
-        textAlign: 'center',
-        paddingHorizontal: 20,
-    },
-    ptCodeCard: {
-        paddingVertical: 30,
-        paddingHorizontal: 40,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderRadius: Radii.xl,
-        alignItems: 'center',
-        justifyContent: 'center',
-        // Make it look like a pass
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 16,
-        elevation: 10,
-    },
-    ptCodeText: {
-        fontSize: 48,
-        fontWeight: '700',
-        letterSpacing: 8,
-    },
-    codeInput: {
-        width: '100%',
-        maxWidth: 300,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderRadius: Radii.md,
-        textAlign: 'center',
-        letterSpacing: 6,
-        fontWeight: 'bold',
-        marginBottom: 20,
-    },
-    ptConnectContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: 32,
-        paddingVertical: 40,
-    },
-    ptConnectIconWrap: {
-        width: 88,
-        height: 88,
-        borderRadius: 44,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: 28,
-    },
-    ptConnectTitle: {
-        fontSize: 30,
-        fontWeight: '700',
-        letterSpacing: -0.5,
-        textAlign: 'center',
-        marginBottom: 10,
-    },
-    ptConnectSubtitle: {
-        fontSize: 16,
-        textAlign: 'center',
-        lineHeight: 23,
-        marginBottom: 44,
-        paddingHorizontal: 8,
+        lineHeight: 22,
+        marginBottom: Spacing.xxxl,
     },
     otpRow: {
         flexDirection: 'row',
-        gap: 10,
+        gap: Spacing.sm,
         justifyContent: 'center',
-        marginBottom: 36,
+        marginBottom: Spacing.xxxl,
     },
     otpBox: {
-        width: 48,
-        height: 62,
-        borderRadius: 12,
+        width: 46,
+        height: 56,
+        borderRadius: Radii.md,
         borderWidth: 1.5,
         alignItems: 'center',
         justifyContent: 'center',
     },
     otpChar: {
-        fontSize: 26,
-        fontWeight: '700',
+        ...Typography.title2,
     },
     otpHiddenInput: {
         position: 'absolute',
@@ -1965,103 +1626,4 @@ const styles = StyleSheet.create({
         height: 1,
         opacity: 0,
     },
-    clientsSection: {
-        paddingHorizontal: Spacing.xl,
-        marginTop: Spacing.sm,
-    },
-    clientName: {
-        ...Typography.headline,
-    },
-    clientEmail: {
-        ...Typography.subhead,
-        marginTop: 4,
-    },
-    clientTabs: {
-        flexDirection: 'row',
-        borderWidth: StyleSheet.hairlineWidth,
-        borderRadius: Radii.md,
-        padding: 3,
-        marginBottom: Spacing.md,
-    },
-    clientTab: {
-        flex: 1,
-        alignItems: 'center',
-        paddingVertical: Spacing.sm,
-        borderRadius: Radii.sm,
-    },
-    clientTabText: {
-        ...Typography.subhead,
-        fontWeight: '600',
-    },
-    clientRowActions: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.sm,
-    },
-    clientStatusBtn: {
-        padding: Spacing.sm,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderRadius: Radii.sm,
-    },
-    backButton: {
-        paddingVertical: 6,
-        paddingHorizontal: 12,
-        borderRadius: Radii.sm,
-    },
-    backButtonText: {
-        fontSize: 14,
-        fontWeight: '600',
-    },
-    frequencyContainer: {
-        paddingVertical: 12,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-    },
-    frequencyLabel: {
-        fontSize: 15,
-        fontWeight: '600',
-        paddingHorizontal: 20,
-        marginBottom: 8,
-    },
-    frequencyScroll: {
-        paddingHorizontal: 15,
-        gap: 8,
-    },
-    freqButton: {
-        paddingVertical: 6,
-        paddingHorizontal: 14,
-        borderRadius: Radii.pill,
-        borderWidth: StyleSheet.hairlineWidth,
-    },
-    availabilityControls: {
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        gap: 6,
-    },
-    controlRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-    },
-    controlLabel: {
-        fontSize: 12,
-        fontWeight: '700',
-        width: 58,
-    },
-    controlChip: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 4,
-        paddingHorizontal: 8,
-        borderRadius: Radii.pill,
-        borderWidth: 1,
-    },
-    controlChipText: {
-        fontSize: 12,
-        fontWeight: '600',
-    },
-    freqButtonText: {
-        fontSize: 14,
-        fontWeight: '500',
-    }
 });

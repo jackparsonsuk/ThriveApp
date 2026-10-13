@@ -12,7 +12,7 @@ import CustomAlert from '../../components/CustomAlert';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import UpdateBanner from '../../components/UpdateBanner';
-import { Card, SectionHeader, EmptyState, Badge, Button, ListContainer, ListRow } from '@/components/ui';
+import { Card, SectionHeader, EmptyState, Badge, Button, ListContainer, ListRow, Avatar, Chip, IconButton } from '@/components/ui';
 
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -387,9 +387,7 @@ export default function DashboardScreen() {
       >
         <View style={styles.heroSection}>
           <View style={styles.heroRow}>
-            <View style={[styles.avatarCircle, { backgroundColor: theme.tint }]}>
-              <Text style={styles.avatarInitial}>{initial}</Text>
-            </View>
+            <Avatar name={initial} size={52} solid />
             <View style={styles.heroTextColumn}>
               <View style={styles.heroGreetingRow}>
                 <Ionicons name={getGreetingIcon()} size={16} color={theme.tint} style={{ marginRight: 6 }} />
@@ -444,8 +442,10 @@ export default function DashboardScreen() {
         <UpdateBanner latestVersion={globalSettings?.latestVersion} />
 
         {globalSettings?.showAnnouncement && globalSettings?.announcementText && (
-          <View style={[styles.announcementBanner, { backgroundColor: theme.tintMuted, borderColor: theme.tint }]}>
-            <Ionicons name="megaphone-outline" size={20} color={theme.tint} style={{ marginRight: Spacing.md, marginTop: 2 }} />
+          <View style={[styles.announcementBanner, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <View style={[styles.announcementIcon, { backgroundColor: theme.tintMuted }]}>
+              <Ionicons name="megaphone-outline" size={18} color={theme.tint} />
+            </View>
             <Text style={[styles.announcementText, { color: theme.text }]}>
               {globalSettings.announcementText}
             </Text>
@@ -456,19 +456,14 @@ export default function DashboardScreen() {
           <ActivityIndicator size="large" color={theme.tint} style={{ marginTop: 40 }} />
         ) : bookings.filter(b => showCancelled || b.status !== 'cancelled').length === 0 ? (
           <View style={styles.section}>
+            <SectionHeader title="Upcoming" />
+            {/* The Gym / PT / Groups shortcuts sit right above, so the empty state just points at them */}
             <EmptyState
               icon="calendar-outline"
-              title="Your calendar's wide open"
-              subtitle={isPtOrAdmin ? 'No upcoming sessions scheduled yet.' : "Let's get your next session on the books."}
+              title="Nothing booked yet"
+              subtitle={isPtOrAdmin ? 'New sessions will show up here.' : 'Tap Gym or PT above to book your next session.'}
+              compact
             />
-            {!isPtOrAdmin && (
-              <View style={styles.emptyActionsRow}>
-                {canBookGym && (
-                  <Button variant="primary" icon="barbell-outline" label="Book Gym" onPress={() => router.push('/gym')} style={{ flex: 1 }} />
-                )}
-                <Button variant={canBookGym ? 'secondary' : 'primary'} icon="body-outline" label="Book PT" onPress={() => router.push('/pt')} style={{ flex: 1 }} />
-              </View>
-            )}
           </View>
         ) : (
           <>
@@ -533,17 +528,17 @@ export default function DashboardScreen() {
 
             {remainingBookings.length > 0 && (
               <View style={styles.section}>
-                {bookings.some(b => b.status === 'cancelled') && (
-                  <View style={styles.filterContainer}>
-                    <TouchableOpacity
-                      style={{ flexDirection: 'row', alignItems: 'center', opacity: 0.8 }}
+                <SectionHeader
+                  title="Coming Up"
+                  action={bookings.some(b => b.status === 'cancelled') ? (
+                    <Chip
+                      label={showCancelled ? 'Hide cancelled' : 'Show cancelled'}
+                      icon={showCancelled ? 'eye-off-outline' : 'eye-outline'}
+                      selected={false}
                       onPress={() => setShowCancelled(!showCancelled)}
-                    >
-                      <Ionicons name={showCancelled ? "checkbox" : "square-outline"} size={20} color={theme.textSecondary} style={{ marginRight: 6 }} />
-                      <Text style={{ fontSize: 13, color: theme.textSecondary, fontWeight: '500' }}>Show Cancelled</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
+                    />
+                  ) : undefined}
+                />
 
                 {displayedBookings.length === 0 ? (
                   <EmptyState icon="calendar-clear-outline" title="No more sessions scheduled." compact />
@@ -641,9 +636,7 @@ export default function DashboardScreen() {
           <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: theme.text }]}>Add Partner</Text>
-              <TouchableOpacity onPress={() => setPartnerModalVisible(false)}>
-                <Ionicons name="close" size={24} color={theme.textSecondary} />
-              </TouchableOpacity>
+              <IconButton icon="close" accessibilityLabel="Close" size={34} onPress={() => setPartnerModalVisible(false)} />
             </View>
 
             <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
@@ -690,7 +683,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   section: {
-    marginTop: Spacing.sm,
+    marginBottom: Spacing.xxl,
   },
   heroSection: {
     marginBottom: Spacing.xl,
@@ -699,18 +692,6 @@ const styles = StyleSheet.create({
   heroRow: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  avatarCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    color: '#ffffff',
-    fontSize: 20,
-    fontWeight: '700',
   },
   heroTextColumn: {
     marginLeft: Spacing.md,
@@ -772,11 +753,6 @@ const styles = StyleSheet.create({
     ...Typography.footnote,
     fontWeight: '600',
   },
-  emptyActionsRow: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-    marginTop: Spacing.lg,
-  },
   relativeDayPill: {
     alignSelf: 'flex-start',
     backgroundColor: 'rgba(255,255,255,0.2)',
@@ -791,16 +767,25 @@ const styles = StyleSheet.create({
   },
   announcementBanner: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    padding: Spacing.lg,
+    alignItems: 'center',
+    gap: Spacing.md,
+    padding: Spacing.md + 2,
     borderRadius: Radii.lg,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     marginBottom: Spacing.xxl,
+  },
+  announcementIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   announcementText: {
     flex: 1,
     ...Typography.subhead,
-    lineHeight: 22,
+    fontWeight: '400',
+    lineHeight: 21,
   },
   highlightHeader: {
     marginBottom: Spacing.md,
@@ -822,14 +807,6 @@ const styles = StyleSheet.create({
   highlightDetailsText: {
     color: '#ffffff',
     ...Typography.subhead,
-  },
-  filterContainer: {
-    flexDirection: 'row',
-    marginBottom: Spacing.lg,
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: Spacing.sm,
   },
   typeText: {
     ...Typography.headline,

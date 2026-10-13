@@ -9,10 +9,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
+import { Colors, Radii, Spacing, Typography, bookingTypeColor } from '@/constants/theme';
 import Constants from 'expo-constants';
 import { format } from 'date-fns';
-import { ScreenHeader, Card, SectionHeader, Badge, Button, StatBox } from '@/components/ui';
+import { ScreenHeader, Card, SectionHeader, Badge, Button, StatBox, Avatar } from '@/components/ui';
 
 export default function ProfileScreen() {
     const router = useRouter();
@@ -104,12 +104,15 @@ export default function ProfileScreen() {
                 ) : (
                     <>
                         <Card elevated style={styles.infoCard}>
-                            <View style={[styles.avatarCircle, { backgroundColor: theme.tint }]}>
-                                <Ionicons name="person" size={40} color={theme.onTint} />
+                            <View style={styles.avatarWrap}>
+                                <Avatar name={profile?.name} size={72} solid />
                             </View>
                             <Text style={[styles.nameText, { color: theme.text }]}>{profile?.name}</Text>
                             <Text style={[styles.emailText, { color: theme.textSecondary }]}>{profile?.email}</Text>
-                            <Badge label={profile?.role?.toUpperCase() ?? ''} tone="tint" uppercase />
+                            {/* Badge sizes to its text, so it needs centring explicitly in this centred card */}
+                            <View style={{ alignSelf: 'center' }}>
+                                <Badge label={profile?.role === 'pt' ? 'PT' : profile?.role ?? ''} tone="tint" uppercase />
+                            </View>
                         </Card>
 
                         {profile?.role === 'client' && (
@@ -120,9 +123,9 @@ export default function ProfileScreen() {
                                 ) : (
                                     <>
                                         <View style={styles.statsGrid}>
-                                            <StatBox icon="body" iconColor={theme.success} value={ptCount} label="PT Sessions" />
-                                            <StatBox icon="barbell" iconColor={theme.tint} value={gymCount} label="Gym Bookings" />
-                                            <StatBox icon="people" iconColor={theme.info} value={groupCount} label="Group Classes" />
+                                            <StatBox icon="body-outline" iconColor={bookingTypeColor(theme, 'pt')} value={ptCount} label="PT sessions" />
+                                            <StatBox icon="barbell-outline" iconColor={bookingTypeColor(theme, 'gym')} value={gymCount} label="Gym sessions" />
+                                            <StatBox icon="people-outline" iconColor={bookingTypeColor(theme, 'group')} value={groupCount} label="Group classes" />
                                         </View>
 
                                         {nextSession && (
@@ -155,9 +158,12 @@ export default function ProfileScreen() {
                             <Button variant="destructive" icon="log-out-outline" label="Log Out" onPress={handleLogout} />
                         </View>
 
-                        <View style={{ flex: 1, justifyContent: 'flex-end', marginTop: 40 }}>
-                            <TouchableOpacity onPress={() => router.push('/changelog')}>
-                                <Text style={[styles.versionText, { color: theme.textTertiary }]}>Version {Constants.expoConfig?.version} · Made by Jack · https://www.jackweb.design/</Text>
+                        <View style={{ flex: 1, justifyContent: 'flex-end', marginTop: Spacing.xxl }}>
+                            <TouchableOpacity onPress={() => router.push('/changelog')} accessibilityRole="link">
+                                <Text style={[styles.versionText, { color: theme.textTertiary }]}>
+                                    Version {Constants.expoConfig?.version} · <Text style={{ color: theme.tint }}>What&apos;s new</Text>
+                                </Text>
+                                <Text style={[styles.creditText, { color: theme.textTertiary }]}>Made by Jack · jackweb.design</Text>
                             </TouchableOpacity>
                         </View>
                     </>
@@ -188,12 +194,7 @@ const styles = StyleSheet.create({
         paddingVertical: Spacing.xxl + 6,
         marginBottom: Spacing.xxl,
     },
-    avatarCircle: {
-        width: 80,
-        height: 80,
-        borderRadius: Radii.pill,
-        alignItems: 'center',
-        justifyContent: 'center',
+    avatarWrap: {
         marginBottom: Spacing.lg,
     },
     nameText: {
@@ -211,6 +212,12 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         ...Typography.footnote,
         marginTop: Spacing.xl,
+    },
+    creditText: {
+        textAlign: 'center',
+        ...Typography.caption,
+        fontWeight: '400',
+        marginTop: Spacing.xs,
         marginBottom: Spacing.md,
     },
     statsSection: {

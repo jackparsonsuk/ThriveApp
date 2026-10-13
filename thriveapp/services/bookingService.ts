@@ -939,11 +939,8 @@ export const getAnalyticsData = async (targetDate: Date = new Date()): Promise<A
     stats.peakHours = Array.from(hourCounts.entries())
         .sort((a, b) => b[1] - a[1])
         .slice(0, 3)
-        .map(([h, count]) => {
-            const suffix = h >= 12 ? 'PM' : 'AM';
-            const displayH = h % 12 === 0 ? 12 : h % 12;
-            return { hour: `${displayH}:00 ${suffix}`, count };
-        });
+        // 24-hour, matching every other time shown in the app
+        .map(([h, count]) => ({ hour: `${String(h).padStart(2, '0')}:00`, count }));
 
     return stats;
 };

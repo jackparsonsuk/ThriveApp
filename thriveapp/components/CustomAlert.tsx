@@ -1,7 +1,7 @@
 import React from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
+import { Colors, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 
 interface ActionAlertProps {
     visible: boolean;
@@ -34,6 +34,19 @@ export default function CustomAlert({
     if (!visible) return null;
 
     const actionColor = isDestructive ? theme.danger : theme.tint;
+    // Callers pass 'Confirm' as a fallback even for info-only alerts, so only a
+    // deliberate label (e.g. "Great") replaces the plain OK on a single-button alert.
+    const dismissLabel = confirmText && confirmText !== 'Confirm' ? confirmText : 'OK';
+
+    const neutralButton = (label: string, onPress: () => void) => (
+        <TouchableOpacity
+            style={[styles.button, { backgroundColor: theme.fill }]}
+            onPress={onPress}
+            accessibilityRole="button"
+        >
+            <Text style={[styles.buttonText, { color: theme.text }]}>{label}</Text>
+        </TouchableOpacity>
+    );
 
     return (
         <Modal
@@ -43,69 +56,53 @@ export default function CustomAlert({
             onRequestClose={onClose}
         >
             <View style={[styles.overlay, { backgroundColor: theme.overlay }]}>
-                <View style={[styles.alertBox, { backgroundColor: theme.card }]}>
+                <View style={[styles.alertBox, { backgroundColor: theme.card }]} accessibilityRole="alert">
                     <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
                     <Text style={[styles.message, { color: theme.textSecondary }]}>{message}</Text>
 
-                    <View style={styles.actionsWrapper}>
-                        {onConfirm ? (
-                            onSecondaryConfirm && secondaryConfirmText ? (
-                                // 3 Options - Stacked Vertically
-                                <View style={styles.buttonContainerVertical}>
-                                    <TouchableOpacity
-                                        style={[styles.button, styles.buttonVertical, { backgroundColor: actionColor }]}
-                                        onPress={() => {
-                                            onClose();
-                                            onConfirm();
-                                        }}
-                                    >
-                                        <Text style={styles.confirmText}>{confirmText}</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={[styles.button, styles.buttonVertical, { backgroundColor: actionColor }]}
-                                        onPress={() => {
-                                            onClose();
-                                            onSecondaryConfirm();
-                                        }}
-                                    >
-                                        <Text style={styles.confirmText}>{secondaryConfirmText}</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={[styles.button, styles.buttonVertical, { backgroundColor: theme.cardAlt, borderColor: theme.border, borderWidth: StyleSheet.hairlineWidth }]}
-                                        onPress={onClose}
-                                    >
-                                        <Text style={[styles.cancelText, { color: theme.textSecondary }]}>{cancelText}</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            ) : (
-                                // 2 Options - Side by Side
-                                <View style={styles.buttonContainerHorizontal}>
-                                    <TouchableOpacity
-                                        style={[styles.button, { backgroundColor: theme.cardAlt, borderColor: theme.border, borderWidth: StyleSheet.hairlineWidth }]}
-                                        onPress={onClose}
-                                    >
-                                        <Text style={[styles.cancelText, { color: theme.textSecondary }]}>{cancelText}</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={[styles.button, { backgroundColor: actionColor }]}
-                                        onPress={() => {
-                                            onClose();
-                                            onConfirm();
-                                        }}
-                                    >
-                                        <Text style={styles.confirmText}>{confirmText}</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            )
+                    {onConfirm ? (
+                        onSecondaryConfirm && secondaryConfirmText ? (
+                            // 3 options, stacked. The secondary action is the bigger one
+                            // (e.g. cancel the whole series), so it gets the solid colour
+                            // and the first action is the softer, tinted version.
+                            <View style={styles.buttonColumn}>
+                                <TouchableOpacity
+                                    style={[styles.button, { backgroundColor: isDestructive ? theme.dangerMuted : theme.tintMuted }]}
+                                    onPress={() => { onClose(); onConfirm(); }}
+                                    accessibilityRole="button"
+                                >
+                                    <Text style={[styles.buttonText, { color: actionColor }]}>{confirmText}</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.button, { backgroundColor: actionColor }]}
+                                    onPress={() => { onClose(); onSecondaryConfirm(); }}
+                                    accessibilityRole="button"
+                                >
+                                    <Text style={[styles.buttonText, { color: theme.onTint }]}>{secondaryConfirmText}</Text>
+                                </TouchableOpacity>
+                                {neutralButton(cancelText, onClose)}
+                            </View>
                         ) : (
-                            // 1 Option
-                            <View style={styles.buttonContainerHorizontal}>
-                                <TouchableOpacity style={[styles.button, { backgroundColor: theme.tint }]} onPress={onClose}>
-                                    <Text style={styles.confirmText}>OK</Text>
+                            <View style={styles.buttonRow}>
+                                {neutralButton(cancelText, onClose)}
+                                <TouchableOpacity
+                                    style={[styles.button, styles.buttonFlex, { backgroundColor: actionColor }]}
+                                    onPress={() => { onClose(); onConfirm(); }}
+                                    accessibilityRole="button"
+                                >
+                                    <Text style={[styles.buttonText, { color: theme.onTint }]} numberOfLines={1}>{confirmText}</Text>
                                 </TouchableOpacity>
                             </View>
-                        )}
-                    </View>
+                        )
+                    ) : (
+                        <TouchableOpacity
+                            style={[styles.button, { backgroundColor: theme.tint }]}
+                            onPress={onClose}
+                            accessibilityRole="button"
+                        >
+                            <Text style={[styles.buttonText, { color: theme.onTint }]}>{dismissLabel}</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
             </View>
         </Modal>
@@ -117,64 +114,45 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        // Add padding to handle web rendering correctly
         padding: Spacing.xl,
     },
     alertBox: {
-        width: Platform.OS === 'web' ? 400 : '90%',
-        maxWidth: '100%',
+        width: '100%',
+        maxWidth: 360,
         borderRadius: Radii.xl,
         padding: Spacing.xl,
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 4,
-        },
-        shadowOpacity: 0.2,
-        shadowRadius: 16,
-        elevation: 8,
+        ...Shadows.lg,
     },
     title: {
-        ...Typography.title2,
+        ...Typography.title3,
         marginBottom: Spacing.sm,
         textAlign: 'center',
     },
     message: {
         ...Typography.body,
         textAlign: 'center',
-        marginBottom: Spacing.xxl,
+        marginBottom: Spacing.xl,
         lineHeight: 22,
     },
-    actionsWrapper: {
-        width: '100%',
-    },
-    buttonContainerHorizontal: {
+    buttonRow: {
         flexDirection: 'row',
-        justifyContent: 'center',
-        gap: Spacing.md,
+        gap: Spacing.sm,
     },
-    buttonContainerVertical: {
-        flexDirection: 'column',
-        justifyContent: 'center',
-        gap: Spacing.md,
+    buttonColumn: {
+        gap: Spacing.sm,
     },
     button: {
         flex: 1,
-        paddingVertical: Spacing.md + 2,
+        minHeight: 48,
         paddingHorizontal: Spacing.lg,
-        borderRadius: Radii.md,
+        borderRadius: Radii.pill,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    buttonVertical: {
-        flex: 0,
-        width: '100%',
+    buttonFlex: {
+        flex: 1,
     },
-    cancelText: {
+    buttonText: {
         ...Typography.headline,
-    },
-    confirmText: {
-        ...Typography.headline,
-        color: '#fff',
     },
 });

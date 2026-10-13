@@ -5,15 +5,15 @@ import { useRouter } from 'expo-router';
 import { getAnalyticsData, AnalyticsData } from '../services/bookingService';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
+import { Colors, Radii, Spacing, Typography, bookingTypeColor } from '@/constants/theme';
 import { format, addDays, subDays, isToday } from 'date-fns';
-import { Badge, EmptyState } from '@/components/ui';
+import { Badge, EmptyState, IconButton, ScreenHeader } from '@/components/ui';
 
 type BookingTypeBadgeProps = { type: string };
 const BookingTypeBadge = ({ type }: BookingTypeBadgeProps) => {
     if (type === 'pt') return <Badge label="PT" tone="tint" />;
-    if (type === 'group') return <Badge label="GROUP" tone="info" />;
-    return <Badge label={type.toUpperCase()} tone="neutral" />;
+    if (type === 'group') return <Badge label="Group" tone="info" />;
+    return <Badge label={type === 'gym' ? 'Gym' : type} tone="neutral" />;
 };
 
 export default function AnalyticsScreen() {
@@ -52,27 +52,28 @@ export default function AnalyticsScreen() {
         fetchData(targetDate);
     };
 
-    const StatCard = ({ title, value, icon, color, subValue, onPress }: { title: string; value: number; icon: any; color: string; subValue?: string; onPress?: () => void }) => {
+    // Colour means booking type (same as everywhere else in the app); anything that
+    // isn't a booking type stays neutral, so the grid doesn't turn into a rainbow.
+    const StatCard = ({ title, value, icon, color, suffix, onPress }: { title: string; value: number; icon: keyof typeof Ionicons.glyphMap; color?: string; suffix?: string; onPress?: () => void }) => {
         const CardComponent = onPress ? TouchableOpacity : View;
+        const iconColor = color ?? theme.textSecondary;
         return (
-            <CardComponent 
+            <CardComponent
                 style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}
                 onPress={onPress}
                 activeOpacity={0.7}
+                accessibilityRole={onPress ? 'button' : undefined}
             >
-                <View style={[styles.iconContainer, { backgroundColor: color + '20' }]}>
-                    <Ionicons name={icon} size={22} color={color} />
-                </View>
-                <View style={styles.statInfo}>
-                    <Text style={[styles.statTitle, { color: theme.textSecondary }]}>{title}</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Text style={[styles.statValue, { color: theme.text }]}>{value}</Text>
-                        {onPress && (
-                            <Ionicons name="chevron-forward" size={14} color={theme.textSecondary} style={{ opacity: 0.5 }} />
-                        )}
+                <View style={styles.statTop}>
+                    <View style={[styles.iconContainer, { backgroundColor: color ? color + '22' : theme.fill }]}>
+                        <Ionicons name={icon} size={16} color={iconColor} />
                     </View>
-                    {subValue ? <Text style={[styles.statSubValue, { color: theme.textSecondary }]}>{subValue}</Text> : null}
+                    {onPress && <Ionicons name="chevron-forward" size={16} color={theme.textTertiary} />}
                 </View>
+                <Text style={[styles.statValue, { color: theme.text }]}>
+                    {value}{suffix ? <Text style={[styles.statSuffix, { color: theme.textSecondary }]}>{suffix}</Text> : null}
+                </Text>
+                <Text style={[styles.statTitle, { color: theme.textSecondary }]} numberOfLines={2}>{title}</Text>
             </CardComponent>
         );
     };
@@ -116,47 +117,26 @@ export default function AnalyticsScreen() {
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-            <View style={[styles.header, { borderBottomColor: theme.border }]}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-                    <Ionicons name="chevron-back" size={28} color={theme.text} />
-                </TouchableOpacity>
-                <Text style={[styles.title, { color: theme.text }]}>Analytics</Text>
-                <View style={{ width: 28 }} />
-            </View>
-
-            {/* DATE SELECTOR HEADER */}
-            <View style={[styles.dateSelectorContainer, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-                <TouchableOpacity 
-                    style={styles.dateArrowBtn} 
-                    onPress={() => setTargetDate(prev => subDays(prev, 1))}
-                >
-                    <Ionicons name="chevron-back" size={22} color={theme.text} />
-                </TouchableOpacity>
-                
-                <View style={styles.dateLabelContainer}>
-                    <Text style={[styles.dateLabelText, { color: theme.text }]}>
-                        {format(targetDate, 'EEEE, d MMMM yyyy')}
-                    </Text>
-                    {isToday(targetDate) ? (
-                        <View style={[styles.todayBadge, { backgroundColor: theme.tintMuted }]}>
-                            <Text style={[styles.todayBadgeText, { color: theme.tint }]}>TODAY</Text>
-                        </View>
-                    ) : (
-                        <TouchableOpacity 
-                            style={styles.todayShortcut} 
-                            onPress={() => setTargetDate(new Date())}
-                        >
-                            <Text style={[styles.todayShortcutText, { color: theme.tint }]}>Go to Today</Text>
-                        </TouchableOpacity>
-                    )}
+            <View style={styles.header}>
+                <ScreenHeader
+                    title="Analytics"
+                    onBack={() => (router.canGoBack() ? router.back() : router.navigate('/admin'))}
+                    backLabel="Admin"
+                />
+                <View style={[styles.dateSelector, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <IconButton icon="chevron-back" size={34} accessibilityLabel="Previous day" onPress={() => setTargetDate(prev => subDays(prev, 1))} />
+                    <View style={styles.dateLabelContainer}>
+                        <Text style={[styles.dateLabelText, { color: theme.text }]}>
+                            {isToday(targetDate) ? 'Today' : format(targetDate, 'EEE d MMM yyyy')}
+                        </Text>
+                        {!isToday(targetDate) && (
+                            <TouchableOpacity onPress={() => setTargetDate(new Date())} hitSlop={8}>
+                                <Text style={[styles.todayShortcutText, { color: theme.tint }]}>Back to today</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                    <IconButton icon="chevron-forward" size={34} accessibilityLabel="Next day" onPress={() => setTargetDate(prev => addDays(prev, 1))} />
                 </View>
-
-                <TouchableOpacity 
-                    style={styles.dateArrowBtn} 
-                    onPress={() => setTargetDate(prev => addDays(prev, 1))}
-                >
-                    <Ionicons name="chevron-forward" size={22} color={theme.text} />
-                </TouchableOpacity>
             </View>
 
             <ScrollView
@@ -164,35 +144,34 @@ export default function AnalyticsScreen() {
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.tint} />}
             >
                 {/* DAILY SNAPSHOT */}
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                    {isToday(targetDate) ? "Today's Snapshot" : `${format(targetDate, 'EEEE')}'s Snapshot`}
+                <Text style={[styles.sectionTitle, styles.firstSection, { color: theme.text }]}>
+                    {isToday(targetDate) ? 'Today' : format(targetDate, 'EEEE d MMMM')}
                 </Text>
                 <View style={styles.statsGrid}>
                     <StatCard
-                        title="Total Bookings"
+                        title="All bookings"
                         value={data?.bookingsToday ?? 0}
-                        icon="calendar"
-                        color={theme.info}
+                        icon="calendar-outline"
                         onPress={() => handleCardPress('all', 'Total Bookings')}
                     />
                     <StatCard
-                        title="Gym Sessions"
+                        title="Gym sessions"
                         value={data?.gymBookingsToday ?? 0}
-                        icon="barbell"
-                        color={theme.tint}
+                        icon="barbell-outline"
+                        color={bookingTypeColor(theme, 'gym')}
                         onPress={() => handleCardPress('gym', 'Gym Sessions')}
                     />
                     <StatCard
-                        title="PT Sessions"
+                        title="PT sessions"
                         value={data?.ptSessionsToday ?? 0}
-                        icon="body"
-                        color={theme.success}
+                        icon="body-outline"
+                        color={bookingTypeColor(theme, 'pt')}
                         onPress={() => handleCardPress('pt', 'PT Sessions')}
                     />
                     <StatCard
                         title="Cancellations"
                         value={data?.cancelledToday ?? 0}
-                        icon="close-circle"
+                        icon="close-circle-outline"
                         color={theme.danger}
                         onPress={() => handleCardPress('cancelled', 'Cancellations')}
                     />
@@ -201,19 +180,19 @@ export default function AnalyticsScreen() {
                 {/* WEEKLY */}
                 <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>This Week</Text>
                 <View style={styles.statsGrid}>
-                    <StatCard title="Total Bookings" value={data?.bookingsThisWeek ?? 0} icon="bar-chart" color={theme.tint} />
-                    <StatCard title="Gym Sessions" value={data?.gymBookingsThisWeek ?? 0} icon="barbell" color={theme.info} />
-                    <StatCard title="PT Sessions" value={data?.ptSessionsThisWeek ?? 0} icon="fitness" color="#8b5cf6" />
-                    <StatCard title="Cancelled" value={data?.cancelledThisWeek ?? 0} icon="trash" color={theme.warning} />
+                    <StatCard title="All bookings" value={data?.bookingsThisWeek ?? 0} icon="calendar-outline" />
+                    <StatCard title="Gym sessions" value={data?.gymBookingsThisWeek ?? 0} icon="barbell-outline" color={bookingTypeColor(theme, 'gym')} />
+                    <StatCard title="PT sessions" value={data?.ptSessionsThisWeek ?? 0} icon="body-outline" color={bookingTypeColor(theme, 'pt')} />
+                    <StatCard title="Cancellations" value={data?.cancelledThisWeek ?? 0} icon="close-circle-outline" color={theme.danger} />
                 </View>
 
                 {/* GROUP SESSIONS */}
-                <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>Group Sessions</Text>
+                <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>Groups & Plans</Text>
                 <View style={styles.statsGrid}>
-                    <StatCard title="This Week" value={data?.groupSessionsThisWeek ?? 0} icon="people" color={theme.info} />
-                    <StatCard title="This Month" value={data?.groupSessionsThisMonth ?? 0} icon="people-circle" color="#8b5cf6" />
-                    <StatCard title="Recurring Plans" value={data?.activeRecurringTemplates ?? 0} icon="repeat" color={theme.success} />
-                    <StatCard title="Cancel Rate" value={data?.cancellationRate ?? 0} icon="trending-down" color={theme.danger} subValue="% this week" />
+                    <StatCard title="Group sessions this week" value={data?.groupSessionsThisWeek ?? 0} icon="people-outline" color={bookingTypeColor(theme, 'group')} />
+                    <StatCard title="Group sessions this month" value={data?.groupSessionsThisMonth ?? 0} icon="people-outline" color={bookingTypeColor(theme, 'group')} />
+                    <StatCard title="Active recurring plans" value={data?.activeRecurringTemplates ?? 0} icon="repeat-outline" />
+                    <StatCard title="Cancellation rate this week" value={data?.cancellationRate ?? 0} suffix="%" icon="trending-down-outline" />
                 </View>
 
                 {(data?.groupBreakdown?.length ?? 0) > 0 && (
@@ -231,8 +210,8 @@ export default function AnalyticsScreen() {
                                     style={[styles.breakdownRow, index !== data!.groupBreakdown.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth }]}
                                 >
                                     <View style={styles.ptInfo}>
-                                        <View style={[styles.avatar, { backgroundColor: theme.info + '20' }]}>
-                                            <Text style={[styles.avatarText, { color: theme.info }]}>{g.groupName.charAt(0)}</Text>
+                                        <View style={[styles.avatar, { backgroundColor: theme.purple + '22' }]}>
+                                            <Text style={[styles.avatarText, { color: theme.purple }]}>{g.groupName.charAt(0)}</Text>
                                         </View>
                                         <Text style={[styles.ptName, { color: theme.text }]}>{g.groupName}</Text>
                                     </View>
@@ -253,13 +232,14 @@ export default function AnalyticsScreen() {
                             {data!.peakHours.map((slot, index) => {
                                 const maxCount = data!.peakHours[0].count;
                                 const barWidth = maxCount > 0 ? (slot.count / maxCount) * 100 : 0;
-                                const rankColor = index === 0 ? theme.tint : index === 1 ? '#8b5cf6' : theme.info;
+                                // Order and bar length already show the ranking, so one colour is enough
+                                const rankColor = index === 0 ? theme.tint : theme.textSecondary;
                                 return (
                                     <View key={slot.hour} style={[styles.peakRow, index !== data!.peakHours.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
                                         <Text style={[styles.peakHourLabel, { color: theme.text }]}>{slot.hour}</Text>
                                         <View style={styles.peakBarContainer}>
-                                            <View style={[styles.peakBarTrack, { backgroundColor: theme.border }]}>
-                                                <View style={[styles.peakBarFill, { width: `${barWidth}%`, backgroundColor: rankColor }]} />
+                                            <View style={[styles.peakBarTrack, { backgroundColor: theme.fill }]}>
+                                                <View style={[styles.peakBarFill, { width: `${barWidth}%`, backgroundColor: index === 0 ? theme.tint : theme.textTertiary }]} />
                                             </View>
                                         </View>
                                         <Text style={[styles.peakCount, { color: rankColor }]}>{slot.count}</Text>
@@ -300,23 +280,23 @@ export default function AnalyticsScreen() {
                     <View style={styles.membershipRow}>
                         <View style={styles.membershipLabelRow}>
                             <View style={[styles.dot, { backgroundColor: theme.success }]} />
-                            <Text style={[styles.membershipLabel, { color: theme.textSecondary }]}>Gym Access Granted</Text>
+                            <Text style={[styles.membershipLabel, { color: theme.textSecondary }]}>Gym access</Text>
                         </View>
-                        <Text style={[styles.membershipValue, { color: theme.success }]}>{data?.clientsWithGymAccess ?? 0}</Text>
+                        <Text style={[styles.membershipValue, { color: theme.text }]}>{data?.clientsWithGymAccess ?? 0}</Text>
                     </View>
                     <View style={[styles.divider, { backgroundColor: theme.border }]} />
                     <View style={styles.membershipRow}>
                         <View style={styles.membershipLabelRow}>
-                            <View style={[styles.dot, { backgroundColor: theme.danger }]} />
-                            <Text style={[styles.membershipLabel, { color: theme.textSecondary }]}>No Gym Access</Text>
+                            <View style={[styles.dot, { backgroundColor: theme.textTertiary }]} />
+                            <Text style={[styles.membershipLabel, { color: theme.textSecondary }]}>PT only (no gym access)</Text>
                         </View>
-                        <Text style={[styles.membershipValue, { color: theme.danger }]}>{noGymAccess}</Text>
+                        <Text style={[styles.membershipValue, { color: theme.text }]}>{noGymAccess}</Text>
                     </View>
                     {(data?.clientsTotal ?? 0) > 0 && (
                         <>
                             <View style={[styles.divider, { backgroundColor: theme.border }]} />
                             <View style={styles.progressBarContainer}>
-                                <View style={[styles.progressBarTrack, { backgroundColor: theme.border }]}>
+                                <View style={[styles.progressBarTrack, { backgroundColor: theme.fill }]}>
                                     <View style={[styles.progressBarFill, { width: `${gymAccessPercent}%`, backgroundColor: theme.success }]} />
                                 </View>
                                 <Text style={[styles.progressLabel, { color: theme.textSecondary }]}>{gymAccessPercent}% have gym access</Text>
@@ -378,12 +358,7 @@ export default function AnalyticsScreen() {
                                     {format(targetDate, 'EEEE, d MMMM yyyy')}
                                 </Text>
                             </View>
-                            <TouchableOpacity
-                                style={[styles.modalCloseBtn, { backgroundColor: theme.cardAlt }]}
-                                onPress={() => setDetailModalVisible(false)}
-                            >
-                                <Ionicons name="close" size={20} color={theme.text} />
-                            </TouchableOpacity>
+                            <IconButton icon="close" size={34} accessibilityLabel="Close" onPress={() => setDetailModalVisible(false)} />
                         </View>
 
                         <FlatList
@@ -403,16 +378,16 @@ export default function AnalyticsScreen() {
                                                     Trainer: {item.instructorName}
                                                 </Text>
                                             ) : null}
-                                            <Text style={[styles.bookingTimeText, { color: theme.tint }]}>
+                                            <Text style={[styles.bookingTimeText, { color: theme.textSecondary }]}>
                                                 {format(item.startTime, 'HH:mm')} - {format(item.endTime, 'HH:mm')}
                                             </Text>
                                         </View>
                                         <View style={{ alignItems: 'flex-end' }}>
                                             <BookingTypeBadge type={item.type} />
                                             {item.status === 'cancelled' && (
-                                                <Text style={{ color: theme.danger, fontSize: 11, fontWeight: '700', marginTop: 4 }}>
-                                                    CANCELLED
-                                                </Text>
+                                                <View style={{ marginTop: Spacing.xs }}>
+                                                    <Badge label="Cancelled" tone="danger" />
+                                                </View>
                                             )}
                                         </View>
                                     </View>
@@ -430,33 +405,25 @@ export default function AnalyticsScreen() {
 const styles = StyleSheet.create({
     container: { flex: 1 },
     header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderBottomWidth: StyleSheet.hairlineWidth,
+        paddingHorizontal: Spacing.xl,
+        paddingBottom: Spacing.md,
     },
-    backButton: { padding: 4 },
-    title: { fontSize: 20, fontWeight: '700' },
-    scrollContent: { padding: 20, paddingBottom: 40 },
-    sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 14, letterSpacing: -0.5 },
-    statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+    scrollContent: { padding: Spacing.xl, paddingTop: Spacing.sm, paddingBottom: Spacing.huge },
+    sectionTitle: { ...Typography.title3, marginBottom: Spacing.md },
+    firstSection: { marginTop: Spacing.sm },
+    statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm + 2 },
     statCard: {
         flex: 1,
         minWidth: '45%',
-        padding: 14,
+        padding: Spacing.md + 2,
         borderRadius: Radii.lg,
         borderWidth: StyleSheet.hairlineWidth,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
     },
-    iconContainer: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-    statInfo: { flex: 1 },
-    statTitle: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 2 },
-    statValue: { fontSize: 22, fontWeight: '700' },
-    statSubValue: { fontSize: 10, marginTop: 2 },
+    statTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.sm },
+    iconContainer: { width: 30, height: 30, borderRadius: Radii.pill, justifyContent: 'center', alignItems: 'center' },
+    statTitle: { ...Typography.footnote, fontWeight: '400', marginTop: 2 },
+    statValue: { ...Typography.title1, fontVariant: ['tabular-nums'] },
+    statSuffix: { ...Typography.headline },
     highlightRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -489,8 +456,8 @@ const styles = StyleSheet.create({
     ptName: { fontSize: 15, fontWeight: '600' },
     breakdownCount: { fontSize: 17, fontWeight: '700' },
     emptyText: { padding: 20, textAlign: 'center', fontStyle: 'italic' },
-    billingNote: { fontSize: 12, fontStyle: 'italic', marginTop: 8, textAlign: 'center' },
-    subSectionTitle: { fontSize: 13, fontWeight: '500', marginTop: -6, marginBottom: 12 },
+    billingNote: { ...Typography.footnote, fontWeight: '400', marginTop: Spacing.sm, textAlign: 'center' },
+    subSectionTitle: { ...Typography.footnote, fontWeight: '400', marginTop: -Spacing.xs, marginBottom: Spacing.md },
     peakCard: { borderRadius: Radii.lg, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
     peakRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
     peakHourLabel: { fontSize: 15, fontWeight: '600', width: 72 },
@@ -500,42 +467,23 @@ const styles = StyleSheet.create({
     peakCount: { fontSize: 15, fontWeight: '700', width: 32, textAlign: 'right' },
 
     // DATE SELECTOR STYLES
-    dateSelectorContainer: {
+    dateSelector: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-    },
-    dateArrowBtn: {
-        padding: 6,
+        padding: Spacing.sm,
+        borderRadius: Radii.lg,
+        borderWidth: StyleSheet.hairlineWidth,
     },
     dateLabelContainer: {
         alignItems: 'center',
-        flexDirection: 'row',
-        gap: 8,
     },
     dateLabelText: {
-        fontSize: 15,
-        fontWeight: '700',
-    },
-    todayBadge: {
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 4,
-    },
-    todayBadgeText: {
-        fontSize: 10,
-        fontWeight: '700',
-    },
-    todayShortcut: {
-        paddingHorizontal: 6,
-        paddingVertical: 2,
+        ...Typography.headline,
     },
     todayShortcutText: {
-        fontSize: 12,
-        fontWeight: '700',
+        ...Typography.caption,
+        marginTop: 2,
     },
 
     // MODAL STYLES
@@ -567,13 +515,6 @@ const styles = StyleSheet.create({
     modalSubtitle: {
         fontSize: 12,
         marginTop: 2,
-    },
-    modalCloseBtn: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        justifyContent: 'center',
-        alignItems: 'center',
     },
     modalListContent: {
         padding: 20,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import Head from 'expo-router/head';
 import { sendPasswordResetEmail } from 'firebase/auth';
@@ -11,13 +11,15 @@ import { Button } from '@/components/ui';
 export default function ForgotPasswordScreen() {
     const [email, setEmail] = useState('');
     const [loading, setLoading] = useState(false);
+    // Shown inline: Alert.alert is a no-op on web, so errors used to vanish there
+    const [formError, setFormError] = useState('');
     const router = useRouter();
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
 
     const handleResetPassword = async () => {
         if (!email) {
-            Alert.alert('Error', 'Please enter your email address');
+            setFormError('Please enter your email address.');
             return;
         }
 
@@ -27,7 +29,9 @@ export default function ForgotPasswordScreen() {
             // Navigate to the success screen instead of showing an alert
             router.push('/(auth)/forgot-password-success');
         } catch (error: any) {
-            Alert.alert('Error', error.message || 'Failed to send reset email');
+            setFormError(error?.code === 'auth/invalid-email'
+                ? "That email address doesn't look right."
+                : 'Could not send the reset email. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -55,10 +59,16 @@ export default function ForgotPasswordScreen() {
                     placeholder="Email"
                     placeholderTextColor={theme.textTertiary}
                     value={email}
-                    onChangeText={setEmail}
+                    onChangeText={(v) => { setEmail(v); setFormError(''); }}
                     autoCapitalize="none"
                     keyboardType="email-address"
                 />
+
+                {formError ? (
+                    <View style={[styles.errorBox, { backgroundColor: theme.dangerMuted, borderColor: theme.danger }]} accessibilityRole="alert">
+                        <Text style={[styles.errorBoxText, { color: theme.danger }]}>{formError}</Text>
+                    </View>
+                ) : null}
 
                 <Button variant="primary" label="Send Reset Link" onPress={handleResetPassword} loading={loading} style={{ marginTop: Spacing.sm }} />
 
@@ -74,6 +84,15 @@ export default function ForgotPasswordScreen() {
 }
 
 const styles = StyleSheet.create({
+    errorBox: {
+        borderWidth: StyleSheet.hairlineWidth,
+        borderRadius: Radii.md,
+        padding: Spacing.md,
+    },
+    errorBoxText: {
+        ...Typography.footnote,
+        textAlign: 'center',
+    },
     container: {
         flex: 1,
         justifyContent: 'center',
@@ -97,6 +116,9 @@ const styles = StyleSheet.create({
         paddingHorizontal: Spacing.xl,
     },
     form: {
+        width: '100%',
+        maxWidth: 420,
+        alignSelf: 'center',
         gap: 15,
     },
     input: {

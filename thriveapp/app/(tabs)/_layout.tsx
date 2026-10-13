@@ -43,18 +43,15 @@ export default function TabLayout() {
           headerShown: false,
           tabBarButton: HapticTab,
           title: 'Thrive Collective',
-          tabBarStyle: Platform.select({
-            ios: {
-              // Use absolute position and a theme-aware translucent background on iOS for a native blur look
-              position: 'absolute',
-              backgroundColor: colorScheme === 'dark' ? 'rgba(28, 28, 30, 0.85)' : 'rgba(255, 255, 255, 0.85)',
-              borderTopColor: Colors[colorScheme].border,
-            },
-            default: {
-              backgroundColor: Colors[colorScheme].card,
-              borderTopColor: Colors[colorScheme].border,
-            },
-          }),
+          // The bar sits in the layout (not floating over content), so the last item on
+          // every screen stays reachable instead of hiding underneath it.
+          tabBarStyle: {
+            backgroundColor: Colors[colorScheme].card,
+            borderTopColor: Colors[colorScheme].border,
+            ...(Platform.OS === 'web' ? { height: 64, paddingTop: 4, paddingBottom: 6 } : {}),
+          },
+          // An explicit line height stops the label being clipped inside its 10px box on web
+          tabBarLabelStyle: { fontSize: 11, lineHeight: 14, fontWeight: '600' },
         }}>
         <Tabs.Screen
           name="index"

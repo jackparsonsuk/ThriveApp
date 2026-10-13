@@ -37,6 +37,6 @@ export default function Card({ children, style, padding = 16, elevated = false, 
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: Radii.xl,
+    borderRadius: Radii.lg,
   },
 });

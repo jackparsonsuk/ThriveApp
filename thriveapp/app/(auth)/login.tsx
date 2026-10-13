@@ -131,6 +131,9 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
     form: {
+        width: '100%',
+        maxWidth: 420,
+        alignSelf: 'center',
         gap: 15,
     },
     input: {

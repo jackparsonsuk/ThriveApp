@@ -57,6 +57,8 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />
             <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Settings' }} />
+            {/* Analytics draws its own header, so the stack's one would be a second, duplicate bar */}
+            <Stack.Screen name="analytics" options={{ headerShown: false }} />
           </Stack>
           <StatusBar style="auto" />
           <Analytics />
