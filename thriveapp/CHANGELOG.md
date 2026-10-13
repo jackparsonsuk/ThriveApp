@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.0.0] - 2026-10-13
+
+### Changed
+- **A Redesigned App**: Every screen now uses the same buttons, inputs, switches, tabs and lists, so things look and behave the same wherever you are. Disabled buttons are grey instead of a faded orange, secondary buttons are visible in light mode, and booking types keep one colour throughout (orange for PT, blue for gym, purple for groups).
+- **Booking Times Are Easier To Scan**: The Gym, PT and Group booking screens group times into Morning, Afternoon and Evening, show when each session would finish, and use a lighter day picker.
+- **The PT Screen Is Split Into Tabs**: Clients, Schedule and My Training each get their own tab, so requests and clients are no longer buried under working hours and setup. The PT code is a compact card with a Copy button, and repeat and block-length options wrap instead of running off the screen.
+- **A Compact Admin Schedule**: The day is now a timeline that fits in a couple of screens, jumps to the current time, lists each booking once, and has block and unblock controls on each row. Members are compact rows, and the History breakdown shows the top five clients with an option to see the rest.
+- **A Cleaner Analytics Screen**: One header, consistent colours, 24-hour times, and labels that no longer break mid-word.
+- **Back Links**: Gym, PT and Groups have a link back to the Dashboard, and every sub-screen links back to where you came from.
+- **A Calmer Dashboard**: The announcement banner no longer looks like an error, and the duplicate booking buttons under an empty calendar are gone.
+- **Booking Only Active Clients**: PTs can only book sessions for active clients. Move a client back to Active to book them.
+
+### Fixed
+- **Expired PT Requests**: Requests whose time has already passed sit in their own "Missed" list with a Dismiss button, instead of being offered for approval.
+- **Clipped Tab Labels**: The bottom tab labels were cut off on the web.
+- **Hidden Content Behind The Tab Bar**: On iOS the last item in a list could sit behind the tab bar.
+- **Wrong Day In The PT Date Picker**: Jumping to a date on the PT screen could land on a different day.
+- **Invisible Sign-Up And Password-Reset Errors**: On the web these errors were never shown. They now appear on the page.
+- **Confirmation Dialogs**: "Cancel this session" and "Cancel the whole series" no longer look the same, and custom button labels are respected.
+
 ## [2.10.1] - 2026-09-01
 
 ### Fixed
