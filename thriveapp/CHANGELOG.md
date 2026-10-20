@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.1.0] - 2026-10-20
+
+### Added
+- **Reschedule PT Sessions**: PTs can move a session to a new time from the Dashboard or the Admin schedule, instead of cancelling it and booking again. Moving one session in a recurring series leaves the rest of the series where it was.
+- **Emails When A PT Books For You**: Clients now get a confirmation email with a calendar invite when their PT books a session for them, one email for a new recurring series, and an updated invite when a session is moved.
+
 ## [3.0.0] - 2026-10-13
 
 ### Changed
