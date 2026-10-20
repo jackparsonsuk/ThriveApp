@@ -41,21 +41,32 @@ export const generateWeeklySessions = functions.scheduler.onSchedule('0 2 * * *'
     for (const templateDoc of templatesSnapshot.docs) {
         const templateData = templateDoc.data();
         
-        // Find the latest booking created for this template
-        const latestBookingSnapshot = await db.collection(BOOKINGS_COLLECTION)
+        // Find the latest slot the series itself produced. A rescheduled instance keeps the
+        // slot it was given in originalStartTime, so moving one session (even the last one,
+        // or to an earlier day) neither shifts the series nor recreates the slot it left.
+        // Looking at the newest few covers an instance moved several occurrences earlier.
+        const recentBookingsSnapshot = await db.collection(BOOKINGS_COLLECTION)
             .where('recurringTemplateId', '==', templateDoc.id)
             .orderBy('startTime', 'desc')
-            .limit(1)
+            .limit(10)
             .get();
 
-        if (latestBookingSnapshot.empty) {
+        if (recentBookingsSnapshot.empty) {
             console.log(`Template ${templateDoc.id} has no instances. Skipping... (should have been created on UI)`);
             continue;
         }
 
-        const latestBooking = latestBookingSnapshot.docs[0].data();
-        let currentStart = latestBooking.startTime.toDate();
-        let currentEnd = latestBooking.endTime.toDate();
+        let currentStart: Date | null = null;
+        let currentEnd: Date | null = null;
+        for (const bookingDoc of recentBookingsSnapshot.docs) {
+            const booking = bookingDoc.data();
+            const slotStart: Date = (booking.originalStartTime ?? booking.startTime).toDate();
+            if (!currentStart || slotStart > currentStart) {
+                currentStart = slotStart;
+                currentEnd = (booking.originalEndTime ?? booking.endTime).toDate();
+            }
+        }
+        if (!currentStart || !currentEnd) continue;
 
         // Figure out if there's a hard stop date
         const hardStopDate = templateData.endDate 
@@ -126,6 +137,171 @@ export const generateWeeklySessions = functions.scheduler.onSchedule('0 2 * * *'
     console.log(`Generated ${generatedCount} new recurring sessions.`);
 });
 
+const FREQUENCY_LABELS: Record<string, string> = {
+    'daily': 'every day',
+    'weekly': 'every week',
+    'bi-weekly': 'every two weeks',
+    'monthly': 'every month',
+};
+
+const LONDON_DATE_TIME = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/London'
+});
+
+const LONDON_DATE = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'Europe/London'
+});
+
+interface SessionEmailDetails {
+    userId: string;
+    ptId: string;
+    startTime: Date;
+    endTime: Date;
+    // The booking the invite is for. Gives the .ics a stable UID, so a later reschedule
+    // email updates the same calendar event instead of adding a second one.
+    bookingId?: string;
+    // Set for a recurring series: the email describes the series and the invite covers the first session
+    recurrence?: { frequency: string; endDate?: Date | null };
+    // Set when the session was moved: the email says it moved from this time to startTime
+    previousStartTime?: Date;
+}
+
+const calendarUid = (bookingId: string) => `booking-${bookingId}@thrivecollective`;
+
+/**
+ * Emails the client a PT session confirmation with a calendar invite (.ics) attached.
+ * Used both when a PT confirms a client's request and when a PT books on a client's behalf.
+ */
+async function sendSessionConfirmationEmail(details: SessionEmailDetails) {
+    const resendApiKey = process.env.RESEND_API_KEY;
+    if (!resendApiKey) {
+        console.error('RESEND_API_KEY is not defined. Cannot send confirmation email.');
+        return;
+    }
+
+    const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+    const resend = new Resend(resendApiKey);
+
+    try {
+        // Fetch the client details
+        const clientDoc = await db.collection('users').doc(details.userId).get();
+        if (!clientDoc.exists) {
+            console.error(`Client ${details.userId} not found`);
+            return;
+        }
+        const clientData = clientDoc.data();
+        const clientEmail = clientData?.email;
+        const clientName = clientData?.name || 'Client';
+
+        // Fetch the PT details
+        const ptDoc = await db.collection('users').doc(details.ptId).get();
+        const ptName = ptDoc.exists ? ptDoc.data()?.name : 'Your Personal Trainer';
+
+        if (!clientEmail) {
+            console.error(`Client ${details.userId} has no email address`);
+            return;
+        }
+
+        // Generate ICS calendar event
+        const { startTime, endTime, recurrence, previousStartTime, bookingId } = details;
+
+        const eventDetails: ics.EventAttributes = {
+            start: [
+                startTime.getFullYear(),
+                startTime.getMonth() + 1,
+                startTime.getDate(),
+                startTime.getHours(),
+                startTime.getMinutes()
+            ],
+            end: [
+                endTime.getFullYear(),
+                endTime.getMonth() + 1,
+                endTime.getDate(),
+                endTime.getHours(),
+                endTime.getMinutes()
+            ],
+            title: `PT Session with ${ptName}`,
+            description: `Your Personal Training session with ${ptName} is confirmed.`,
+            status: 'CONFIRMED',
+            // Same UID for every invite about this booking, and a higher SEQUENCE each time,
+            // so calendar apps update the existing event when the session moves.
+            ...(bookingId ? { uid: calendarUid(bookingId), sequence: Math.floor(Date.now() / 1000) } : {}),
+            organizer: { name: ptName, email: fromEmail },
+            attendees: [
+                { name: clientName, email: clientEmail, rsvp: true, partstat: 'ACCEPTED', role: 'REQ-PARTICIPANT' }
+            ]
+        };
+
+        const { error, value } = ics.createEvent(eventDetails);
+
+        if (error || !value) {
+            console.error('Failed to generate ICS file', error);
+            return;
+        }
+
+        const attachments = [{
+            filename: 'invite.ics',
+            content: Buffer.from(value).toString('base64'),
+            type: 'text/calendar'
+        }];
+
+        const formattedDateTime = LONDON_DATE_TIME.format(startTime);
+
+        let subject = `Booking Confirmed: PT Session with ${ptName}`;
+        let sessionHtml = `
+                <p>Your Personal Training session with <strong>${ptName}</strong> is confirmed!</p>
+                <p><strong>Date &amp; Time:</strong> ${formattedDateTime}</p>
+                <p>Please find the calendar invite attached.</p>`;
+
+        if (recurrence) {
+            const frequencyLabel = FREQUENCY_LABELS[recurrence.frequency] || 'regularly';
+            const untilText = recurrence.endDate
+                ? `until ${LONDON_DATE.format(recurrence.endDate)}`
+                : 'until further notice';
+            subject = `Booking Confirmed: Recurring PT Sessions with ${ptName}`;
+            sessionHtml = `
+                <p>Your recurring Personal Training sessions with <strong>${ptName}</strong> are confirmed!</p>
+                <p><strong>First session:</strong> ${formattedDateTime}</p>
+                <p><strong>Repeats:</strong> ${frequencyLabel}, ${untilText}</p>
+                <p>The attached calendar invite is for your first session. You can see all your upcoming sessions in the Thrive app.</p>`;
+        } else if (previousStartTime) {
+            subject = `Session Moved: PT Session with ${ptName}`;
+            sessionHtml = `
+                <p>Your Personal Training session with <strong>${ptName}</strong> has been moved.</p>
+                <p><strong>Was:</strong> <s>${LONDON_DATE_TIME.format(previousStartTime)}</s></p>
+                <p><strong>Now:</strong> ${formattedDateTime}</p>
+                <p>Please find the updated calendar invite attached.</p>`;
+        }
+
+        const emailResponse = await resend.emails.send({
+            from: fromEmail === 'onboarding@resend.dev' ? 'onboarding@resend.dev' : `Thrive Collective <${fromEmail}>`,
+            to: clientEmail,
+            subject,
+            html: `
+                <p>Hi ${clientName},</p>${sessionHtml}
+                <br/>
+                <p>Best regards,</p>
+                <p>Thrive Collective</p>
+            `,
+            attachments: attachments
+        });
+
+        console.log(`Confirmation email sent to ${clientEmail}`, emailResponse);
+    } catch (error) {
+        console.error('Error sending confirmation email:', error);
+    }
+}
+
 /**
  * Triggered when a booking is updated.
  * Checks if the status changed from 'pending' to 'confirmed' for a PT session,
@@ -141,106 +317,107 @@ export const onBookingConfirmed = functions.firestore.onDocumentUpdated(
 
         // Check if the status changed from pending to confirmed, and it is a PT booking
         if (beforeData.status === 'pending' && afterData.status === 'confirmed' && afterData.type === 'pt') {
-            const resendApiKey = process.env.RESEND_API_KEY;
-            if (!resendApiKey) {
-                console.error('RESEND_API_KEY is not defined. Cannot send confirmation email.');
-                return;
-            }
-
-            const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
-            const resend = new Resend(resendApiKey);
-
-            try {
-                // Fetch the client details
-                const clientDoc = await db.collection('users').doc(afterData.userId).get();
-                if (!clientDoc.exists) {
-                    console.error(`Client ${afterData.userId} not found`);
-                    return;
-                }
-                const clientData = clientDoc.data();
-                const clientEmail = clientData?.email;
-                const clientName = clientData?.name || 'Client';
-
-                // Fetch the PT details
-                const ptDoc = await db.collection('users').doc(afterData.ptId).get();
-                const ptName = ptDoc.exists ? ptDoc.data()?.name : 'Your Personal Trainer';
-
-                if (!clientEmail) {
-                    console.error(`Client ${afterData.userId} has no email address`);
-                    return;
-                }
-
-                // Generate ICS calendar event
-                const startTime = afterData.startTime.toDate();
-                const endTime = afterData.endTime.toDate();
-
-                const eventDetails: ics.EventAttributes = {
-                    start: [
-                        startTime.getFullYear(),
-                        startTime.getMonth() + 1,
-                        startTime.getDate(),
-                        startTime.getHours(),
-                        startTime.getMinutes()
-                    ],
-                    end: [
-                        endTime.getFullYear(),
-                        endTime.getMonth() + 1,
-                        endTime.getDate(),
-                        endTime.getHours(),
-                        endTime.getMinutes()
-                    ],
-                    title: `PT Session with ${ptName}`,
-                    description: `Your Personal Training session with ${ptName} is confirmed.`,
-                    status: 'CONFIRMED',
-                    organizer: { name: ptName, email: fromEmail },
-                    attendees: [
-                        { name: clientName, email: clientEmail, rsvp: true, partstat: 'ACCEPTED', role: 'REQ-PARTICIPANT' }
-                    ]
-                };
-
-                const { error, value } = ics.createEvent(eventDetails);
-
-                if (error || !value) {
-                    console.error('Failed to generate ICS file', error);
-                    return;
-                }
-
-                const attachments = [{
-                    filename: 'invite.ics',
-                    content: Buffer.from(value).toString('base64'),
-                    type: 'text/calendar'
-                }];
-
-                const formattedDateTime = new Intl.DateTimeFormat('en-GB', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    timeZone: 'Europe/London'
-                }).format(startTime);
-
-                const emailResponse = await resend.emails.send({
-                    from: fromEmail === 'onboarding@resend.dev' ? 'onboarding@resend.dev' : `Thrive Collective <${fromEmail}>`,
-                    to: clientEmail,
-                    subject: `Booking Confirmed: PT Session with ${ptName}`,
-                    html: `
-                        <p>Hi ${clientName},</p>
-                        <p>Your Personal Training session with <strong>${ptName}</strong> is confirmed!</p>
-                        <p><strong>Date &amp; Time:</strong> ${formattedDateTime}</p>
-                        <p>Please find the calendar invite attached.</p>
-                        <br/>
-                        <p>Best regards,</p>
-                        <p>Thrive Collective</p>
-                    `,
-                    attachments: attachments
-                });
-
-                console.log(`Confirmation email sent to ${clientEmail}`, emailResponse);
-            } catch (error) {
-                console.error('Error sending confirmation email:', error);
-            }
+            await sendSessionConfirmationEmail({
+                userId: afterData.userId,
+                ptId: afterData.ptId,
+                startTime: afterData.startTime.toDate(),
+                endTime: afterData.endTime.toDate(),
+                bookingId: event.params.bookingId,
+            });
         }
+    }
+);
+
+/**
+ * Triggered when a booking is updated.
+ * When a PT moves a confirmed PT session, emails the client the old and new times with an
+ * updated invite. The invite reuses the booking's calendar UID so it replaces the old event.
+ */
+export const onBookingRescheduled = functions.firestore.onDocumentUpdated(
+    `${BOOKINGS_COLLECTION}/{bookingId}`,
+    async (event) => {
+        const beforeData = event.data?.before.data();
+        const afterData = event.data?.after.data();
+
+        if (!beforeData || !afterData) return;
+        if (afterData.type !== 'pt') return;
+        if (beforeData.status !== 'confirmed' || afterData.status !== 'confirmed') return;
+        if (!beforeData.startTime || !afterData.startTime) return;
+        if (beforeData.startTime.isEqual(afterData.startTime)) return;
+        if (!afterData.ptId || afterData.userId === afterData.ptId) return;
+
+        await sendSessionConfirmationEmail({
+            userId: afterData.userId,
+            ptId: afterData.ptId,
+            startTime: afterData.startTime.toDate(),
+            endTime: afterData.endTime.toDate(),
+            bookingId: event.params.bookingId,
+            previousStartTime: beforeData.startTime.toDate(),
+        });
+    }
+);
+
+/**
+ * Triggered when a booking is created.
+ * A PT booking on a client's behalf is written already 'confirmed', so onBookingConfirmed
+ * never fires for it; this sends the client the same email.
+ * Recurring instances are skipped: the series gets one email from onRecurringSessionCreated.
+ */
+export const onBookingCreatedForClient = functions.firestore.onDocumentCreated(
+    `${BOOKINGS_COLLECTION}/{bookingId}`,
+    async (event) => {
+        const data = event.data?.data();
+        if (!data) return;
+
+        if (data.type !== 'pt' || data.status !== 'confirmed') return;
+        if (!data.ptId || data.userId === data.ptId) return;
+        if (data.recurringTemplateId) return;
+
+        await sendSessionConfirmationEmail({
+            userId: data.userId,
+            ptId: data.ptId,
+            startTime: data.startTime.toDate(),
+            endTime: data.endTime.toDate(),
+            bookingId: event.params.bookingId,
+        });
+    }
+);
+
+/**
+ * Triggered when a recurring session template is created.
+ * Sends the client one email for the whole series. generateWeeklySessions only adds
+ * instances (which onBookingCreatedForClient skips), so extending a series sends nothing.
+ */
+export const onRecurringSessionCreated = functions.firestore.onDocumentCreated(
+    `${RECURRING_TEMPLATES_COLLECTION}/{templateId}`,
+    async (event) => {
+        const data = event.data?.data();
+        if (!data) return;
+
+        if (data.type !== 'pt' || data.status !== 'active') return;
+        if (!data.ptId || data.userId === data.ptId) return;
+
+        // The template and its instances are written in one batch, so the first instance exists.
+        // Using its id for the invite UID lets a later reschedule of it update the same event.
+        // Sorted here rather than in the query so it needs no composite index (a series is ~3 months of instances).
+        const instances = await db.collection(BOOKINGS_COLLECTION)
+            .where('recurringTemplateId', '==', event.params.templateId)
+            .get();
+        const firstInstance = instances.docs.reduce<admin.firestore.QueryDocumentSnapshot | null>(
+            (first, doc) => (!first || doc.data().startTime.toMillis() < first.data().startTime.toMillis() ? doc : first),
+            null
+        );
+
+        await sendSessionConfirmationEmail({
+            userId: data.userId,
+            ptId: data.ptId,
+            startTime: data.startTime.toDate(),
+            endTime: data.endTime.toDate(),
+            bookingId: firstInstance?.id,
+            recurrence: {
+                frequency: data.frequency,
+                endDate: data.endDate ? data.endDate.toDate() : null,
+            },
+        });
     }
 );

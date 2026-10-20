@@ -12,6 +12,7 @@ import CustomAlert from '../../components/CustomAlert';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import UpdateBanner from '../../components/UpdateBanner';
+import RescheduleSheet, { RescheduleTarget } from '../../components/RescheduleSheet';
 import { Card, SectionHeader, EmptyState, Badge, Button, ListContainer, ListRow, Avatar, Chip, IconButton } from '@/components/ui';
 
 const getGreeting = () => {
@@ -46,6 +47,7 @@ export default function DashboardScreen() {
     clientName?: string;
     partnerName?: string;
     partnerBookingId?: string;
+    partnerUserId?: string;
   };
   const [bookings, setBookings] = useState<ExtendedBooking[]>([]);
   const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
@@ -58,6 +60,7 @@ export default function DashboardScreen() {
   const [partnerModalVisible, setPartnerModalVisible] = useState(false);
   const [selectedBookingForPartner, setSelectedBookingForPartner] = useState<ExtendedBooking | null>(null);
   const [addingPartnerLoading, setAddingPartnerLoading] = useState(false);
+  const [rescheduleTarget, setRescheduleTarget] = useState<RescheduleTarget | null>(null);
 
   // Custom Alert State
   const [alertConfig, setAlertConfig] = useState<{
@@ -174,7 +177,8 @@ export default function DashboardScreen() {
                 grouped[existingIndex] = {
                   ...grouped[existingIndex],
                   partnerName: booking.clientName,
-                  partnerBookingId: booking.id
+                  partnerBookingId: booking.id,
+                  partnerUserId: booking.userId
                 };
               }
               return;
@@ -353,6 +357,44 @@ export default function DashboardScreen() {
     }
   };
 
+  // Only the instructor moves a session; a PT's own training with their trainer stays put
+  const canReschedule = (booking: ExtendedBooking) =>
+    (userProfile?.role === 'pt' || userProfile?.role === 'admin') &&
+    booking.type === 'pt' &&
+    booking.status === 'confirmed' &&
+    booking.ptId === user?.uid &&
+    booking.userId !== user?.uid;
+
+  const openReschedule = (booking: ExtendedBooking) => {
+    if (!booking.id || !booking.ptId) return;
+    setRescheduleTarget({
+      bookingId: booking.id,
+      clientId: booking.userId,
+      clientName: booking.clientName || 'Client',
+      ptId: booking.ptId,
+      startTime: booking.startTime,
+      endTime: booking.endTime,
+      partner: booking.partnerBookingId && booking.partnerUserId
+        ? { bookingId: booking.partnerBookingId, clientId: booking.partnerUserId, name: booking.partnerName || 'Partner' }
+        : undefined,
+    });
+  };
+
+  const handleRescheduled = (newStart: Date, newEnd: Date) => {
+    const target = rescheduleTarget;
+    setRescheduleTarget(null);
+    fetchBookingsAndProfile();
+    const who = target?.partner ? `${target.clientName} and ${target.partner.name}` : target?.clientName;
+    setAlertConfig({
+      visible: true,
+      title: 'Session Moved',
+      message: `${who}'s session is now ${format(newStart, 'EEE d MMM')}, ${format(newStart, 'HH:mm')}–${format(newEnd, 'HH:mm')}.`,
+      confirmText: 'Great',
+      onConfirm: undefined,
+      onSecondaryConfirm: undefined,
+    });
+  };
+
   const nextBooking = bookings.find(b => b.status !== 'cancelled') ?? null;
   const remainingBookings = bookings.filter(b => b !== nextBooking);
 
@@ -498,6 +540,16 @@ export default function DashboardScreen() {
                         }}
                       />
                     )}
+                    {canReschedule(nextBooking) && (
+                      <Button
+                        variant="onTint"
+                        size="sm"
+                        icon="calendar-outline"
+                        label="Reschedule"
+                        onPress={() => openReschedule(nextBooking)}
+                        disabled={!!cancellingId}
+                      />
+                    )}
                     <Button
                       variant="onTint"
                       size="sm"
@@ -589,6 +641,16 @@ export default function DashboardScreen() {
                                   }}
                                 />
                               )}
+                              {canReschedule(booking) && (
+                                <Button
+                                  variant="tint"
+                                  size="sm"
+                                  icon="calendar-outline"
+                                  label="Reschedule"
+                                  onPress={() => openReschedule(booking)}
+                                  disabled={!!cancellingId}
+                                />
+                              )}
                               <Button
                                 variant="secondary"
                                 size="sm"
@@ -624,6 +686,15 @@ export default function DashboardScreen() {
         onConfirm={alertConfig.onConfirm}
         onSecondaryConfirm={alertConfig.onSecondaryConfirm}
       />
+
+      {user && (
+        <RescheduleSheet
+          target={rescheduleTarget}
+          viewerId={user.uid}
+          onClose={() => setRescheduleTarget(null)}
+          onRescheduled={handleRescheduled}
+        />
+      )}
 
       {/* Partner Selection Modal */}
       <Modal
@@ -796,6 +867,7 @@ const styles = StyleSheet.create({
   },
   highlightActionsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.xs + 2,
     marginTop: Spacing.md - 2,
   },
@@ -814,6 +886,7 @@ const styles = StyleSheet.create({
   },
   cardActionsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.xs + 2,
     marginTop: Spacing.md - 2,
   },

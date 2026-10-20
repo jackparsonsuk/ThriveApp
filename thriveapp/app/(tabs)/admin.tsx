@@ -7,6 +7,7 @@ import { getGlobalSettings, updateGlobalSettings, GlobalSettings } from '../../s
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isToday, isBefore, startOfMonth, endOfMonth, subMonths, addMonths } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
+import RescheduleSheet, { RescheduleTarget } from '../../components/RescheduleSheet';
 import { useRouter } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii, Spacing, Typography, bookingTypeColor } from '@/constants/theme';
@@ -94,6 +95,7 @@ export default function AdminScreen() {
     }>({ visible: false, title: '', message: '' });
 
     const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
+    const [rescheduleTarget, setRescheduleTarget] = useState<RescheduleTarget | null>(null);
 
     const dates = useMemo(() => Array.from({ length: 7 + BOOKING_WINDOW_DAYS }).map((_, i) => addDays(startOfDay(new Date()), i - 7)), []);
 
@@ -356,6 +358,43 @@ export default function AdminScreen() {
         });
     };
 
+    // Admins can move any PT session; a PT only the ones they lead
+    const canReschedule = (b: Booking) =>
+        b.type === 'pt' && b.status === 'confirmed' && !!b.ptId && (userRole === 'admin' || b.ptId === user?.uid);
+
+    const openReschedule = (b: Booking & { user?: UserProfile }) => {
+        if (!b.id || !b.ptId) return;
+        // A paired session is two bookings in the same slot with the same PT; they move together
+        const partner = dailyBookings.find(o =>
+            o.id !== b.id && o.type === 'pt' && o.status === 'confirmed' && o.ptId === b.ptId &&
+            o.startTime.getTime() === b.startTime.getTime()
+        ) as (Booking & { user?: UserProfile }) | undefined;
+        setRescheduleTarget({
+            bookingId: b.id,
+            clientId: b.userId,
+            clientName: b.user?.name || 'Client',
+            ptId: b.ptId,
+            startTime: b.startTime,
+            endTime: b.endTime,
+            partner: partner?.id
+                ? { bookingId: partner.id, clientId: partner.userId, name: partner.user?.name || 'Partner' }
+                : undefined,
+        });
+    };
+
+    const handleRescheduled = (newStart: Date, newEnd: Date) => {
+        const target = rescheduleTarget;
+        setRescheduleTarget(null);
+        fetchSchedule();
+        const who = target?.partner ? `${target.clientName} and ${target.partner.name}` : target?.clientName;
+        setAlertConfig({
+            visible: true,
+            title: 'Session Moved',
+            message: `${who}'s session is now ${format(newStart, 'EEE d MMM')}, ${format(newStart, 'HH:mm')}–${format(newEnd, 'HH:mm')}.`,
+            confirmText: 'Great',
+        });
+    };
+
     const handleBlockSlot = (time: Date) => {
         const durationLabel = adminBlockDuration === 60 ? '1 hour' : `${adminBlockDuration} minutes`;
         setAlertConfig({
@@ -501,6 +540,14 @@ export default function AdminScreen() {
                                                             {typeLabel} · until {format(b.endTime, 'HH:mm')}
                                                         </Text>
                                                     </View>
+                                                    {!isPastSlot && canReschedule(b) && (
+                                                        <IconButton
+                                                            icon="calendar-outline"
+                                                            size={30}
+                                                            accessibilityLabel={`Reschedule session for ${userName}`}
+                                                            onPress={() => openReschedule(b)}
+                                                        />
+                                                    )}
                                                     {!isPastSlot && (
                                                         <IconButton
                                                             icon="close"
@@ -1049,6 +1096,15 @@ export default function AdminScreen() {
                 onClose={closeAlert}
                 onConfirm={alertConfig.onConfirm}
             />
+
+            {user && (
+                <RescheduleSheet
+                    target={rescheduleTarget}
+                    viewerId={user.uid}
+                    onClose={() => setRescheduleTarget(null)}
+                    onRescheduled={handleRescheduled}
+                />
+            )}
         </SafeAreaView>
     );
 }

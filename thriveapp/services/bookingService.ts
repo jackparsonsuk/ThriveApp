@@ -15,6 +15,8 @@ export interface Booking {
     status: 'confirmed' | 'cancelled' | 'pending';
     recurringTemplateId?: string; // Links this instance to a master recurring template
     isException?: boolean; // True if this instance was individually modified from the template
+    // A rescheduled recurring instance also stores originalStartTime/originalEndTime (Timestamps),
+    // the slot the series gave it, so the Cloud Function keeps generating from the series' own pattern.
     cancelledBy?: 'pt' | 'client' | 'admin';
 }
 
@@ -456,6 +458,36 @@ export const cancelBooking = async (bookingId: string, cancelledBy?: 'pt' | 'cli
             batch.update(docSnap.ref, cancelUpdate);
         });
     }
+
+    await batch.commit();
+};
+
+// Move bookings to a new start time, keeping each one's length. Pass every booking in the
+// slot (e.g. both clients of a paired session) so they move together in one write.
+// A recurring instance becomes an exception that remembers its original slot; only it moves,
+// and the rest of the series is untouched.
+export const rescheduleBooking = async (bookingIds: string[], newStartTime: Date) => {
+    const snaps = await Promise.all(bookingIds.map(id => getDoc(doc(db, BOOKINGS_COLLECTION, id))));
+    const batch = writeBatch(db);
+
+    snaps.forEach(snap => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        const durationMs = data.endTime.toMillis() - data.startTime.toMillis();
+        const update: Record<string, unknown> = {
+            startTime: Timestamp.fromDate(newStartTime),
+            endTime: Timestamp.fromDate(new Date(newStartTime.getTime() + durationMs)),
+        };
+        if (data.recurringTemplateId) {
+            update.isException = true;
+            // Moving it a second time must not overwrite the slot the series actually gave it
+            if (!data.originalStartTime) {
+                update.originalStartTime = data.startTime;
+                update.originalEndTime = data.endTime;
+            }
+        }
+        batch.update(snap.ref, update);
+    });
 
     await batch.commit();
 };
