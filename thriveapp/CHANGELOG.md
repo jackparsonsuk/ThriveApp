@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.2.0] - 2026-10-21
+
+### Changed
+- **Clearer Reasons Around Your Own Bookings**: When picking a PT time, an hour-long request or session no longer makes the slots around it look like extra bookings. Only the time it starts at says "You already requested this time" or "You have a session booked"; the slots before it say "Runs into your 09:00 request" and the ones during it say "Overlaps your 09:00 request" (or "session").
+
 ## [3.1.0] - 2026-10-20
 
 ### Added
