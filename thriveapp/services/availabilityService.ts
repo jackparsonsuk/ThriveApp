@@ -97,18 +97,15 @@ export const getPtDayAvailability = async ({
     const clientIs = clientFirstName ? `${clientFirstName} is` : 'You are';
     const clientHas = clientFirstName ? `${clientFirstName} has` : 'You have';
     const clientYour = clientFirstName ? `${clientFirstName}'s` : 'your';
-    // An hour-long request also blocks the slots either side of it. Only the
-    // slot it actually starts at is "this time" — the others say which request
-    // they clash with, so one request doesn't read as several.
-    const clientRequested = (b: Booking, slotStart: Date) => {
-        if (b.startTime.getTime() === slotStart.getTime()) {
-            return clientFirstName ? `${clientFirstName} already requested this time` : 'You already requested this time';
-        }
-        const at = format(b.startTime, 'HH:mm');
-        return b.startTime > slotStart
-            ? `Runs into ${clientYour} ${at} request`
-            : `Overlaps ${clientYour} ${at} request`;
+    // An hour-long session or request also blocks the slots either side of it.
+    // Only the slot it actually starts at gets the plain reason — the others say
+    // which one they clash with, so one booking doesn't read as several.
+    const clientPtReason = (b: Booking, slotStart: Date, atStartReason: string) => {
+        if (b.startTime.getTime() === slotStart.getTime()) return atStartReason;
+        const what = `${clientYour} ${format(b.startTime, 'HH:mm')} ${b.status === 'pending' ? 'request' : 'session'}`;
+        return b.startTime > slotStart ? `Runs into ${what}` : `Overlaps ${what}`;
     };
+    const clientRequested = clientFirstName ? `${clientFirstName} already requested this time` : 'You already requested this time';
     const personBusyReason = (b: Booking, has: string, is: string) => {
         if (b.type === 'pt' && b.status === 'pending') return `${has} a pending request`;
         if (b.type === 'pt') return `${has} a PT session`;
@@ -165,7 +162,7 @@ export const getPtDayAvailability = async ({
             // The clash may be the client's own request — say so from their side,
             // rather than making it sound like someone else took the slot.
             if (ptSession.userId === clientId) {
-                reason = ptSession.status === 'pending' ? clientRequested(ptSession, slotStart) : `${clientHas} a session booked`;
+                reason = clientPtReason(ptSession, slotStart, ptSession.status === 'pending' ? clientRequested : `${clientHas} a session booked`);
             } else if (runsIntoNext(ptSession)) {
                 reason = shortWindow;
             } else {
@@ -186,8 +183,8 @@ export const getPtDayAvailability = async ({
             conflictBookingType = 'block';
         } else if (clientConflict) {
             available = false;
-            reason = clientConflict.type === 'pt' && clientConflict.status === 'pending'
-                ? clientRequested(clientConflict, slotStart)
+            reason = clientConflict.type === 'pt'
+                ? clientPtReason(clientConflict, slotStart, clientConflict.status === 'pending' ? clientRequested : `${clientHas} a PT session`)
                 : personBusyReason(clientConflict, clientHas, clientIs);
             conflictBookingId = clientConflict.id;
             conflictBookingType = clientConflict.type;
