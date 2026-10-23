@@ -35,15 +35,16 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ptCalendarFeed = exports.getCalendarFeedUrl = exports.onRecurringSessionCreated = exports.onBookingCreatedForClient = exports.onBookingRescheduled = exports.onBookingConfirmed = exports.generateWeeklySessions = void 0;
 const functions = __importStar(require("firebase-functions/v2"));
-const admin = __importStar(require("firebase-admin"));
+const app_1 = require("firebase-admin/app");
+const firestore_1 = require("firebase-admin/firestore");
 const date_fns_1 = require("date-fns");
 const resend_1 = require("resend");
 const ics = __importStar(require("ics"));
 const v2_1 = require("firebase-functions/v2");
 const crypto_1 = require("crypto");
 (0, v2_1.setGlobalOptions)({ region: 'europe-west2' });
-admin.initializeApp();
-const db = admin.firestore();
+(0, app_1.initializeApp)();
+const db = (0, firestore_1.getFirestore)();
 const BOOKINGS_COLLECTION = 'bookings';
 const RECURRING_TEMPLATES_COLLECTION = 'recurring_templates';
 const GENERATION_WINDOW_MONTHS = 3;
@@ -125,8 +126,8 @@ exports.generateWeeklySessions = functions.scheduler.onSchedule('0 2 * * *', asy
                 ptId: templateData.ptId,
                 type: templateData.type,
                 status: 'confirmed',
-                startTime: admin.firestore.Timestamp.fromDate(currentStart),
-                endTime: admin.firestore.Timestamp.fromDate(currentEnd),
+                startTime: firestore_1.Timestamp.fromDate(currentStart),
+                endTime: firestore_1.Timestamp.fromDate(currentEnd),
                 recurringTemplateId: templateDoc.id,
                 isException: false
             });

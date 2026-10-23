@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const admin = require('firebase-admin');
+const { initializeApp, cert } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
 
 /**
  * Syncs the package.json version to Firebase Firestore settings/global.latestVersion
@@ -32,11 +33,11 @@ async function syncVersion() {
         const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
 
         // 2. Initialize Firebase Admin
-        admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount)
+        initializeApp({
+            credential: cert(serviceAccount)
         });
 
-        const db = admin.firestore();
+        const db = getFirestore();
 
         // 3. Update the document
         console.log('📡 Updating Firestore...');
