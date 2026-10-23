@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.6.0] - 2026-10-23
+
+### Added
+- **Your Bookings In Your Own Calendar**: Everyone can now add their Thrive bookings to Apple or Google Calendar from the Profile tab, not just PTs. Members see their gym sessions, PT sessions and group classes, with PT requests that haven't been accepted yet shown as tentative. It stays up to date as bookings are made, moved or cancelled.
+
+### Changed
+- **Week View Always Starts On Monday**: The PT week view now always shows the week from Monday. Phones held upright show Monday to Friday, or the whole week for PTs who work weekends. Turn the phone sideways to see Monday to Sunday, with the booking panel beside the grid instead of over it. The installed app can now rotate.
+
 ## [3.5.0] - 2026-10-23
 
 ### Added
