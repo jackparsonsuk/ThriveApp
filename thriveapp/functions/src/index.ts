@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions/v2';
-import * as admin from 'firebase-admin';
+import { initializeApp } from 'firebase-admin/app';
+import { getFirestore, Timestamp, QueryDocumentSnapshot, DocumentData } from 'firebase-admin/firestore';
 import { addMonths, isBefore, isEqual, addDays, addWeeks } from 'date-fns';
 import { Resend } from 'resend';
 import * as ics from 'ics';
@@ -8,8 +9,8 @@ import { randomBytes } from 'crypto';
 
 setGlobalOptions({ region: 'europe-west2' });
 
-admin.initializeApp();
-const db = admin.firestore();
+initializeApp();
+const db = getFirestore();
 
 const BOOKINGS_COLLECTION = 'bookings';
 const RECURRING_TEMPLATES_COLLECTION = 'recurring_templates';
@@ -99,8 +100,8 @@ export const generateWeeklySessions = functions.scheduler.onSchedule('0 2 * * *'
                 ptId: templateData.ptId,
                 type: templateData.type,
                 status: 'confirmed',
-                startTime: admin.firestore.Timestamp.fromDate(currentStart),
-                endTime: admin.firestore.Timestamp.fromDate(currentEnd),
+                startTime: Timestamp.fromDate(currentStart),
+                endTime: Timestamp.fromDate(currentEnd),
                 recurringTemplateId: templateDoc.id,
                 isException: false
             });
@@ -404,7 +405,7 @@ export const onRecurringSessionCreated = functions.firestore.onDocumentCreated(
         const instances = await db.collection(BOOKINGS_COLLECTION)
             .where('recurringTemplateId', '==', event.params.templateId)
             .get();
-        const firstInstance = instances.docs.reduce<admin.firestore.QueryDocumentSnapshot | null>(
+        const firstInstance = instances.docs.reduce<QueryDocumentSnapshot | null>(
             (first, doc) => (!first || doc.data().startTime.toMillis() < first.data().startTime.toMillis() ? doc : first),
             null
         );
@@ -496,7 +497,7 @@ export const ptCalendarFeed = functions.https.onRequest({ invoker: 'public' }, a
     const since = addDays(new Date(), -CALENDAR_FEED_HISTORY_DAYS).getTime();
     const bookingsSnapshot = await db.collection(BOOKINGS_COLLECTION).where('ptId', '==', ptId).get();
     const bookings = bookingsSnapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() } as admin.firestore.DocumentData & { id: string }))
+        .map(doc => ({ id: doc.id, ...doc.data() } as DocumentData & { id: string }))
         .filter(b => b.startTime && b.startTime.toMillis() >= since)
         .filter(b =>
             (b.type === 'pt' && (b.status === 'confirmed' || b.status === 'pending')) ||
