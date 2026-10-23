@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, initializeAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getFunctions } from 'firebase/functions';
 // @ts-ignore - TS doesn't always find this export in the firebase types
 import { getReactNativePersistence } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -40,5 +41,7 @@ try {
 }
 
 const db = getFirestore(app);
+// Must match the region set in functions/src/index.ts
+const functions = getFunctions(app, 'europe-west2');
 
-export { app, auth, db };
+export { app, auth, db, functions };

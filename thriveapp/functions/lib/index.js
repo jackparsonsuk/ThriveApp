@@ -33,13 +33,14 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onRecurringSessionCreated = exports.onBookingCreatedForClient = exports.onBookingRescheduled = exports.onBookingConfirmed = exports.generateWeeklySessions = void 0;
+exports.ptCalendarFeed = exports.getCalendarFeedUrl = exports.onRecurringSessionCreated = exports.onBookingCreatedForClient = exports.onBookingRescheduled = exports.onBookingConfirmed = exports.generateWeeklySessions = void 0;
 const functions = __importStar(require("firebase-functions/v2"));
 const admin = __importStar(require("firebase-admin"));
 const date_fns_1 = require("date-fns");
 const resend_1 = require("resend");
 const ics = __importStar(require("ics"));
 const v2_1 = require("firebase-functions/v2");
+const crypto_1 = require("crypto");
 (0, v2_1.setGlobalOptions)({ region: 'europe-west2' });
 admin.initializeApp();
 const db = admin.firestore();
@@ -393,5 +394,129 @@ exports.onRecurringSessionCreated = functions.firestore.onDocumentCreated(`${REC
             endDate: data.endDate ? data.endDate.toDate() : null,
         },
     });
+});
+const CALENDAR_FEEDS_COLLECTION = 'calendar_feeds';
+const CALENDAR_FEED_FUNCTION = 'ptCalendarFeed';
+// How far back the feed goes, so last week's sessions don't vanish from the PT's calendar
+const CALENDAR_FEED_HISTORY_DAYS = 30;
+const calendarFeedUrl = (token) => {
+    const project = process.env.GCLOUD_PROJECT;
+    const base = process.env.FUNCTIONS_EMULATOR === 'true'
+        ? `http://127.0.0.1:5001/${project}/europe-west2/${CALENDAR_FEED_FUNCTION}`
+        : `https://europe-west2-${project}.cloudfunctions.net/${CALENDAR_FEED_FUNCTION}`;
+    return `${base}/${token}.ics`;
+};
+/**
+ * Returns the signed-in PT's private calendar feed URL, creating it on first use.
+ * Pass { reset: true } to replace the token, so a link shared by mistake stops working.
+ * Tokens live in calendar_feeds, which the rules give clients no access to: users docs
+ * are readable by every client, so the token can't go there.
+ */
+exports.getCalendarFeedUrl = functions.https.onCall(async (request) => {
+    var _a, _b, _c;
+    const uid = (_a = request.auth) === null || _a === void 0 ? void 0 : _a.uid;
+    if (!uid) {
+        throw new functions.https.HttpsError('unauthenticated', 'Sign in to get your calendar link.');
+    }
+    const userDoc = await db.collection('users').doc(uid).get();
+    const role = (_b = userDoc.data()) === null || _b === void 0 ? void 0 : _b.role;
+    if (role !== 'pt' && role !== 'admin') {
+        throw new functions.https.HttpsError('permission-denied', 'Only PTs have a calendar feed.');
+    }
+    const existing = await db.collection(CALENDAR_FEEDS_COLLECTION).where('userId', '==', uid).get();
+    if (!((_c = request.data) === null || _c === void 0 ? void 0 : _c.reset) && !existing.empty) {
+        return { url: calendarFeedUrl(existing.docs[0].id) };
+    }
+    const token = (0, crypto_1.randomBytes)(24).toString('hex');
+    const batch = db.batch();
+    existing.docs.forEach(doc => batch.delete(doc.ref));
+    batch.set(db.collection(CALENDAR_FEEDS_COLLECTION).doc(token), {
+        userId: uid,
+        createdAt: new Date(),
+    });
+    await batch.commit();
+    return { url: calendarFeedUrl(token) };
+});
+/**
+ * Serves a PT's sessions as an .ics feed that Apple/Google Calendar can subscribe to:
+ * confirmed PT sessions, pending requests (as tentative), their own blocked time and the
+ * group classes they run. Cancelled bookings are left out, which removes them from the
+ * subscribed calendar on its next refresh. Calendar apps can't sign in, so the unguessable
+ * token in the URL is what protects it.
+ */
+exports.ptCalendarFeed = functions.https.onRequest({ invoker: 'public' }, async (req, res) => {
+    var _a;
+    const token = req.path.replace(/^\//, '').replace(/\.ics$/, '');
+    if (!/^[0-9a-f]{48}$/.test(token)) {
+        res.status(404).send('Not found');
+        return;
+    }
+    const feedDoc = await db.collection(CALENDAR_FEEDS_COLLECTION).doc(token).get();
+    const ptId = (_a = feedDoc.data()) === null || _a === void 0 ? void 0 : _a.userId;
+    if (!ptId) {
+        res.status(404).send('Not found');
+        return;
+    }
+    // Filtered by date here rather than in the query, so it needs no composite index
+    const since = (0, date_fns_1.addDays)(new Date(), -CALENDAR_FEED_HISTORY_DAYS).getTime();
+    const bookingsSnapshot = await db.collection(BOOKINGS_COLLECTION).where('ptId', '==', ptId).get();
+    const bookings = bookingsSnapshot.docs
+        .map(doc => (Object.assign({ id: doc.id }, doc.data())))
+        .filter(b => b.startTime && b.startTime.toMillis() >= since)
+        .filter(b => (b.type === 'pt' && (b.status === 'confirmed' || b.status === 'pending')) ||
+        (b.type === 'pt_block' && b.status === 'confirmed') ||
+        // Each group member has a booking carrying the PT's id; the PT's own one stands for the class
+        (b.type === 'group' && b.status === 'confirmed' && b.userId === ptId));
+    const clientIds = [...new Set(bookings.filter(b => b.type === 'pt' && b.userId !== ptId).map(b => b.userId))];
+    const groupIds = [...new Set(bookings.filter(b => b.type === 'group' && b.groupId).map(b => b.groupId))];
+    const [clientDocs, groupDocs] = await Promise.all([
+        clientIds.length ? db.getAll(...clientIds.map(id => db.collection('users').doc(id))) : [],
+        groupIds.length ? db.getAll(...groupIds.map(id => db.collection('groups').doc(id))) : [],
+    ]);
+    const clientNames = new Map(clientDocs.map(doc => { var _a; return [doc.id, (_a = doc.data()) === null || _a === void 0 ? void 0 : _a.name]; }));
+    const groupNames = new Map(groupDocs.map(doc => { var _a; return [doc.id, (_a = doc.data()) === null || _a === void 0 ? void 0 : _a.name]; }));
+    const events = bookings.map(b => {
+        let title;
+        let status = 'CONFIRMED';
+        if (b.type === 'pt_block') {
+            title = b.reason || 'Unavailable';
+        }
+        else if (b.type === 'group') {
+            title = `Group: ${groupNames.get(b.groupId) || 'Class'}`;
+        }
+        else if (b.userId === ptId) {
+            title = 'PT session';
+        }
+        else {
+            const clientName = clientNames.get(b.userId) || 'Client';
+            if (b.status === 'pending') {
+                title = `Request: ${clientName} (not yet accepted)`;
+                status = 'TENTATIVE';
+            }
+            else {
+                title = `PT: ${clientName}`;
+            }
+        }
+        return {
+            uid: calendarUid(b.id),
+            start: b.startTime.toMillis(),
+            end: b.endTime.toMillis(),
+            title,
+            status,
+        };
+    });
+    const { error, value } = ics.createEvents(events, {
+        calName: 'Thrive sessions',
+        productId: 'thrivecollective/pt-calendar',
+        method: 'PUBLISH',
+    });
+    if (error || !value) {
+        console.error('Failed to generate calendar feed', error);
+        res.status(500).send('Could not build calendar');
+        return;
+    }
+    res.set('Content-Type', 'text/calendar; charset=utf-8');
+    res.set('Cache-Control', 'private, max-age=300');
+    res.send(value);
 });
 //# sourceMappingURL=index.js.map

@@ -190,6 +190,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // --- CALENDAR FEEDS COLLECTION ---
+    match /calendar_feeds/{token} {
+      // Doc ids are the secret tokens in PTs' calendar feed URLs. Only the Cloud Functions
+      // (admin SDK) read or write them; no client access at all.
+      allow read, write: if false;
+    }
+
     // --- ERROR LOGS COLLECTION ---
     match /error_logs/{errorId} {
       // Anyone can create an error log (errors happen before login too)

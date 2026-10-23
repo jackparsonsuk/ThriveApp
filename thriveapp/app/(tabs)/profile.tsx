@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Linking } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '../../config/firebaseConfig';
 import { signOut } from 'firebase/auth';
@@ -12,6 +13,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii, Spacing, Typography, bookingTypeColor } from '@/constants/theme';
 import Constants from 'expo-constants';
 import { format } from 'date-fns';
+import { getCalendarFeedUrl, toWebcalUrl, toGoogleCalendarUrl } from '../../services/calendarFeedService';
 import { ScreenHeader, Card, SectionHeader, Badge, Button, StatBox, Avatar } from '@/components/ui';
 
 export default function ProfileScreen() {
@@ -37,9 +39,45 @@ export default function ProfileScreen() {
         isError?: boolean;
         isSuccess?: boolean;
         onConfirm?: () => void;
+        confirmText?: string;
+        isDestructive?: boolean;
     }>({ visible: false, title: '', message: '' });
 
     const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
+
+    // PT calendar feed: fetched on first use, since it creates the link if there isn't one yet
+    const [feedUrl, setFeedUrl] = useState<string | null>(null);
+    const [feedLoading, setFeedLoading] = useState(false);
+
+    const withFeedUrl = async (action: (url: string) => Promise<unknown> | void, reset = false) => {
+        setFeedLoading(true);
+        try {
+            const url = !reset && feedUrl ? feedUrl : await getCalendarFeedUrl(reset);
+            setFeedUrl(url);
+            await action(url);
+        } catch (error) {
+            console.error('Error getting calendar feed link:', error);
+            setAlertConfig({ visible: true, title: 'Something went wrong', message: "Couldn't get your calendar link. Please try again.", isError: true });
+        } finally {
+            setFeedLoading(false);
+        }
+    };
+
+    const copyFeedUrl = () => withFeedUrl(async url => {
+        await Clipboard.setStringAsync(url);
+        setAlertConfig({ visible: true, title: 'Copied', message: 'Paste this link into your calendar app where it asks to subscribe or add a calendar from a URL.', isSuccess: true });
+    });
+
+    const confirmResetFeedUrl = () => setAlertConfig({
+        visible: true,
+        title: 'Reset calendar link?',
+        message: 'Your current link will stop working, and any calendar subscribed to it will stop updating. You can then add the new one.',
+        confirmText: 'Reset',
+        isDestructive: true,
+        onConfirm: () => {
+            withFeedUrl(() => setAlertConfig({ visible: true, title: 'Link reset', message: 'Your old link no longer works. Add your calendar again to keep it updating.', isSuccess: true }), true);
+        },
+    });
 
     const fetchProfileAndData = async () => {
         if (!user) return;
@@ -154,6 +192,28 @@ export default function ProfileScreen() {
                             </View>
                         )}
 
+                        {(profile?.role === 'pt' || profile?.role === 'admin') && (
+                            <View style={styles.calendarSection}>
+                                <SectionHeader title="Your Calendar" />
+                                <Card>
+                                    <Text style={[styles.calendarHelp, { color: theme.textSecondary }]}>
+                                        See your PT sessions, requests and blocked time in your phone&apos;s calendar. It keeps itself up to date as sessions are booked, moved or cancelled.
+                                    </Text>
+                                    <View style={styles.calendarButtons}>
+                                        <Button variant="tint" icon="logo-apple" label="Add to Apple Calendar" disabled={feedLoading} onPress={() => withFeedUrl(url => Linking.openURL(toWebcalUrl(url)))} />
+                                        <Button variant="tint" icon="logo-google" label="Add to Google Calendar" disabled={feedLoading} onPress={() => withFeedUrl(url => Linking.openURL(toGoogleCalendarUrl(url)))} />
+                                        <Button variant="secondary" size="sm" icon="copy-outline" label="Copy link" disabled={feedLoading} onPress={copyFeedUrl} />
+                                    </View>
+                                    <Text style={[styles.calendarNote, { color: theme.textTertiary }]}>
+                                        Keep this link private: anyone with it can see your sessions. Google Calendar can take a few hours to show changes.
+                                    </Text>
+                                    <TouchableOpacity onPress={confirmResetFeedUrl} disabled={feedLoading} accessibilityRole="button">
+                                        <Text style={[styles.calendarReset, { color: theme.tint }]}>Reset link</Text>
+                                    </TouchableOpacity>
+                                </Card>
+                            </View>
+                        )}
+
                         <View style={styles.actionSection}>
                             <Button variant="destructive" icon="log-out-outline" label="Log Out" onPress={handleLogout} />
                         </View>
@@ -176,6 +236,8 @@ export default function ProfileScreen() {
                 message={alertConfig.message}
                 onClose={() => closeAlert()}
                 onConfirm={alertConfig.onConfirm}
+                confirmText={alertConfig.confirmText}
+                isDestructive={alertConfig.isDestructive}
             />
         </SafeAreaView>
     );
@@ -204,6 +266,25 @@ const styles = StyleSheet.create({
     emailText: {
         ...Typography.body,
         marginBottom: Spacing.lg,
+    },
+    calendarSection: {
+        marginBottom: Spacing.xxl,
+    },
+    calendarHelp: {
+        ...Typography.subhead,
+        marginBottom: Spacing.lg,
+    },
+    calendarButtons: {
+        gap: Spacing.sm,
+    },
+    calendarNote: {
+        ...Typography.footnote,
+        marginTop: Spacing.lg,
+    },
+    calendarReset: {
+        ...Typography.footnote,
+        fontWeight: '600',
+        marginTop: Spacing.sm,
     },
     actionSection: {
         marginTop: Spacing.sm,
