@@ -10,6 +10,8 @@ import CustomAlert from '../../components/CustomAlert';
 import RescheduleSheet, { RescheduleTarget } from '../../components/RescheduleSheet';
 import { useRouter } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useSeason } from '@/context/season';
+import { SEASONS, SeasonalThemeSetting } from '@/constants/seasons';
 import { Colors, Radii, Spacing, Typography, bookingTypeColor } from '@/constants/theme';
 import { BOOKING_WINDOW_DAYS } from '@/constants/config';
 import { ScreenHeader, EmptyState, Badge, Button, Card, Avatar, ChipGroup, DateStrip, IconButton, ListContainer, ListRow, SectionHeader, SegmentedControl, StatBox, TextField, Toggle } from '@/components/ui';
@@ -35,6 +37,7 @@ export default function AdminScreen() {
     const { user } = useAuth();
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
+    const { setting: seasonalTheme, availableSeason, refresh: refreshSeason } = useSeason();
     const [activeTab, setActiveTab] = useState<AdminTab>('schedule');
     const scheduleRef = useRef<ScrollView>(null);
     // y position of each timeline row, recorded as they lay out, so we can scroll to "now"
@@ -318,6 +321,21 @@ export default function AdminScreen() {
         } finally {
             setSavingAnnouncement(false);
             fetchSettings(); // Refresh to catch any other changes
+        }
+    };
+
+    const handleChangeSeasonalTheme = async (val: SeasonalThemeSetting) => {
+        try {
+            await updateGlobalSettings({ seasonalTheme: val });
+            await refreshSeason();
+        } catch (error) {
+            console.error('Error saving seasonal theme:', error);
+            setAlertConfig({
+                visible: true,
+                title: 'Error',
+                message: 'Failed to update the seasonal theme.',
+                isDestructive: false
+            });
         }
     };
 
@@ -934,6 +952,26 @@ export default function AdminScreen() {
                             loading={savingAnnouncement}
                             style={{ marginTop: Spacing.md }}
                         />
+                    </Card>
+
+                    <SectionHeader title="Seasonal Theme" style={{ marginTop: Spacing.xxl }} />
+                    <Card>
+                        <Text style={[styles.settingDescription, { color: theme.textSecondary, marginBottom: Spacing.md }]}>
+                            Auto shows Halloween from 17 to 31 October and Christmas through December. Members can turn it off for themselves in Profile.
+                        </Text>
+                        <SegmentedControl
+                            options={[
+                                { value: 'auto', label: 'Auto' },
+                                { value: 'off', label: 'Off' },
+                                { value: 'halloween', label: SEASONS.halloween.label },
+                                { value: 'christmas', label: SEASONS.christmas.label },
+                            ]}
+                            value={seasonalTheme}
+                            onChange={handleChangeSeasonalTheme}
+                        />
+                        <Text style={[styles.settingDescription, { color: theme.textTertiary, marginTop: Spacing.md }]}>
+                            {availableSeason ? `Showing now: ${SEASONS[availableSeason].label} ${SEASONS[availableSeason].emoji}` : 'No seasonal theme showing right now.'}
+                        </Text>
                     </Card>
                 </>
             )}

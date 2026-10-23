@@ -10,11 +10,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useSeason } from '@/context/season';
+import { SEASONS } from '@/constants/seasons';
 import { Colors, Radii, Spacing, Typography, bookingTypeColor } from '@/constants/theme';
 import Constants from 'expo-constants';
 import { format } from 'date-fns';
 import { getCalendarFeedUrl, toWebcalUrl, toGoogleCalendarUrl } from '../../services/calendarFeedService';
-import { ScreenHeader, Card, SectionHeader, Badge, Button, StatBox, Avatar } from '@/components/ui';
+import { ScreenHeader, Card, SectionHeader, Badge, Button, StatBox, Avatar, Toggle } from '@/components/ui';
 
 export default function ProfileScreen() {
     const router = useRouter();
@@ -23,6 +25,7 @@ export default function ProfileScreen() {
     const [loading, setLoading] = useState(true);
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
+    const { availableSeason, optedOut, setOptedOut } = useSeason();
 
     // Stats State
     const [ptCount, setPtCount] = useState(0);
@@ -214,6 +217,25 @@ export default function ProfileScreen() {
                             </View>
                         )}
 
+                        {availableSeason && (
+                            <View style={styles.calendarSection}>
+                                <SectionHeader title="Appearance" />
+                                <Card>
+                                    <View style={styles.settingRow}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.settingLabel, { color: theme.text }]}>
+                                                {SEASONS[availableSeason].label} theme {SEASONS[availableSeason].emoji}
+                                            </Text>
+                                            <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                                                Seasonal emoji and greetings. Only changes this device.
+                                            </Text>
+                                        </View>
+                                        <Toggle value={!optedOut} onValueChange={val => setOptedOut(!val)} accessibilityLabel={`${SEASONS[availableSeason].label} theme`} />
+                                    </View>
+                                </Card>
+                            </View>
+                        )}
+
                         <View style={styles.actionSection}>
                             <Button variant="destructive" icon="log-out-outline" label="Log Out" onPress={handleLogout} />
                         </View>
@@ -267,6 +289,9 @@ const styles = StyleSheet.create({
         ...Typography.body,
         marginBottom: Spacing.lg,
     },
+    settingRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+    settingLabel: { ...Typography.headline, marginBottom: 2 },
+    settingDescription: { ...Typography.footnote, fontWeight: '400', lineHeight: 18 },
     calendarSection: {
         marginBottom: Spacing.xxl,
     },

@@ -7,6 +7,7 @@ import { Analytics } from '@vercel/analytics/react';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider } from '../context/auth';
+import { SeasonProvider } from '../context/season';
 import { Colors } from '@/constants/theme';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { setupGlobalErrorHandling } from '../services/errorService';
@@ -48,22 +49,24 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <ThemeProvider value={colorScheme === 'dark' ? CustomDarkTheme : CustomDefaultTheme}>
-        <AuthProvider>
-          <Head>
-            <title>Thrive Collective</title>
-            <meta name="description" content="Thrive Collective Gym Booking App" />
-          </Head>
-          <Stack screenOptions={{ title: 'Thrive Collective' }}>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Settings' }} />
-            {/* Analytics draws its own header, so the stack's one would be a second, duplicate bar */}
-            <Stack.Screen name="analytics" options={{ headerShown: false }} />
-            <Stack.Screen name="week" options={{ headerShown: false }} />
-          </Stack>
-          <StatusBar style="auto" />
-          <Analytics />
-        </AuthProvider>
+        <SeasonProvider>
+          <AuthProvider>
+            <Head>
+              <title>Thrive Collective</title>
+              <meta name="description" content="Thrive Collective Gym Booking App" />
+            </Head>
+            <Stack screenOptions={{ title: 'Thrive Collective' }}>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+              <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Settings' }} />
+              {/* Analytics draws its own header, so the stack's one would be a second, duplicate bar */}
+              <Stack.Screen name="analytics" options={{ headerShown: false }} />
+              <Stack.Screen name="week" options={{ headerShown: false }} />
+            </Stack>
+            <StatusBar style="auto" />
+            <Analytics />
+          </AuthProvider>
+        </SeasonProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

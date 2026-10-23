@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.4.0] - 2026-10-23
+
+### Added
+- **Seasonal Themes**: Thrive gets into the spirit of the season. From 17 to 31 October screen titles carry a 🎃, the Dashboard says "Happy Halloween" and your next session becomes your next *spooky* session; through December it is 🎄, "Merry Christmas" and *festive* sessions. Colours stay Thrive Orange. Admins can leave it on Auto, switch it off, or force either season from Admin → Settings, and anyone can turn it off for their own device from Profile → Appearance.
+
 ## [3.3.0] - 2026-10-23
 
 ### Added

@@ -10,6 +10,8 @@ import { format, isSameDay, isToday, isTomorrow } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import CustomAlert from '../../components/CustomAlert';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useSeason } from '@/context/season';
+import { SEASONS } from '@/constants/seasons';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import UpdateBanner from '../../components/UpdateBanner';
 import RescheduleSheet, { RescheduleTarget } from '../../components/RescheduleSheet';
@@ -42,6 +44,7 @@ export default function DashboardScreen() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+  const { season } = useSeason();
 
   type ExtendedBooking = Booking & {
     clientName?: string;
@@ -409,17 +412,22 @@ export default function DashboardScreen() {
   const firstName = userProfile?.name?.split(' ')[0] || 'there';
   const initial = (userProfile?.name?.trim()?.[0] || firstName[0] || '?').toUpperCase();
 
+  // In season, "session" becomes "*spooky* session" and so on
+  const seasonal = (word: string) => season
+    ? <><Text style={styles.seasonalWord}>{SEASONS[season].adjective}</Text> {word}</>
+    : word;
+
   const heroSubtitle = loading
     ? 'Loading your schedule…'
     : nextBooking
     ? isToday(nextBooking.startTime)
-      ? "You've got a session today — let's make it count."
+      ? <>You&apos;ve got a {seasonal('session')} today — let&apos;s make it count.</>
       : isTomorrow(nextBooking.startTime)
-      ? 'Your next session is tomorrow. Get ready!'
-      : `Your next session is ${format(nextBooking.startTime, 'EEEE, MMM d')}.`
+      ? <>Your next {seasonal('session')} is tomorrow. Get ready!</>
+      : <>Your next {seasonal('session')} is {format(nextBooking.startTime, 'EEEE, MMM d')}.</>
     : isPtOrAdmin
-    ? "Here's what's on your schedule."
-    : "You're all clear — time to book your next session.";
+    ? <>Here&apos;s what&apos;s on your {seasonal('schedule')}.</>
+    : <>You&apos;re all clear — time to book your next {seasonal('session')}.</>;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
@@ -432,8 +440,14 @@ export default function DashboardScreen() {
             <Avatar name={initial} size={52} solid />
             <View style={styles.heroTextColumn}>
               <View style={styles.heroGreetingRow}>
-                <Ionicons name={getGreetingIcon()} size={16} color={theme.tint} style={{ marginRight: 6 }} />
-                <Text style={[styles.greetingText, { color: theme.textSecondary }]}>{getGreeting()}</Text>
+                {season ? (
+                  <Text style={styles.greetingEmoji} accessibilityElementsHidden importantForAccessibility="no">{SEASONS[season].emoji}</Text>
+                ) : (
+                  <Ionicons name={getGreetingIcon()} size={16} color={theme.tint} style={{ marginRight: 6 }} />
+                )}
+                <Text style={[styles.greetingText, { color: season ? theme.tint : theme.textSecondary }]}>
+                  {season ? SEASONS[season].greeting : getGreeting()}
+                </Text>
               </View>
               <Text style={[styles.nameText, { color: theme.text }]} numberOfLines={1}>{firstName}</Text>
             </View>
@@ -772,12 +786,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  greetingEmoji: {
+    fontSize: 16,
+    marginRight: 6,
+  },
   greetingText: {
     ...Typography.subhead,
   },
   nameText: {
     ...Typography.largeTitle,
     marginTop: 2,
+  },
+  seasonalWord: {
+    fontStyle: 'italic',
   },
   heroSubtitle: {
     ...Typography.body,

@@ -1,5 +1,6 @@
 import { db } from '../config/firebaseConfig';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import type { SeasonalThemeSetting } from '../constants/seasons';
 
 const SETTINGS_COLLECTION = 'settings';
 const GLOBAL_DOC = 'global';
@@ -9,6 +10,7 @@ export interface GlobalSettings {
     announcementText?: string;
     showAnnouncement?: boolean;
     latestVersion?: string;
+    seasonalTheme?: SeasonalThemeSetting;
 }
 
 /**

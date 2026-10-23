@@ -2,6 +2,8 @@ import React from 'react';
 import { View, Text, Image, StyleSheet, ImageSourcePropType, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useSeason } from '@/context/season';
+import { SEASONS } from '@/constants/seasons';
 import { Colors, Spacing, Typography } from '@/constants/theme';
 
 interface ScreenHeaderProps {
@@ -18,6 +20,7 @@ interface ScreenHeaderProps {
 export default function ScreenHeader({ title, subtitle, logo, right, onBack, backLabel = 'Back' }: ScreenHeaderProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+  const { season } = useSeason();
 
   return (
     <View style={styles.container}>
@@ -42,7 +45,10 @@ export default function ScreenHeader({ title, subtitle, logo, right, onBack, bac
               resizeMode="contain"
             />
           )}
-          <Text style={[styles.title, { color: theme.text }]} numberOfLines={2}>{title}</Text>
+          <Text style={[styles.title, { color: theme.text }]} numberOfLines={2}>
+            {title}
+            {season && <Text accessibilityElementsHidden importantForAccessibility="no">{` ${SEASONS[season].emoji}`}</Text>}
+          </Text>
           {subtitle && <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{subtitle}</Text>}
         </View>
         {right && <View style={styles.right}>{right}</View>}
