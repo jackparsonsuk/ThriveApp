@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, Booking, getAllPTs, assignClientToPt, getClientsForPt, getUserBookingsForDate, createRecurringSession, getGymBookingsForDate, checkSlotAvailability, getPendingPTRequestsForPT, updateBookingStatus, getUserPendingBookings, cancelBooking, getPersonAllBookingsForDate, updateWorkingHours, updateUserProfile, isUserActive, WorkingHours } from '../../services/bookingService';
+import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, Booking, getAllPTs, assignClientToPt, getClientsForPt, createRecurringSession, getGymBookingsForDate, checkSlotAvailability, getPendingPTRequestsForPT, updateBookingStatus, getUserPendingBookings, cancelBooking, getPersonAllBookingsForDate, updateWorkingHours, updateUserProfile, isUserActive, WorkingHours } from '../../services/bookingService';
 import { getPtDayAvailability, PtSlot, formatWorkingDay, DAY_LABELS, DAY_ORDER, TIME_OPTIONS, effectiveWorkingHours, LEGACY_WORKING_DAY } from '../../services/availabilityService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -635,7 +635,7 @@ export default function PTBookingScreen() {
                             await cancelBooking(slot.blockBookingId!, 'pt');
                             if (user?.uid) fetchAvailability(user.uid);
                             setAlertConfig({ visible: true, title: 'Success!', message: 'Time unblocked successfully.', isSuccess: true });
-                        } catch (e) {
+                        } catch {
                             setAlertConfig({ visible: true, title: 'Error', message: 'Failed to unblock.', isError: true });
                         } finally {
                             setBookingLoading(false);

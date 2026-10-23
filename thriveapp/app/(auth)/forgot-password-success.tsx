@@ -25,11 +25,11 @@ export default function ForgotPasswordSuccessScreen() {
 
             <View style={styles.content}>
                 <Text style={[styles.message, { color: theme.text }]}>
-                    We've sent a password reset link to your email address.
+                    We&apos;ve sent a password reset link to your email address.
                 </Text>
 
                 <View style={[styles.alertBox, { backgroundColor: theme.tintMuted, borderColor: theme.tint }]}>
-                    <Text style={[styles.alertTitle, { color: theme.tint }]}>Didn't receive it?</Text>
+                    <Text style={[styles.alertTitle, { color: theme.tint }]}>Didn&apos;t receive it?</Text>
                     <Text style={[styles.alertText, { color: theme.tint }]}>
                         Please check your spam folder or promotions tab. It may take a few minutes to arrive.
                     </Text>

@@ -1,4 +1,4 @@
-import { collection, query, where, getDocs, addDoc, doc, getDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, doc, getDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../config/firebaseConfig';
 import { UserProfile, getUserProfile } from './bookingService';
 

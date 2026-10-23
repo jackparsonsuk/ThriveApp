@@ -51,7 +51,7 @@ class ErrorBoundary extends Component<Props, State> {
             
             <Text style={styles.title}>Oops! Something went wrong.</Text>
             <Text style={styles.message}>
-              We've experienced an unexpected problem. Our team has been notified.
+              We&apos;ve experienced an unexpected problem. Our team has been notified.
             </Text>
             
             <View style={styles.errorIdContainer}>

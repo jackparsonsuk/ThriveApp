@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { createGroup, getPTGroups, Group, GroupInvite, inviteToGroup, getGroupMembers, getGroupInvites, getPendingInvitesForEmail, acceptGroupInvite, declineGroupInvite, getClientGroups, removeGroupMember, deleteGroup } from '../../services/groupService';
-import { getUserProfile, UserProfile, getGymBookingsForDate, bookGroupSession, checkSlotAvailability, Booking, getGroupSessions, cancelBooking } from '../../services/bookingService';
+import { getUserProfile, UserProfile, getGymBookingsForDate, bookGroupSession, Booking, getGroupSessions, cancelBooking } from '../../services/bookingService';
 import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
@@ -594,7 +594,7 @@ export default function GroupsScreen() {
                     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
                         <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
                             <Text style={[styles.modalTitle, { color: theme.text }]}>Invite Client</Text>
-                            <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>Enter the client's email address</Text>
+                            <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>Enter the client&apos;s email address</Text>
 
                             <TextField
                                 containerStyle={styles.modalInput}
