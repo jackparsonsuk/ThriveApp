@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.5.0] - 2026-10-23
+
+### Added
+- **Add Thrive To Your Home Screen**: Thrive can now live on your phone's home screen and open full screen, like an app. Profile → Get the App shows the steps for iPhone and Android, and on Chrome there's a one-tap Install app button. The guide disappears once you're using the installed app.
+
+### Changed
+- **Faster Loading**: The app downloads about 40% less when it first opens, and each screen loads only when you open it. The Dashboard fetches everything at once instead of one piece at a time, so it's ready sooner, especially for PTs with lots of clients.
+- **Your Profile Stays Up To Date**: Changes to your profile, like being assigned a PT, now show on every screen straight away without a refresh.
+- **Security And Reliability Updates**: Updated the app's and the booking emails' underlying libraries to fix known security issues, and added automated checks of the booking rules that run before every website update.
+
 ## [3.4.0] - 2026-10-23
 
 ### Added
