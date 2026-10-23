@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.3.0] - 2026-10-23
+
+### Added
+- **Your Sessions In Your Own Calendar**: PTs can add their Thrive sessions to Apple or Google Calendar from the Profile tab. It's a calendar you subscribe to, so confirmed sessions, pending requests, blocked time and the classes you run stay up to date as they're booked, moved or cancelled. The link is private, and Reset link replaces it if it's ever shared by mistake. Google Calendar can take a few hours to show changes.
+- **Week View (Trial)**: PTs can see their week as a calendar grid from the Schedule tab, with sessions, requests, blocked time and classes laid out by day and hour. Tap an empty hour to book a client or block the time, move it 15 minutes at a time or change its length, and see straight away if it clashes with you, the client or the gym. Tap a booking to accept or decline a request, move a session, or remove a block. Phones show three days at a time; wider screens show the whole week.
+
 ## [3.2.0] - 2026-10-21
 
 ### Changed
