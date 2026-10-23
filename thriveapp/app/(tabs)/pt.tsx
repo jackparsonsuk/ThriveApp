@@ -948,6 +948,20 @@ export default function PTBookingScreen() {
         const scheduleTab = (
             <>
                 <View style={styles.section}>
+                    <SectionHeader title="Your Week" />
+                    <Card style={styles.linkCard}>
+                        <View style={[styles.linkIcon, { backgroundColor: theme.tintMuted }]}>
+                            <Ionicons name="grid-outline" size={20} color={theme.tint} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={[styles.rowTitle, { color: theme.text }]}>Week view (trial)</Text>
+                            <Text style={[styles.rowSubtitle, { color: theme.textSecondary }]}>Sessions, requests and blocked time at a glance</Text>
+                        </View>
+                        <Button variant="secondary" size="sm" label="Open" onPress={() => router.push('/week')} />
+                    </Card>
+                </View>
+
+                <View style={styles.section}>
                     <SectionHeader title="Time Off" />
                     <Card style={styles.linkCard}>
                         <View style={[styles.linkIcon, { backgroundColor: theme.tintMuted }]}>
