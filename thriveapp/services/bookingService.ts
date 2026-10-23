@@ -107,10 +107,11 @@ export const getUserBookingsForDate = async (userId: string, date: Date): Promis
 };
 
 // Fetch ALL bookings (confirmed + pending) for a person by their userId — used for conflict checking
-export const getPersonAllBookingsForDate = async (userId: string, date: Date): Promise<Booking[]> => {
-    const start = startOfDay(date);
-    const end = endOfDay(date);
+export const getPersonAllBookingsForDate = async (userId: string, date: Date): Promise<Booking[]> =>
+    getPersonAllBookingsForRange(userId, startOfDay(date), endOfDay(date));
 
+// As getPersonAllBookingsForDate, over any span of days (the week view)
+export const getPersonAllBookingsForRange = async (userId: string, start: Date, end: Date): Promise<Booking[]> => {
     const qConfirmed = query(
         collection(db, BOOKINGS_COLLECTION),
         where('userId', '==', userId),
@@ -244,10 +245,11 @@ export const getGymBookingsForDate = async (date: Date): Promise<Booking[]> => {
 };
 
 // Fetch PT bookings for a specific day and specific PT to check availability
-export const getPTBookingsForDate = async (date: Date, ptId: string): Promise<Booking[]> => {
-    const start = startOfDay(date);
-    const end = endOfDay(date);
+export const getPTBookingsForDate = async (date: Date, ptId: string): Promise<Booking[]> =>
+    getPTBookingsForRange(ptId, startOfDay(date), endOfDay(date));
 
+// As getPTBookingsForDate, over any span of days (the week view). Same query shapes, so the same indexes.
+export const getPTBookingsForRange = async (ptId: string, start: Date, end: Date): Promise<Booking[]> => {
     const q1 = query(
         collection(db, BOOKINGS_COLLECTION),
         where('type', '==', 'pt'),
