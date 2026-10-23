@@ -1,7 +1,8 @@
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../config/firebaseConfig';
 
-// The PT's private calendar feed URL. Pass reset to replace it, so the old link stops working.
+// The signed-in user's private calendar feed URL (a PT's sessions, or a client's own bookings).
+// Pass reset to replace it, so the old link stops working.
 export const getCalendarFeedUrl = async (reset = false): Promise<string> => {
     const call = httpsCallable<{ reset: boolean }, { url: string }>(functions, 'getCalendarFeedUrl');
     const result = await call({ reset });

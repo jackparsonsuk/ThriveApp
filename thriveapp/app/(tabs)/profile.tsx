@@ -48,7 +48,7 @@ export default function ProfileScreen() {
 
     const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
-    // PT calendar feed: fetched on first use, since it creates the link if there isn't one yet
+    // Personal calendar feed: fetched on first use, since it creates the link if there isn't one yet
     const [feedUrl, setFeedUrl] = useState<string | null>(null);
     const [feedLoading, setFeedLoading] = useState(false);
 
@@ -194,12 +194,14 @@ export default function ProfileScreen() {
                             </View>
                         )}
 
-                        {(profile?.role === 'pt' || profile?.role === 'admin') && (
+                        {profile && (
                             <View style={styles.calendarSection}>
                                 <SectionHeader title="Your Calendar" />
                                 <Card>
                                     <Text style={[styles.calendarHelp, { color: theme.textSecondary }]}>
-                                        See your PT sessions, requests and blocked time in your phone&apos;s calendar. It keeps itself up to date as sessions are booked, moved or cancelled.
+                                        {profile.role === 'client'
+                                            ? 'See your gym sessions, PT sessions and group classes in your phone’s calendar. It keeps itself up to date as sessions are booked, moved or cancelled.'
+                                            : 'See your PT sessions, requests and blocked time in your phone’s calendar. It keeps itself up to date as sessions are booked, moved or cancelled.'}
                                     </Text>
                                     <View style={styles.calendarButtons}>
                                         <Button variant="tint" icon="logo-apple" label="Add to Apple Calendar" disabled={feedLoading} onPress={() => withFeedUrl(url => Linking.openURL(toWebcalUrl(url)))} />

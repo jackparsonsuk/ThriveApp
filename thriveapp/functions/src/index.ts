@@ -438,7 +438,8 @@ const calendarFeedUrl = (token: string) => {
 };
 
 /**
- * Returns the signed-in PT's private calendar feed URL, creating it on first use.
+ * Returns the signed-in user's private calendar feed URL, creating it on first use.
+ * Every role has one: a PT's shows the sessions they run, a client's their own bookings.
  * Pass { reset: true } to replace the token, so a link shared by mistake stops working.
  * Tokens live in calendar_feeds, which the rules give clients no access to: users docs
  * are readable by every client, so the token can't go there.
@@ -450,9 +451,8 @@ export const getCalendarFeedUrl = functions.https.onCall(async (request) => {
     }
 
     const userDoc = await db.collection('users').doc(uid).get();
-    const role = userDoc.data()?.role;
-    if (role !== 'pt' && role !== 'admin') {
-        throw new functions.https.HttpsError('permission-denied', 'Only PTs have a calendar feed.');
+    if (!userDoc.data()?.role) {
+        throw new functions.https.HttpsError('permission-denied', "Your profile isn't set up yet.");
     }
 
     const existing = await db.collection(CALENDAR_FEEDS_COLLECTION).where('userId', '==', uid).get();
@@ -475,7 +475,8 @@ export const getCalendarFeedUrl = functions.https.onCall(async (request) => {
 /**
  * Serves a PT's sessions as an .ics feed that Apple/Google Calendar can subscribe to:
  * confirmed PT sessions, pending requests (as tentative), their own blocked time and the
- * group classes they run. Cancelled bookings are left out, which removes them from the
+ * group classes they run. A client's feed shows their own bookings instead (see clientEvents).
+ * Cancelled bookings are left out, which removes them from the
  * subscribed calendar on its next refresh. Calendar apps can't sign in, so the unguessable
  * token in the URL is what protects it.
  */
@@ -490,6 +491,13 @@ export const ptCalendarFeed = functions.https.onRequest({ invoker: 'public' }, a
     const ptId: string | undefined = feedDoc.data()?.userId;
     if (!ptId) {
         res.status(404).send('Not found');
+        return;
+    }
+
+    const ownerDoc = await db.collection('users').doc(ptId).get();
+    const ownerRole = ownerDoc.data()?.role;
+    if (ownerRole !== 'pt' && ownerRole !== 'admin') {
+        sendCalendar(res, await clientEvents(ptId), 'Thrive sessions', 'thrivecollective/client-calendar');
         return;
     }
 
@@ -542,9 +550,66 @@ export const ptCalendarFeed = functions.https.onRequest({ invoker: 'public' }, a
         };
     });
 
+    sendCalendar(res, events, 'Thrive sessions', 'thrivecollective/pt-calendar');
+});
+
+/**
+ * A client's own bookings for their feed: gym sessions, PT sessions (requests not yet
+ * accepted show as tentative) and the group classes they're in.
+ */
+const clientEvents = async (userId: string): Promise<ics.EventAttributes[]> => {
+    // Filtered by date here rather than in the query, so it needs no composite index
+    const since = addDays(new Date(), -CALENDAR_FEED_HISTORY_DAYS).getTime();
+    const bookingsSnapshot = await db.collection(BOOKINGS_COLLECTION).where('userId', '==', userId).get();
+    const bookings = bookingsSnapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as DocumentData & { id: string }))
+        .filter(b => b.startTime && b.startTime.toMillis() >= since)
+        .filter(b =>
+            (b.type === 'gym' && b.status === 'confirmed') ||
+            (b.type === 'pt' && (b.status === 'confirmed' || b.status === 'pending')) ||
+            (b.type === 'group' && b.status === 'confirmed')
+        );
+
+    const ptIds = [...new Set(bookings.filter(b => b.ptId).map(b => b.ptId as string))];
+    const groupIds = [...new Set(bookings.filter(b => b.type === 'group' && b.groupId).map(b => b.groupId as string))];
+    const [ptDocs, groupDocs] = await Promise.all([
+        ptIds.length ? db.getAll(...ptIds.map(id => db.collection('users').doc(id))) : [],
+        groupIds.length ? db.getAll(...groupIds.map(id => db.collection('groups').doc(id))) : [],
+    ]);
+    const ptNames = new Map(ptDocs.map(doc => [doc.id, doc.data()?.name as string | undefined]));
+    const groupNames = new Map(groupDocs.map(doc => [doc.id, doc.data()?.name as string | undefined]));
+
+    return bookings.map(b => {
+        let title: string;
+        let status: ics.EventStatus = 'CONFIRMED';
+        if (b.type === 'gym') {
+            title = 'Gym session';
+        } else if (b.type === 'group') {
+            title = `Group: ${groupNames.get(b.groupId) || 'Class'}`;
+        } else {
+            const ptName = ptNames.get(b.ptId);
+            const session = ptName ? `PT with ${ptName}` : 'PT session';
+            if (b.status === 'pending') {
+                title = `${session} (awaiting confirmation)`;
+                status = 'TENTATIVE';
+            } else {
+                title = session;
+            }
+        }
+        return {
+            uid: calendarUid(b.id),
+            start: b.startTime.toMillis(),
+            end: b.endTime.toMillis(),
+            title,
+            status,
+        };
+    });
+};
+
+function sendCalendar(res: functions.https.Response, events: ics.EventAttributes[], calName: string, productId: string) {
     const { error, value } = ics.createEvents(events, {
-        calName: 'Thrive sessions',
-        productId: 'thrivecollective/pt-calendar',
+        calName,
+        productId,
         method: 'PUBLISH',
     });
     if (error || !value) {
@@ -556,4 +621,4 @@ export const ptCalendarFeed = functions.https.onRequest({ invoker: 'public' }, a
     res.set('Content-Type', 'text/calendar; charset=utf-8');
     res.set('Cache-Control', 'private, max-age=300');
     res.send(value);
-});
+}
