@@ -4,10 +4,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { getUserProfile, getPTBookingsForDate, createBooking, UserProfile, Booking, getAllPTs, assignClientToPt, getClientsForPt, createRecurringSession, getGymBookingsForDate, checkSlotAvailability, getPendingPTRequestsForPT, updateBookingStatus, getUserPendingBookings, cancelBooking, getPersonAllBookingsForDate, updateWorkingHours, updateUserProfile, isUserActive, WorkingHours } from '../../services/bookingService';
 import { getPtDayAvailability, PtSlot, formatWorkingDay, DAY_LABELS, DAY_ORDER, TIME_OPTIONS, effectiveWorkingHours, LEGACY_WORKING_DAY } from '../../services/availabilityService';
-import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
+import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from '@/utils/dates';
 import { useRouter, useFocusEffect } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii, Shadows, Spacing, Typography, bookingTypeColor } from '@/constants/theme';
 import { BOOKING_WINDOW_DAYS, PT_AVAILABILITY_WINDOW_DAYS } from '@/constants/config';
@@ -19,11 +19,10 @@ const PT_OPEN_HOUR = 7;
 const PT_CLOSE_HOUR = 20;
 
 export default function PTBookingScreen() {
-    const { user } = useAuth();
+    const { user, profile: userProfile, profileLoading } = useAuth();
     const router = useRouter();
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
-    const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
     const [availableSlots, setAvailableSlots] = useState<{ time: Date; endTime?: Date; available: boolean; attendees: number; bookedPtCount: number; conflictReason?: string; isBlockedByMe?: boolean; blockBookingId?: string; conflictBookingId?: string; conflictBookingType?: string; }[]>([]);
     const [loading, setLoading] = useState(true);
@@ -95,11 +94,11 @@ export default function PTBookingScreen() {
 
 
     useEffect(() => {
-        if (user) {
-            loadUserProfile();
+        // Nothing more to load for a client who hasn't picked a PT yet
+        if (!profileLoading && userProfile?.role === 'client' && !userProfile.assignedPtId) {
+            setLoading(false);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user]);
+    }, [profileLoading, userProfile]);
 
     useEffect(() => {
         if (userProfile && userProfile.assignedPtId) {
@@ -149,26 +148,6 @@ export default function PTBookingScreen() {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user, userProfile, assignedPtData, selectedDate]));
-
-    const loadUserProfile = async () => {
-        if (!user) return;
-        try {
-            const profile = await getUserProfile(user.uid);
-            setUserProfile(profile);
-            if (!profile?.assignedPtId && profile?.role === 'client') {
-                setLoading(false); // Stop loading if no PT assigned
-            }
-        } catch (error) {
-            console.error('Error fetching user profile:', error);
-            setAlertConfig({
-                visible: true,
-                title: 'Error',
-                message: 'Failed to load user profile.',
-                isError: true
-            });
-            setLoading(false);
-        }
-    };
 
     const fetchClients = async (ptId: string) => {
         setClientsLoading(true);
@@ -370,7 +349,6 @@ export default function PTBookingScreen() {
         setSavingHours(true);
         try {
             await updateWorkingHours(user.uid, hoursDraft);
-            setUserProfile(prev => prev ? { ...prev, workingHours: hoursDraft } : prev);
             setIsEditingHours(false);
             setAlertConfig({
                 visible: true,
@@ -749,8 +727,7 @@ export default function PTBookingScreen() {
                     return;
                 }
                 await assignClientToPt(user.uid, matchedPt.id);
-                // Update the local state to trigger a UI refresh
-                setUserProfile(prev => prev ? { ...prev, assignedPtId: matchedPt.id } : null);
+                // The live profile in the auth context picks up the new PT by itself
 
                 setAlertConfig({
                     visible: true,

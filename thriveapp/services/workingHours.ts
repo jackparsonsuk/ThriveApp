@@ -1,4 +1,4 @@
-import { setHours, setMilliseconds, setMinutes, setSeconds } from 'date-fns';
+import { setHours, setMilliseconds, setMinutes, setSeconds } from '@/utils/dates';
 
 /**
  * Pure working-hours logic. Deliberately free of Firebase imports so it can be

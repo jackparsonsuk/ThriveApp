@@ -1,35 +1,28 @@
 import { Tabs } from 'expo-router';
 import Head from 'expo-router/head';
 import React, { useState, useEffect } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Platform } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/context/auth';
-import { getUserProfile, getPendingPTRequestsForPT, UserProfile } from '@/services/bookingService';
+import { getPendingPTRequestsForPT } from '@/services/bookingService';
 import { Colors } from '@/constants/theme';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme() ?? 'light';
-  const { user } = useAuth();
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const { user, profile: userProfile } = useAuth();
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
+  const isAdminOrPt = userProfile?.role === 'admin' || userProfile?.role === 'pt';
 
   useEffect(() => {
-    if (user) {
-      getUserProfile(user.uid).then(profile => {
-        setUserProfile(profile);
-        if (profile?.role === 'pt' || profile?.role === 'admin') {
-          getPendingPTRequestsForPT(user.uid).then(requests => {
-            setPendingRequestCount(requests.length);
-          });
-        }
+    if (user && isAdminOrPt) {
+      getPendingPTRequestsForPT(user.uid).then(requests => {
+        setPendingRequestCount(requests.length);
       });
     }
-  }, [user]);
-
-  const isAdminOrPt = userProfile?.role === 'admin' || userProfile?.role === 'pt';
+  }, [user, isAdminOrPt]);
 
   return (
     <>

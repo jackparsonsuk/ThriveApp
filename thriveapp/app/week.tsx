@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { addDays, addMinutes, differenceInMinutes, format, isSameDay, setHours, startOfDay, startOfWeek } from 'date-fns';
+import { addDays, addMinutes, differenceInMinutes, format, isSameDay, setHours, startOfDay, startOfWeek } from '@/utils/dates';
 import { useAuth } from '../context/auth';
 import {
     Booking,
@@ -100,7 +100,7 @@ const eventColors = (theme: ThemeColors, kind: EventKind) => {
  */
 export default function WeekScreen() {
     const router = useRouter();
-    const { user } = useAuth();
+    const { user, profile: liveProfile, profileLoading } = useAuth();
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
     const { width } = useWindowDimensions();
@@ -108,7 +108,7 @@ export default function WeekScreen() {
     // Seven narrow columns are unreadable on a phone, so show fewer days on small screens
     const dayCount = width >= 900 ? 7 : width >= 600 ? 5 : 3;
 
-    const [profile, setProfile] = useState<UserProfile | null | undefined>(undefined);
+    const profile = profileLoading ? undefined : liveProfile;
     const [rangeStart, setRangeStart] = useState(() => startOfDay(new Date()));
     const [bookings, setBookings] = useState<Booking[]>([]);
     const [loading, setLoading] = useState(true);
@@ -150,11 +150,6 @@ export default function WeekScreen() {
         [rangeStart, dayCount]
     );
     const rangeEnd = addDays(rangeStart, dayCount);
-
-    useEffect(() => {
-        if (!user) return;
-        getUserProfile(user.uid).then(setProfile).catch(() => setProfile(null));
-    }, [user]);
 
     // Client and group names only need loading once
     useEffect(() => {

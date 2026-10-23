@@ -3,10 +3,10 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { getAnalyticsData, AnalyticsData } from '../services/bookingService';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii, Spacing, Typography, bookingTypeColor } from '@/constants/theme';
-import { format, addDays, subDays, isToday } from 'date-fns';
+import { format, addDays, subDays, isToday } from '@/utils/dates';
 import { Badge, EmptyState, IconButton, ScreenHeader } from '@/components/ui';
 
 type BookingTypeBadgeProps = { type: string };

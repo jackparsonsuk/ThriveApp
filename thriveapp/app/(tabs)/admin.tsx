@@ -2,10 +2,10 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile, getAllUsers, getUserProfile, updateUserProfile, getBookingsForDateRange, getPTBookingsForInstructor, getUserBookings, getAllPTs, isUserActive } from '../../services/bookingService';
+import { getAllBookingsForDate, blockOutSlot, cancelBooking, Booking, UserProfile, getAllUsers, updateUserProfile, getBookingsForDateRange, getPTBookingsForInstructor, getUserBookings, getAllPTs, isUserActive } from '../../services/bookingService';
 import { getGlobalSettings, updateGlobalSettings, GlobalSettings } from '../../services/settingsService';
-import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isToday, isBefore, startOfMonth, endOfMonth, subMonths, addMonths } from 'date-fns';
-import { Ionicons } from '@expo/vector-icons';
+import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isToday, isBefore, startOfMonth, endOfMonth, subMonths, addMonths } from '@/utils/dates';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import CustomAlert from '../../components/CustomAlert';
 import RescheduleSheet, { RescheduleTarget } from '../../components/RescheduleSheet';
 import { useRouter } from 'expo-router';
@@ -34,7 +34,8 @@ type AdminTab = 'schedule' | 'history' | 'members' | 'settings';
 
 export default function AdminScreen() {
     const router = useRouter();
-    const { user } = useAuth();
+    const { user, profile } = useAuth();
+    const userRole = profile?.role ?? '';
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
     const { setting: seasonalTheme, availableSeason, refresh: refreshSeason } = useSeason();
@@ -44,7 +45,6 @@ export default function AdminScreen() {
     const rowOffsets = useRef<Record<number, number>>({});
     const timelineTop = useRef(0);
     const [timelineLaidOut, setTimelineLaidOut] = useState(false);
-    const [userRole, setUserRole] = useState<string>('');
     
     // History Tab State
     const [historyDate, setHistoryDate] = useState<Date>(startOfMonth(new Date()));
@@ -152,14 +152,6 @@ export default function AdminScreen() {
             }
         }
     }, [selectedDate, activeTab, scheduleBlocks.length, loading, timelineLaidOut]);
-
-    useEffect(() => {
-        if (user) {
-            getUserProfile(user.uid).then(profile => {
-                if (profile) setUserRole(profile.role);
-            });
-        }
-    }, [user]);
 
     const fetchSchedule = async () => {
         setLoading(true);

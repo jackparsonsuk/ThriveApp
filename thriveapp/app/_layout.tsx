@@ -2,7 +2,9 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack } from 'expo-router';
 import Head from 'expo-router/head';
 import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+import '../config/reanimated';
+// Starts listening for the browser's install prompt before any screen loads
+import '../utils/installPrompt';
 import { Analytics } from '@vercel/analytics/react';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';

@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
-import { getGymBookingsForDate, getPTBookingsForDate, checkSlotAvailability, createBooking, getUserProfile, UserProfile, getPersonAllBookingsForDate, getClientsForPt, Booking } from '../../services/bookingService';
-import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
+import { getGymBookingsForDate, getPTBookingsForDate, checkSlotAvailability, createBooking, getPersonAllBookingsForDate, getClientsForPt, Booking } from '../../services/bookingService';
+import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from '@/utils/dates';
 import { useRouter, useFocusEffect } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -15,13 +15,11 @@ const GYM_OPEN_HOUR = 7;
 const GYM_CLOSE_HOUR = 20;
 
 export default function GymBookingScreen() {
-    const { user } = useAuth();
+    const { user, profile: userProfile, profileLoading } = useAuth();
     const router = useRouter();
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
 
-    const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-    const [profileLoading, setProfileLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
     const [availableSlots, setAvailableSlots] = useState<{ time: Date; available: boolean; isNextAvailable: boolean; attendees: number; conflictType?: string; conflictBookingId?: string; conflictBookingType?: string; }[]>([]);
     const [loading, setLoading] = useState(false);
@@ -42,16 +40,6 @@ export default function GymBookingScreen() {
 
     // Generate the next BOOKING_WINDOW_DAYS days for the selector
     const dates = useMemo(() => Array.from({ length: BOOKING_WINDOW_DAYS }).map((_, i) => addDays(startOfDay(new Date()), i)), []);
-
-    useEffect(() => {
-        if (user) {
-            getUserProfile(user.uid).then(profile => {
-                setUserProfile(profile);
-                setProfileLoading(false);
-            });
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user]);
 
     useEffect(() => {
         fetchAvailability();

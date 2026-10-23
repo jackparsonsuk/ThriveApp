@@ -5,23 +5,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '../../config/firebaseConfig';
 import { signOut } from 'firebase/auth';
 import { useAuth } from '../../context/auth';
-import { getUserProfile, UserProfile, getUserBookings, Booking } from '../../services/bookingService';
-import { Ionicons } from '@expo/vector-icons';
+import { getUserBookings, Booking } from '../../services/bookingService';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
+import InstallAppCard from '../../components/InstallAppCard';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useSeason } from '@/context/season';
 import { SEASONS } from '@/constants/seasons';
 import { Colors, Radii, Spacing, Typography, bookingTypeColor } from '@/constants/theme';
 import Constants from 'expo-constants';
-import { format } from 'date-fns';
+import { format } from '@/utils/dates';
 import { getCalendarFeedUrl, toWebcalUrl, toGoogleCalendarUrl } from '../../services/calendarFeedService';
 import { ScreenHeader, Card, SectionHeader, Badge, Button, StatBox, Avatar, Toggle } from '@/components/ui';
 
 export default function ProfileScreen() {
     const router = useRouter();
-    const { user } = useAuth();
-    const [profile, setProfile] = useState<UserProfile | null>(null);
+    const { user, profile, profileLoading } = useAuth();
     const [loading, setLoading] = useState(true);
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
@@ -83,10 +83,9 @@ export default function ProfileScreen() {
     });
 
     const fetchProfileAndData = async () => {
-        if (!user) return;
+        if (!user || profileLoading) return;
         try {
-            const p = await getUserProfile(user.uid);
-            setProfile(p);
+            const p = profile;
 
             if (p) {
                 setStatsLoading(true);
@@ -125,7 +124,7 @@ export default function ProfileScreen() {
     useEffect(() => {
         fetchProfileAndData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user]);
+    }, [user, profileLoading]);
 
     const handleLogout = async () => {
         try {
@@ -216,6 +215,8 @@ export default function ProfileScreen() {
                                 </Card>
                             </View>
                         )}
+
+                        <InstallAppCard />
 
                         {availableSeason && (
                             <View style={styles.calendarSection}>

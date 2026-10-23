@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ViewToken } from 'react-native';
-import { format, isToday } from 'date-fns';
+import { format, isToday } from '@/utils/dates';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import { useMouseDragScroll } from '@/hooks/useMouseDragScroll';

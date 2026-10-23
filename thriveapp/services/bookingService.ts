@@ -1,6 +1,6 @@
 import { collection, query, where, getDocs, addDoc, Timestamp, doc, getDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../config/firebaseConfig';
-import { addMinutes, startOfDay, endOfDay, isBefore, isEqual, addDays, addWeeks, addMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { addMinutes, startOfDay, endOfDay, isBefore, isEqual, addDays, addWeeks, addMonths, startOfMonth, endOfMonth } from '@/utils/dates';
 import type { WorkingHours } from './workingHours';
 
 export interface Booking {

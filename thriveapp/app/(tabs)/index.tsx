@@ -6,8 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getUserBookings, getPTBookingsForInstructor, getUserCancelledUpcomingBookings, getPTCancelledBookingsForInstructor, cancelBooking, cancelRecurringSeries, Booking, getUserProfile, UserProfile, getClientsForPt, createBooking, getPendingPTRequestsForPT, isUserActive } from '../../services/bookingService';
 import { getGroupById } from '../../services/groupService';
 import { getGlobalSettings, GlobalSettings } from '../../services/settingsService';
-import { format, isToday, isTomorrow } from 'date-fns';
-import { Ionicons } from '@expo/vector-icons';
+import { format, isToday, isTomorrow } from '@/utils/dates';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import CustomAlert from '../../components/CustomAlert';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useSeason } from '@/context/season';
@@ -39,9 +39,8 @@ const getRelativeDayLabel = (date: Date) => {
 };
 
 export default function DashboardScreen() {
-  const { user } = useAuth();
+  const { user, profile: userProfile, profileLoading } = useAuth();
   const router = useRouter();
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const { season } = useSeason();
@@ -81,48 +80,39 @@ export default function DashboardScreen() {
   const closeAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
 
   const fetchBookingsAndProfile = useCallback(async () => {
-    if (!user) return;
+    // The profile arrives from the auth context; wait for it so we know which queries to run
+    if (!user || profileLoading) return;
+    const profile = userProfile;
+    const isPtOrAdmin = profile?.role === 'pt' || profile?.role === 'admin';
     try {
-      const [profile, settings] = await Promise.all([
-        getUserProfile(user.uid),
-        getGlobalSettings().catch(() => null)
+      // None of these depend on each other, so fetch them all at once
+      const [settings, clients, pendingRequests, userBookings, ptBookings, cancelledBookings] = await Promise.all([
+        getGlobalSettings().catch(() => null),
+        isPtOrAdmin ? getClientsForPt(user.uid) : Promise.resolve([] as UserProfile[]),
+        isPtOrAdmin ? getPendingPTRequestsForPT(user.uid) : Promise.resolve([] as Booking[]),
+        getUserBookings(user.uid),
+        isPtOrAdmin ? getPTBookingsForInstructor(user.uid) : Promise.resolve([] as Booking[]),
+        // Upcoming cancelled bookings need composite indexes, so degrade gracefully if they're missing
+        Promise.all([
+          getUserCancelledUpcomingBookings(user.uid),
+          isPtOrAdmin ? getPTCancelledBookingsForInstructor(user.uid) : Promise.resolve([] as Booking[]),
+        ])
+          .then(([cancelledUser, cancelledPT]) => [...cancelledUser, ...cancelledPT])
+          .catch(e => {
+            console.warn('Cancelled bookings query failed (index may be missing):', e);
+            return [] as Booking[];
+          }),
       ]);
-      setUserProfile(profile);
       setGlobalSettings(settings);
-
-      if (profile?.role === 'pt' || profile?.role === 'admin') {
-        const clients = await getClientsForPt(user.uid);
+      if (isPtOrAdmin) {
         setPtsClients(clients);
-        const pendingRequests = await getPendingPTRequestsForPT(user.uid);
         setPendingRequestCount(pendingRequests.length);
       }
 
-      const userBookings = await getUserBookings(user.uid);
-      let allBookings: Booking[] = [...userBookings];
-
-      if (profile?.role === 'pt' || profile?.role === 'admin') {
-        const ptBookings = await getPTBookingsForInstructor(user.uid);
-        // Combine and deduplicate
-        const combined = [...userBookings, ...ptBookings];
-        allBookings = Array.from(new Map(combined.map(b => [b.id, b])).values());
-      }
-
-      // Fetch upcoming cancelled bookings and merge in (requires composite indexes — degrades gracefully if missing)
-      try {
-        const cancelledUser = await getUserCancelledUpcomingBookings(user.uid);
-        let cancelledBookings: Booking[] = [...cancelledUser];
-        if (profile?.role === 'pt' || profile?.role === 'admin') {
-          const cancelledPT = await getPTCancelledBookingsForInstructor(user.uid);
-          const combined = [...cancelledUser, ...cancelledPT];
-          cancelledBookings = Array.from(new Map(combined.map(b => [b.id, b])).values());
-        }
-        allBookings = Array.from(new Map([...allBookings, ...cancelledBookings].map(b => [b.id, b])).values());
-      } catch (e) {
-        console.warn('Cancelled bookings query failed (index may be missing):', e);
-      }
+      // Combine and deduplicate; later lists win, so a cancelled copy replaces a stale confirmed one
+      const allBookings = Array.from(new Map([...userBookings, ...ptBookings, ...cancelledBookings].map(b => [b.id, b])).values());
 
       // Filter out past bookings to only show upcoming (confirmed and cancelled; pending PT requests shown in PT tab)
-      const isPtOrAdmin = profile?.role === 'pt' || profile?.role === 'admin';
       let upcoming = allBookings.filter(b => b.endTime > new Date() && (b.status === 'confirmed' || b.status === 'cancelled' || (b.status === 'pending' && isPtOrAdmin)));
 
       if (profile?.role === 'pt' || profile?.role === 'admin') {
@@ -147,17 +137,23 @@ export default function DashboardScreen() {
         });
       }
 
-      // Fetch client names for PT bookings where the PT is the instructor
+      // Fetch client and group names, once per person or group however many sessions they have
+      const names = new Map<string, Promise<string | undefined>>();
+      const nameFor = (key: string, load: () => Promise<string | undefined>) => {
+        if (!names.has(key)) names.set(key, load());
+        return names.get(key)!;
+      };
       const bookingsWithNames: ExtendedBooking[] = await Promise.all(upcoming.map(async (b) => {
-        if (b.type === 'pt' && (profile?.role === 'pt' || profile?.role === 'admin') && b.ptId === user.uid && b.userId !== user.uid) {
-          const clientProfile = await getUserProfile(b.userId);
-          return { ...b, clientName: clientProfile?.name || 'Unknown Client' };
+        if (b.type === 'pt' && isPtOrAdmin && b.ptId === user.uid && b.userId !== user.uid) {
+          const clientName = await nameFor(`user:${b.userId}`, () => getUserProfile(b.userId).then(p => p?.name));
+          return { ...b, clientName: clientName || 'Unknown Client' };
         }
         if (b.type === 'group' && b.groupId) {
-          try {
-            const group = await getGroupById(b.groupId);
-            if (group) return { ...b, clientName: group.name };
-          } catch (e) { console.error('Error fetching group name', e) }
+          const groupId = b.groupId;
+          const groupName = await nameFor(`group:${groupId}`, () => getGroupById(groupId)
+            .then(group => group?.name)
+            .catch(e => { console.error('Error fetching group name', e); return undefined; }));
+          if (groupName) return { ...b, clientName: groupName };
         }
         return b;
       }));
@@ -200,7 +196,7 @@ export default function DashboardScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user]);
+  }, [user, userProfile, profileLoading]);
 
   useFocusEffect(
     useCallback(() => {

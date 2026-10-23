@@ -1,4 +1,4 @@
-import { addMinutes, format, isBefore } from 'date-fns';
+import { addMinutes, format, isBefore } from '@/utils/dates';
 import {
     Booking,
     checkSlotAvailability,

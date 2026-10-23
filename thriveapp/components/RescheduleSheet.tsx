@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Modal, ActivityIndicator } from 'react-native';
-import { addDays, differenceInCalendarDays, differenceInMinutes, format, startOfDay } from 'date-fns';
+import { addDays, differenceInCalendarDays, differenceInMinutes, format, startOfDay } from '@/utils/dates';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import { BOOKING_WINDOW_DAYS } from '@/constants/config';

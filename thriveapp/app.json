@@ -33,7 +33,11 @@
       [
         "expo-router",
         {
-          "origin": "https://booking.thrivecollectiveexeter.co.uk/"
+          "origin": "https://booking.thrivecollectiveexeter.co.uk/",
+          "asyncRoutes": {
+            "web": "production",
+            "default": false
+          }
         }
       ],
       [

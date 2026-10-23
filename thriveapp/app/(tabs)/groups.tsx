@@ -3,11 +3,11 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth';
 import { createGroup, getPTGroups, Group, GroupInvite, inviteToGroup, getGroupMembers, getGroupInvites, getPendingInvitesForEmail, acceptGroupInvite, declineGroupInvite, getClientGroups, removeGroupMember, deleteGroup } from '../../services/groupService';
-import { getUserProfile, UserProfile, getGymBookingsForDate, bookGroupSession, Booking, getGroupSessions, cancelBooking } from '../../services/bookingService';
-import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from 'date-fns';
+import { UserProfile, getGymBookingsForDate, bookGroupSession, Booking, getGroupSessions, cancelBooking } from '../../services/bookingService';
+import { format, addDays, startOfDay, addMinutes, setHours, setMinutes, isBefore } from '@/utils/dates';
 import { useRouter } from 'expo-router';
 import CustomAlert from '../../components/CustomAlert';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import { BOOKING_WINDOW_DAYS } from '@/constants/config';
@@ -17,12 +17,11 @@ const PT_OPEN_HOUR = 7;
 const PT_CLOSE_HOUR = 20;
 
 export default function GroupsScreen() {
-    const { user } = useAuth();
+    const { user, profile: userProfile } = useAuth();
     const router = useRouter();
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
     
-    const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
     const [groups, setGroups] = useState<Group[]>([]);
     const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
@@ -72,14 +71,13 @@ export default function GroupsScreen() {
     const dates = useMemo(() => Array.from({ length: BOOKING_WINDOW_DAYS }).map((_, i) => addDays(startOfDay(new Date()), i)), []);
 
     useEffect(() => {
-        if (user) loadInitialData();
+        if (user && userProfile) loadInitialData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user]);
+    }, [user, userProfile?.role, userProfile?.email]);
 
     const loadInitialData = async () => {
         try {
-            const profile = await getUserProfile(user!.uid);
-            setUserProfile(profile);
+            const profile = userProfile;
             
             if (profile?.role === 'pt') {
                 const ptGroups = await getPTGroups(user!.uid);
