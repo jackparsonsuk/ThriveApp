@@ -34,6 +34,7 @@ const HOUR_HEIGHT = 56;
 const TIME_COLUMN_WIDTH = 44;
 const NUDGE_MINUTES = 15;
 const DURATION_OPTIONS = [30, 45, 60, 90];
+const SIDE_PANEL_WIDTH = 340;
 
 type EventKind = 'session' | 'request' | 'block' | 'gymBlock' | 'class' | 'own';
 
@@ -103,13 +104,22 @@ export default function WeekScreen() {
     const { user, profile: liveProfile, profileLoading } = useAuth();
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
-    const { width } = useWindowDimensions();
-
-    // Seven narrow columns are unreadable on a phone, so show fewer days on small screens
-    const dayCount = width >= 900 ? 7 : width >= 600 ? 5 : 3;
+    const { width, height } = useWindowDimensions();
+    const isLandscape = width > height;
+    // A phone on its side has little height to spare, so the title and legend go
+    const isShortLandscape = isLandscape && height < 600;
 
     const profile = profileLoading ? undefined : liveProfile;
-    const [rangeStart, setRangeStart] = useState(() => startOfDay(new Date()));
+
+    // Always Monday onwards. Upright phones get Mon–Fri unless the PT works weekends;
+    // turned sideways (or on a wide screen) there's room for the whole week.
+    const worksWeekends = !!(profile?.workingHours?.['6'] || profile?.workingHours?.['0']);
+    const dayCount = isLandscape || width >= 900 || worksWeekends ? 7 : 5;
+
+    // Thin columns can't wrap a title without splitting words, so they get one line
+    const narrowColumns = (width - TIME_COLUMN_WIDTH - Spacing.sm) / dayCount < 70;
+
+    const [rangeStart, setRangeStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
     const [bookings, setBookings] = useState<Booking[]>([]);
     const [loading, setLoading] = useState(true);
     const [clients, setClients] = useState<UserProfile[]>([]);
@@ -138,12 +148,6 @@ export default function WeekScreen() {
     const hasScrolled = useRef(false);
 
     const isPtOrAdmin = profile?.role === 'pt' || profile?.role === 'admin';
-
-    // A full week starts on Monday; a narrower view starts today
-    useEffect(() => {
-        const today = startOfDay(new Date());
-        setRangeStart(dayCount === 7 ? startOfWeek(today, { weekStartsOn: 1 }) : today);
-    }, [dayCount]);
 
     const days = useMemo(
         () => Array.from({ length: dayCount }, (_, i) => addDays(rangeStart, i)),
@@ -450,9 +454,10 @@ export default function WeekScreen() {
                         borderColor: isSelected ? theme.text : colors.border,
                         borderStyle: colors.dashed && !isSelected ? 'dashed' : 'solid',
                     },
+                    narrowColumns && styles.eventNarrow,
                 ]}
             >
-                <Text style={[styles.eventTitle, { color: colors.fg }]} numberOfLines={height > 36 ? 2 : 1}>{event.title}</Text>
+                <Text style={[styles.eventTitle, { color: colors.fg }]} numberOfLines={height > 36 && !narrowColumns ? 2 : 1}>{event.title}</Text>
                 {height > 36 && (
                     <Text style={[styles.eventTime, { color: colors.fg }]} numberOfLines={1}>
                         {format(b.startTime, 'HH:mm')}–{format(b.endTime, 'HH:mm')}
@@ -491,25 +496,29 @@ export default function WeekScreen() {
         return null;
     })();
 
+    // Sideways, the panel sits beside the grid rather than over the bottom of it
+    const sidePanel = isLandscape && (!!draft || !!selected);
+    const gridInset = sidePanel ? { marginRight: SIDE_PANEL_WIDTH + Spacing.sm } : null;
+    const panelStyle = [styles.panel, isLandscape && styles.panelSide, Shadows.lg, { backgroundColor: theme.card, borderColor: theme.border }];
+
     const canSave = !!draft && !draftClash && !checkingDraft && !saving && (draft.mode === 'block' || !!draft.clientId);
     const draftClientName = draft?.clientId ? firstNameOf(names[draft.clientId] ?? 'client') : null;
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
             <View style={styles.padded}>
-                {header}
+                {!isShortLandscape && header}
                 <View style={styles.toolbar}>
-                    <IconButton icon="chevron-back" accessibilityLabel="Previous days" onPress={() => { setDraft(null); setSelected(null); setRangeStart(d => addDays(d, -dayCount)); }} />
+                    {isShortLandscape && <IconButton icon="arrow-back" accessibilityLabel="Back" onPress={() => router.back()} />}
+                    {isShortLandscape && <Text style={[styles.rangeLabel, styles.compactTitle, { color: theme.text }]}>Your Week</Text>}
+                    <IconButton icon="chevron-back" accessibilityLabel="Previous week" onPress={() => { setDraft(null); setSelected(null); setRangeStart(d => addDays(d, -7)); }} />
                     <Text style={[styles.rangeLabel, { color: theme.text }]}>{rangeLabel}</Text>
-                    <IconButton icon="chevron-forward" accessibilityLabel="Next days" onPress={() => { setDraft(null); setSelected(null); setRangeStart(d => addDays(d, dayCount)); }} />
+                    <IconButton icon="chevron-forward" accessibilityLabel="Next week" onPress={() => { setDraft(null); setSelected(null); setRangeStart(d => addDays(d, 7)); }} />
                     <View style={styles.flex} />
                     {loading && <ActivityIndicator size="small" color={theme.tint} style={{ marginRight: Spacing.sm }} />}
-                    <Chip label="Today" onPress={() => {
-                        const today = startOfDay(new Date());
-                        setRangeStart(dayCount === 7 ? startOfWeek(today, { weekStartsOn: 1 }) : today);
-                    }} />
+                    <Chip label="This week" onPress={() => setRangeStart(startOfWeek(new Date(), { weekStartsOn: 1 }))} />
                 </View>
-                <View style={styles.legend}>
+                {!isShortLandscape && <View style={styles.legend}>
                     {([['session', 'Session'], ['request', 'Request'], ['block', 'Blocked'], ['class', 'Class']] as [EventKind, string][]).map(([kind, label]) => {
                         const c = eventColors(theme, kind);
                         return (
@@ -519,10 +528,10 @@ export default function WeekScreen() {
                             </View>
                         );
                     })}
-                </View>
+                </View>}
             </View>
 
-            <View style={[styles.dayHeader, { borderColor: theme.border, backgroundColor: theme.background }]}>
+            <View style={[styles.dayHeader, gridInset, { borderColor: theme.border, backgroundColor: theme.background }]}>
                 <View style={{ width: TIME_COLUMN_WIDTH }} />
                 {days.map(day => {
                     const isToday = isSameDay(day, now);
@@ -537,7 +546,7 @@ export default function WeekScreen() {
                 })}
             </View>
 
-            <ScrollView ref={scrollRef} style={styles.flex} contentContainerStyle={{ paddingBottom: draft || selected ? 320 : Spacing.xxl }}>
+            <ScrollView ref={scrollRef} style={[styles.flex, gridInset]} contentContainerStyle={{ paddingBottom: (draft || selected) && !isLandscape ? 320 : Spacing.xxl }}>
                 <View style={styles.gridRow}>
                     <View style={{ width: TIME_COLUMN_WIDTH }}>
                         {hours.map(h => (
@@ -612,74 +621,76 @@ export default function WeekScreen() {
             </ScrollView>
 
             {draft && draftEnd && (
-                <View style={[styles.panel, Shadows.lg, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                    <View style={styles.panelHeader}>
-                        <View style={styles.flex}>
-                            <Text style={[styles.panelTitle, { color: theme.text }]}>
-                                {format(draft.start, 'EEE d MMM')} · {format(draft.start, 'HH:mm')}–{format(draftEnd, 'HH:mm')}
-                            </Text>
+                <View style={panelStyle}>
+                    <ScrollView style={styles.panelScroll} keyboardShouldPersistTaps="handled">
+                        <View style={styles.panelHeader}>
+                            <View style={styles.flex}>
+                                <Text style={[styles.panelTitle, { color: theme.text }]}>
+                                    {format(draft.start, 'EEE d MMM')} · {format(draft.start, 'HH:mm')}–{format(draftEnd, 'HH:mm')}
+                                </Text>
+                            </View>
+                            <IconButton icon="close" size={34} accessibilityLabel="Cancel" onPress={() => setDraft(null)} />
                         </View>
-                        <IconButton icon="close" size={34} accessibilityLabel="Cancel" onPress={() => setDraft(null)} />
-                    </View>
 
-                    <View style={styles.nudgeRow}>
-                        <Button size="sm" variant="secondary" icon="arrow-up" label={`${NUDGE_MINUTES} min earlier`} onPress={() => nudgeDraft(-NUDGE_MINUTES)} style={styles.flex} />
-                        <Button size="sm" variant="secondary" icon="arrow-down" label={`${NUDGE_MINUTES} min later`} onPress={() => nudgeDraft(NUDGE_MINUTES)} style={styles.flex} />
-                    </View>
-                    <ChipGroup
-                        scroll
-                        options={DURATION_OPTIONS.map(m => ({ value: m, label: m === 60 ? '1 hour' : m === 90 ? '1½ hours' : `${m} min` }))}
-                        value={draft.durationMinutes}
-                        onChange={m => setDraft(prev => prev ? { ...prev, durationMinutes: m } : prev)}
-                        style={styles.panelBlock}
-                    />
-                    <SegmentedControl
-                        options={[{ value: 'session', label: 'Client session' }, { value: 'block', label: 'Block time' }]}
-                        value={draft.mode}
-                        onChange={mode => setDraft(prev => prev ? { ...prev, mode } : prev)}
-                        style={styles.panelBlock}
-                    />
-                    {draft.mode === 'session' ? (
-                        activeClients.length ? (
-                            <ChipGroup
-                                scroll
-                                options={activeClients.map(c => ({ value: c.id, label: c.name }))}
-                                value={draft.clientId ?? ''}
-                                onChange={clientId => setDraft(prev => prev ? { ...prev, clientId } : prev)}
-                                style={styles.panelBlock}
-                            />
-                        ) : (
-                            <Text style={[styles.note, { color: theme.textSecondary }]}>You don&apos;t have any active clients yet.</Text>
-                        )
-                    ) : (
-                        <TextField
-                            placeholder="Reason (optional), e.g. Dentist"
-                            value={draft.reason}
-                            onChangeText={reason => setDraft(prev => prev ? { ...prev, reason } : prev)}
-                            containerStyle={styles.panelBlock}
+                        <View style={styles.nudgeRow}>
+                            <Button size="sm" variant="secondary" icon="arrow-up" label={`${NUDGE_MINUTES} min earlier`} onPress={() => nudgeDraft(-NUDGE_MINUTES)} style={styles.flex} />
+                            <Button size="sm" variant="secondary" icon="arrow-down" label={`${NUDGE_MINUTES} min later`} onPress={() => nudgeDraft(NUDGE_MINUTES)} style={styles.flex} />
+                        </View>
+                        <ChipGroup
+                            scroll
+                            options={DURATION_OPTIONS.map(m => ({ value: m, label: m === 60 ? '1 hour' : m === 90 ? '1½ hours' : `${m} min` }))}
+                            value={draft.durationMinutes}
+                            onChange={m => setDraft(prev => prev ? { ...prev, durationMinutes: m } : prev)}
+                            style={styles.panelBlock}
                         />
-                    )}
+                        <SegmentedControl
+                            options={[{ value: 'session', label: 'Client session' }, { value: 'block', label: 'Block time' }]}
+                            value={draft.mode}
+                            onChange={mode => setDraft(prev => prev ? { ...prev, mode } : prev)}
+                            style={styles.panelBlock}
+                        />
+                        {draft.mode === 'session' ? (
+                            activeClients.length ? (
+                                <ChipGroup
+                                    scroll
+                                    options={activeClients.map(c => ({ value: c.id, label: c.name }))}
+                                    value={draft.clientId ?? ''}
+                                    onChange={clientId => setDraft(prev => prev ? { ...prev, clientId } : prev)}
+                                    style={styles.panelBlock}
+                                />
+                            ) : (
+                                <Text style={[styles.note, { color: theme.textSecondary }]}>You don&apos;t have any active clients yet.</Text>
+                            )
+                        ) : (
+                            <TextField
+                                placeholder="Reason (optional), e.g. Dentist"
+                                value={draft.reason}
+                                onChangeText={reason => setDraft(prev => prev ? { ...prev, reason } : prev)}
+                                containerStyle={styles.panelBlock}
+                            />
+                        )}
 
-                    {draftClash ? (
-                        <Text style={[styles.note, { color: theme.danger }]}>{draftClash}</Text>
-                    ) : workingWindowNote ? (
-                        <Text style={[styles.note, { color: theme.warning }]}>{workingWindowNote}</Text>
-                    ) : null}
+                        {draftClash ? (
+                            <Text style={[styles.note, { color: theme.danger }]}>{draftClash}</Text>
+                        ) : workingWindowNote ? (
+                            <Text style={[styles.note, { color: theme.warning }]}>{workingWindowNote}</Text>
+                        ) : null}
 
-                    <Button
-                        label={draft.mode === 'block'
-                            ? `Block ${format(draft.start, 'HH:mm')}–${format(draftEnd, 'HH:mm')}`
-                            : draftClientName ? `Book ${draftClientName} ${format(draft.start, 'HH:mm')}–${format(draftEnd, 'HH:mm')}` : 'Pick a client'}
-                        icon={draft.mode === 'block' ? 'remove-circle-outline' : 'calendar-outline'}
-                        onPress={saveDraft}
-                        disabled={!canSave}
-                        loading={saving || checkingDraft}
-                    />
+                        <Button
+                            label={draft.mode === 'block'
+                                ? `Block ${format(draft.start, 'HH:mm')}–${format(draftEnd, 'HH:mm')}`
+                                : draftClientName ? `Book ${draftClientName} ${format(draft.start, 'HH:mm')}–${format(draftEnd, 'HH:mm')}` : 'Pick a client'}
+                            icon={draft.mode === 'block' ? 'remove-circle-outline' : 'calendar-outline'}
+                            onPress={saveDraft}
+                            disabled={!canSave}
+                            loading={saving || checkingDraft}
+                        />
+                    </ScrollView>
                 </View>
             )}
 
             {selected && !draft && (
-                <View style={[styles.panel, Shadows.lg, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                <View style={panelStyle}>
                     <View style={styles.panelHeader}>
                         <View style={styles.flex}>
                             <Text style={[styles.panelTitle, { color: theme.text }]}>{selected.title}</Text>
@@ -735,6 +746,10 @@ const styles = StyleSheet.create({
         ...Typography.headline,
         minWidth: 110,
         textAlign: 'center',
+    },
+    compactTitle: {
+        minWidth: 0,
+        marginRight: Spacing.md,
     },
     legend: {
         flexDirection: 'row',
@@ -830,6 +845,9 @@ const styles = StyleSheet.create({
         paddingVertical: 2,
         overflow: 'hidden',
     },
+    eventNarrow: {
+        paddingHorizontal: 2,
+    },
     draft: {
         left: 0,
         right: 0,
@@ -853,6 +871,16 @@ const styles = StyleSheet.create({
         padding: Spacing.lg,
         maxWidth: 560,
         marginHorizontal: 'auto',
+    },
+    panelSide: {
+        left: 'auto',
+        width: SIDE_PANEL_WIDTH,
+        maxHeight: '92%',
+        marginHorizontal: 0,
+    },
+    panelScroll: {
+        flexGrow: 0,
+        flexShrink: 1,
     },
     panelHeader: {
         flexDirection: 'row',
