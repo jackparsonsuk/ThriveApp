@@ -3,7 +3,7 @@
  * a greeting on the Dashboard); colours stay Thrive Orange.
  */
 
-export type Season = 'halloween' | 'christmas';
+export type Season = 'halloween' | 'bonfire' | 'christmas';
 
 /** What admins pick in Firestore `settings/global.seasonalTheme`. `auto` follows the calendar. */
 export type SeasonalThemeSetting = 'auto' | 'off' | Season;
@@ -23,6 +23,12 @@ export const SEASONS: Record<Season, SeasonDefinition> = {
     greeting: 'Happy Halloween',
     adjective: 'spooky',
   },
+  bonfire: {
+    label: 'Bonfire Night',
+    emoji: '🎆',
+    greeting: 'Happy Bonfire Night',
+    adjective: 'sparkling',
+  },
   christmas: {
     label: 'Christmas',
     emoji: '🎄',
@@ -31,10 +37,11 @@ export const SEASONS: Record<Season, SeasonDefinition> = {
   },
 };
 
-/** The season the calendar says it is: Halloween 17–31 Oct, Christmas throughout December. */
+/** The season the calendar says it is: Halloween 17–31 Oct, Bonfire Night 1–7 Nov, Christmas throughout December. */
 export const seasonForDate = (date: Date): Season | null => {
   const month = date.getMonth();
   if (month === 9 && date.getDate() >= 17) return 'halloween';
+  if (month === 10 && date.getDate() <= 7) return 'bonfire';
   if (month === 11) return 'christmas';
   return null;
 };
@@ -42,6 +49,6 @@ export const seasonForDate = (date: Date): Season | null => {
 /** Resolves the admin setting to the season that should show, before any per-user opt-out. */
 export const resolveSeason = (setting: SeasonalThemeSetting | undefined, date: Date = new Date()): Season | null => {
   if (setting === 'off') return null;
-  if (setting === 'halloween' || setting === 'christmas') return setting;
+  if (setting === 'halloween' || setting === 'bonfire' || setting === 'christmas') return setting;
   return seasonForDate(date);
 };

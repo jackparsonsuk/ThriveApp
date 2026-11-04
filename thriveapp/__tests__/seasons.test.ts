@@ -6,7 +6,13 @@ describe('seasonal themes', () => {
     expect(seasonForDate(new Date(2026, 9, 16))).toBeNull();
     expect(seasonForDate(new Date(2026, 9, 17))).toBe('halloween');
     expect(seasonForDate(new Date(2026, 9, 31))).toBe('halloween');
-    expect(seasonForDate(new Date(2026, 10, 1))).toBeNull();
+    expect(seasonForDate(new Date(2026, 10, 1))).toBe('bonfire');
+  });
+
+  it('shows Bonfire Night from 1 to 7 November', () => {
+    expect(seasonForDate(new Date(2026, 10, 5))).toBe('bonfire');
+    expect(seasonForDate(new Date(2026, 10, 7))).toBe('bonfire');
+    expect(seasonForDate(new Date(2026, 10, 8))).toBeNull();
   });
 
   it('shows Christmas throughout December', () => {

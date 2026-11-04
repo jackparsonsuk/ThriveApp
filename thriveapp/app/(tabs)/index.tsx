@@ -12,6 +12,7 @@ import CustomAlert from '../../components/CustomAlert';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useSeason } from '@/context/season';
 import { SEASONS } from '@/constants/seasons';
+import { Fireworks } from '@/components/Fireworks';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import UpdateBanner from '../../components/UpdateBanner';
 import RescheduleSheet, { RescheduleTarget } from '../../components/RescheduleSheet';
@@ -44,6 +45,8 @@ export default function DashboardScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const { season } = useSeason();
+  // Bump to set the Bonfire Night fireworks off again
+  const [fireworksKey, setFireworksKey] = useState(0);
 
   type ExtendedBooking = Booking & {
     clientName?: string;
@@ -437,7 +440,12 @@ export default function DashboardScreen() {
             <View style={styles.heroTextColumn}>
               <View style={styles.heroGreetingRow}>
                 {season ? (
-                  <Text style={styles.greetingEmoji} accessibilityElementsHidden importantForAccessibility="no">{SEASONS[season].emoji}</Text>
+                  <Text
+                    style={styles.greetingEmoji}
+                    accessibilityElementsHidden
+                    importantForAccessibility="no"
+                    onPress={season === 'bonfire' ? () => setFireworksKey(k => k + 1) : undefined}
+                  >{SEASONS[season].emoji}</Text>
                 ) : (
                   <Ionicons name={getGreetingIcon()} size={16} color={theme.tint} style={{ marginRight: 6 }} />
                 )}
@@ -449,6 +457,7 @@ export default function DashboardScreen() {
             </View>
           </View>
           <Text style={[styles.heroSubtitle, { color: theme.textSecondary }]}>{heroSubtitle}</Text>
+          {season === 'bonfire' && <Fireworks playKey={fireworksKey} />}
         </View>
 
         <View style={styles.quickActionsRow}>

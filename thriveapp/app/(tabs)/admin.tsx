@@ -949,13 +949,14 @@ export default function AdminScreen() {
                     <SectionHeader title="Seasonal Theme" style={{ marginTop: Spacing.xxl }} />
                     <Card>
                         <Text style={[styles.settingDescription, { color: theme.textSecondary, marginBottom: Spacing.md }]}>
-                            Auto shows Halloween from 17 to 31 October and Christmas through December. Members can turn it off for themselves in Profile.
+                            Auto shows Halloween from 17 to 31 October, Bonfire Night from 1 to 7 November and Christmas through December. Members can turn it off for themselves in Profile.
                         </Text>
                         <SegmentedControl
                             options={[
                                 { value: 'auto', label: 'Auto' },
                                 { value: 'off', label: 'Off' },
                                 { value: 'halloween', label: SEASONS.halloween.label },
+                                { value: 'bonfire', label: 'Bonfire' },
                                 { value: 'christmas', label: SEASONS.christmas.label },
                             ]}
                             value={seasonalTheme}
