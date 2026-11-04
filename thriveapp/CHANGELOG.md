@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.7.0] - 2026-11-04
+
+### Added
+- **Bonfire Night**: From 1 to 7 November screen titles carry a 🎆, the Dashboard says "Happy Bonfire Night" and your next session becomes your next *sparkling* session. A few fireworks go off over the Dashboard greeting when you open it — tap the 🎆 to set them off again. They don't play if your device is set to reduce motion. Admins can force Bonfire Night on from Admin → Settings, and anyone can turn it off for their own device from Profile → Appearance.
+
 ## [3.6.0] - 2026-10-23
 
 ### Added
