@@ -18,6 +18,18 @@ import { ScreenHeader, SectionHeader, EmptyState, Badge, Button, ListContainer, 
 const PT_OPEN_HOUR = 7;
 const PT_CLOSE_HOUR = 20;
 
+// Time blocks are set in 15-minute steps, up to a long working day
+const BLOCK_STEP_MINUTES = 15;
+const MAX_BLOCK_MINUTES = 16 * 60;
+
+/** 315 → "5h 15m", 60 → "1h", 45 → "45m" */
+const formatBlockLength = (minutes: number) => {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    if (h === 0) return `${m}m`;
+    return m === 0 ? `${h}h` : `${h}h ${m}m`;
+};
+
 export default function PTBookingScreen() {
     const { user, profile: userProfile, profileLoading } = useAuth();
     const router = useRouter();
@@ -28,7 +40,7 @@ export default function PTBookingScreen() {
     const [loading, setLoading] = useState(true);
     const [bookingLoading, setBookingLoading] = useState(false);
     const [recurringFrequency, setRecurringFrequency] = useState<'none' | 'weekly' | 'bi-weekly' | 'monthly'>('none');
-    const [blockDuration, setBlockDuration] = useState<number>(1);
+    const [blockMinutes, setBlockMinutes] = useState<number>(60);
     const [isManagingAvailability, setIsManagingAvailability] = useState(false);
 
     // PT Assignment State
@@ -621,12 +633,12 @@ export default function PTBookingScreen() {
                     }
                 });
             } else {
-                const endTimeStr = format(addMinutes(slot.time, blockDuration * 60), 'HH:mm');
+                const endTimeStr = format(addMinutes(slot.time, blockMinutes), 'HH:mm');
                 setAlertConfig({
                     visible: true,
                     title: 'Block Time',
-                    message: `Block out ${blockDuration} hour(s) from ${format(slot.time, 'HH:mm')} to ${endTimeStr}${recurringFrequency !== 'none' ? ' (' + recurringFrequency + ')' : ''}?`,
-                    onConfirm: () => confirmBooking(slot.time, user!.uid, 'pt_block', blockDuration * 60)
+                    message: `Block out ${formatBlockLength(blockMinutes)} from ${format(slot.time, 'HH:mm')} to ${endTimeStr}${recurringFrequency !== 'none' ? ' (' + recurringFrequency + ')' : ''}?`,
+                    onConfirm: () => confirmBooking(slot.time, user!.uid, 'pt_block', blockMinutes)
                 });
             }
             return;
@@ -1302,7 +1314,7 @@ export default function PTBookingScreen() {
         if (isManagingAvailability) {
             return slot.isBlockedByMe
                 ? { ...base, title: 'Blocked · tap to unblock', tone: 'warning' as const, available: true }
-                : { ...base, title: `Block until ${format(addMinutes(slot.time, blockDuration * 60), 'HH:mm')}`, tone: 'muted' as const, available: slot.available };
+                : { ...base, title: `Block until ${format(addMinutes(slot.time, blockMinutes), 'HH:mm')}`, tone: 'muted' as const, available: slot.available };
         }
         if (!slot.available) {
             return { ...base, title: slot.conflictReason ?? 'Booked', tone: 'muted' as const, available: false };
@@ -1351,12 +1363,33 @@ export default function PTBookingScreen() {
                     <ChipGroup label="Repeat" options={frequencyOptions} value={recurringFrequency} onChange={setRecurringFrequency} />
                     {isManagingAvailability && (
                         <>
-                            <ChipGroup
-                                label="Block length"
-                                options={[1, 2, 3, 4, 6, 8].map(h => ({ value: h, label: `${h}h` }))}
-                                value={blockDuration}
-                                onChange={setBlockDuration}
-                            />
+                            <View>
+                                <Text style={[styles.blockLengthLabel, { color: theme.textSecondary }]}>Block length</Text>
+                                <View style={styles.blockStepper}>
+                                    <IconButton
+                                        icon="remove"
+                                        tone="tint"
+                                        accessibilityLabel="15 minutes shorter"
+                                        disabled={blockMinutes <= BLOCK_STEP_MINUTES}
+                                        onPress={() => setBlockMinutes(m => Math.max(BLOCK_STEP_MINUTES, m - BLOCK_STEP_MINUTES))}
+                                    />
+                                    <Text style={[styles.blockStepperValue, { color: theme.text }]} accessibilityLiveRegion="polite">
+                                        {formatBlockLength(blockMinutes)}
+                                    </Text>
+                                    <IconButton
+                                        icon="add"
+                                        tone="tint"
+                                        accessibilityLabel="15 minutes longer"
+                                        disabled={blockMinutes >= MAX_BLOCK_MINUTES}
+                                        onPress={() => setBlockMinutes(m => Math.min(MAX_BLOCK_MINUTES, m + BLOCK_STEP_MINUTES))}
+                                    />
+                                </View>
+                                <ChipGroup
+                                    options={[1, 2, 4, 8].map(h => ({ value: h * 60, label: `${h}h` }))}
+                                    value={blockMinutes}
+                                    onChange={setBlockMinutes}
+                                />
+                            </View>
                             <Button variant="secondary" size="sm" icon="calendar-outline" label="Block the whole day" onPress={blockWholeDay} style={{ alignSelf: 'flex-start' }} />
                         </>
                     )}
@@ -1570,6 +1603,24 @@ const styles = StyleSheet.create({
     optionsBlock: {
         gap: Spacing.lg,
         marginBottom: Spacing.xxl,
+    },
+    blockLengthLabel: {
+        ...Typography.caption,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginBottom: Spacing.sm,
+    },
+    blockStepper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+        marginBottom: Spacing.md,
+    },
+    blockStepperValue: {
+        ...Typography.title3,
+        minWidth: 96,
+        textAlign: 'center',
+        fontVariant: ['tabular-nums'],
     },
     connect: {
         alignItems: 'center',
